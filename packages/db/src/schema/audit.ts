@@ -12,7 +12,8 @@ export const auditLog = app.table(
     id: uuid('id')
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    actorId: uuid('actor_id'),
+    /** Text, not uuid: auth user ids are opaque strings (see schema/auth.ts). */
+    actorId: text('actor_id'),
     action: text('action').notNull(),
     targetType: text('target_type').notNull(),
     targetId: text('target_id'),
