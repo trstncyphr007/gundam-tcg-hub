@@ -2,14 +2,21 @@ import { randomUUID } from 'node:crypto';
 import etag from '@fastify/etag';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import type { Auth } from '@gth/auth';
+import { ForbiddenError } from '@gth/auth';
 import { type Database, pingDatabase } from '@gth/db';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { ApiConfig } from './config.js';
+import { authPlugin } from './plugins/auth.js';
+import { registerAccountRoutes } from './routes/account.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
 
 export interface AppDeps {
   /** Read-only connection for public catalog endpoints (least privilege). */
   db?: Database | undefined;
+  /** Read-write connection (app_web) for account data; required alongside `auth`. */
+  writeDb?: Database | undefined;
+  auth?: Auth | undefined;
 }
 
 /** Never log credentials or session material (SR-X.20). */
@@ -72,6 +79,11 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'not_found' }));
 
   app.setErrorHandler((error, request, reply) => {
+    // Authorization failures are expected outcomes, not server faults (SR-X.6).
+    if (error instanceof ForbiddenError) {
+      request.log.warn({ action: error.action, userId: request.subject?.userId }, 'forbidden');
+      return reply.code(403).send({ error: 'forbidden' });
+    }
     const { status, code, message } = describeError(error);
     if (status >= 500) {
       request.log.error({ err: error }, 'request failed');
@@ -96,7 +108,9 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     }
   });
 
+  if (deps.auth) await app.register(authPlugin, { auth: deps.auth });
   if (deps.db) registerCatalogRoutes(app, deps.db);
+  if (deps.writeDb && deps.auth) registerAccountRoutes(app, deps.writeDb);
 
   return app;
 }

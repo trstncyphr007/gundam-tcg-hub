@@ -19,7 +19,20 @@ const apiEnvSchema = z.object({
     .string()
     .startsWith('postgres', 'must be a postgres connection string')
     .default('postgres://app_readonly:change-me@127.0.0.1:5432/gth'),
+  DATABASE_URL_WEB: z
+    .string()
+    .startsWith('postgres', 'must be a postgres connection string')
+    .default('postgres://app_web:change-me@127.0.0.1:5432/gth'),
   DB_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
+
+  // Auth (plan §10, FR-1.10). The secret must be >=32 chars of CSPRNG output (SR-X.16).
+  API_BASE_URL: z.url().default('http://127.0.0.1:4000'),
+  APP_BASE_URL: z.url().default('http://127.0.0.1:3000'),
+  BETTER_AUTH_SECRET: z.string().min(32).default('dev-only-insecure-secret-change-me-32+'),
+  DISCORD_CLIENT_ID: z.string().min(1).optional(),
+  DISCORD_CLIENT_SECRET: z.string().min(1).optional(),
+  SMTP_URL: z.string().startsWith('smtp').optional(),
+  EMAIL_FROM: z.string().default('gundam-tcg-hub <no-reply@localhost>'),
 });
 
 export type ApiConfig = z.infer<typeof apiEnvSchema>;
