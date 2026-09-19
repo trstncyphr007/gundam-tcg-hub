@@ -1,8 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import etag from '@fastify/etag';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import { type Database, pingDatabase } from '@gth/db';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { ApiConfig } from './config.js';
+import { registerCatalogRoutes } from './routes/catalog.js';
+
+export interface AppDeps {
+  /** Read-only connection for public catalog endpoints (least privilege). */
+  db?: Database | undefined;
+}
 
 /** Never log credentials or session material (SR-X.20). */
 export const REDACT_PATHS = [
@@ -28,7 +36,7 @@ function describeError(error: unknown): { status: number; code: string; message:
   };
 }
 
-export async function buildApp(config: ApiConfig): Promise<FastifyInstance> {
+export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger:
       config.LOG_LEVEL === 'silent'
@@ -58,6 +66,8 @@ export async function buildApp(config: ApiConfig): Promise<FastifyInstance> {
 
   // In-memory limiter for now; moves to Valkey when there is more than one instance (SR-X.27).
   await app.register(rateLimit, { max: config.API_RATE_LIMIT_MAX, timeWindow: '1 minute' });
+  // Conditional GETs for the public catalog (FR-3.6).
+  await app.register(etag, { weak: true });
 
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'not_found' }));
 
@@ -71,9 +81,22 @@ export async function buildApp(config: ApiConfig): Promise<FastifyInstance> {
     return reply.code(status).send({ error: code, message });
   });
 
+  // Liveness: is the process up? Never touches dependencies.
   app.get('/healthz', { config: { rateLimit: false } }, () => ({ status: 'ok' }));
-  // Phase 1 adds dependency checks (Postgres, Valkey) here.
-  app.get('/readyz', { config: { rateLimit: false } }, () => ({ status: 'ready' }));
+
+  // Readiness: can we actually serve traffic? Checks dependencies (Valkey follows in Phase 1).
+  app.get('/readyz', { config: { rateLimit: false } }, async (request, reply) => {
+    if (!deps.db) return { status: 'ready', database: 'not_configured' };
+    try {
+      await pingDatabase(deps.db);
+      return { status: 'ready', database: 'ok' };
+    } catch (error) {
+      request.log.error({ err: error }, 'readiness check failed');
+      return reply.code(503).send({ status: 'unready', database: 'unavailable' });
+    }
+  });
+
+  if (deps.db) registerCatalogRoutes(app, deps.db);
 
   return app;
 }

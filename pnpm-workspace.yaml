@@ -25,3 +25,6 @@ trustPolicyExclude:
 overrides:
   # GHSA-g7r4-m6w7-qqqr (esbuild dev-server file read, fixed in 0.28.1).
   'esbuild@>=0.27.3 <0.28.1': 0.28.2
+  # GHSA-67mh-4wv8-2f99 (esbuild dev server accepts any origin, fixed in 0.25.0).
+  # drizzle-kit 0.31.10 still pulls esbuild 0.18 via the deprecated @esbuild-kit/* packages.
+  '@esbuild-kit/core-utils>esbuild': 0.25.12
