@@ -18,6 +18,7 @@ PG_WORKER_PASSWORD="$(rand_hex)"
 PG_READONLY_PASSWORD="$(rand_hex)"
 VALKEY_PASSWORD="$(rand_hex)"
 TOKEN_PEPPER="$(openssl rand -base64 32)"
+BETTER_AUTH_SECRET="$(openssl rand -base64 32)"
 
 umask 077
 cat > .env <<EOF
@@ -46,6 +47,19 @@ VALKEY_PASSWORD=${VALKEY_PASSWORD}
 VALKEY_URL=redis://:${VALKEY_PASSWORD}@127.0.0.1:6379/0
 
 TOKEN_PEPPER=${TOKEN_PEPPER}
+
+# Auth. Sign-in links are emailed via Mailpit locally: start it with
+#   docker compose --env-file .env -f infra/compose/docker-compose.dev.yml --profile mail up -d
+# then read the mail at http://127.0.0.1:8025
+API_BASE_URL=http://127.0.0.1:4000
+APP_BASE_URL=http://127.0.0.1:3000
+BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+SMTP_URL=smtp://127.0.0.1:1025
+EMAIL_FROM="gundam-tcg-hub <no-reply@localhost>"
+# Discord OAuth: create an app at https://discord.com/developers/applications,
+# add redirect URI http://127.0.0.1:4000/api/auth/callback/discord, then fill these in.
+# DISCORD_CLIENT_ID=
+# DISCORD_CLIENT_SECRET=
 
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
 EOF

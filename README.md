@@ -34,6 +34,34 @@ Reads go through the **read-only** database role. Responses are cached (`max-age
 ETags for conditional GETs. Every query parameter is validated; unknown parameters are rejected
 and invalid values are never echoed back.
 
+## Accounts
+
+| Endpoint                                        | Notes                                                     |
+| ----------------------------------------------- | --------------------------------------------------------- |
+| `POST /api/auth/sign-in/magic-link`             | Emails a one-time link (15 min, single use), 5/min per IP |
+| `GET /api/auth/sign-in/social?provider=discord` | Discord OAuth, scopes `identify` + `email`                |
+| `POST /api/auth/sign-out`                       | Revokes the session server-side                           |
+| `GET /v1/me`                                    | The signed-in account (`no-store`)                        |
+| `PATCH /v1/me`                                  | Update `displayName` only                                 |
+| `GET /v1/admin/ping`                            | Requires the `admin` role                                 |
+
+**No passwords exist.** Sign-in is Discord OAuth or a one-time email link. Sessions are
+`HttpOnly`, `SameSite=Lax`, `Path=/` cookies (plus `Secure` and a `__Host-` prefix in
+production), 30-day absolute lifetime. Roles are server-controlled: clients cannot set or
+change `role`.
+
+Locally, sign-in links go to **Mailpit** (`--profile mail`, inbox at http://127.0.0.1:8025).
+Without SMTP configured, the link is logged in development and the API refuses to start in
+production.
+
+### Enabling Discord sign-in
+
+1. Create an application at https://discord.com/developers/applications.
+2. OAuth2 → add redirect `http://127.0.0.1:4000/api/auth/callback/discord` (and the production
+   URL later).
+3. Copy the client ID/secret into `.env` as `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET`.
+   Without them the provider stays disabled and magic links still work.
+
 Optional services: `docker compose --env-file .env -f infra/compose/docker-compose.dev.yml --profile mail --profile observability up -d`
 (Mailpit on :8025, Grafana LGTM on :3001).
 

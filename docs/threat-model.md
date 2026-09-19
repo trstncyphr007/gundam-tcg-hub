@@ -36,6 +36,20 @@ risk register is in the build plan (§17); this file tracks **current state**.
 | Scanner pointed at an unvetted retailer (T2/T18 precursor) | DB check constraint: a retailer cannot be `enabled` until `tos_reviewed_at` is set **and** `robots_ok` is true; product URLs must be `https://`; minimum scan interval enforced |
 | Publisher IP exposure                                      | `card_variants.image_ref` stores a link; card art is never rehosted (plan §23). The seeded catalog is placeholder data, not publisher data                                      |
 
+## Accounts additions (2026-09-20)
+
+| Threat                                 | Controls                                                                                                                                                                           |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Credential theft / password reuse (T1) | No passwords exist: Discord OAuth or single-use email links (15 min). Nothing to steal, phish or crack                                                                             |
+| Session hijacking / fixation (T1)      | `HttpOnly`, `SameSite=Lax`, `Path=/` cookies; `Secure` + `__Host-` prefix in production; 30-day absolute lifetime; server-side revocation on sign-out (tested)                     |
+| Magic-link replay or forgery           | Single use, expiring; a replayed or forged token mints **no** session (tested)                                                                                                     |
+| Privilege escalation (T4, SR-X.9)      | `role` is server-controlled (`input: false`); the profile endpoint rejects unknown fields; the update path never includes `role`; verified against both our API and the provider's |
+| Rate-limit evasion behind a proxy      | The client IP comes from `X-Forwarded-For` **only** when `API_TRUST_PROXY` is on; otherwise all proxied users would share one bucket                                               |
+| Auth abuse (link flooding)             | 5 link requests/min per IP, 10 verifications/min, 10 social sign-ins/min (tested)                                                                                                  |
+| Sign-in link leaking into logs         | Links are logged only in development; production without SMTP refuses to boot                                                                                                      |
+| CSRF on state-changing auth routes     | `SameSite=Lax` plus a trusted-origins allowlist                                                                                                                                    |
+| Unauthorised access to account data    | Deny-by-default `authorize()`; anonymous callers get 401, wrong role gets 403 (tested); per-user responses are `no-store`                                                          |
+
 ## Accepted risks
 
 - Local hooks can be skipped with `--no-verify`; CI re-runs every gate (ADR-014).

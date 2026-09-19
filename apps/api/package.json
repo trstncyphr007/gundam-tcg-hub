@@ -19,13 +19,17 @@
     "@fastify/helmet": "13.1.1",
     "@fastify/rate-limit": "11.2.0",
     "fastify": "5.12.4",
+    "fastify-plugin": "6.0.0",
+    "nodemailer": "10.0.9",
     "zod": "4.6.2"
   },
   "devDependencies": {
+    "@gth/auth": "workspace:*",
     "@gth/config": "workspace:*",
     "@gth/core": "workspace:*",
     "@gth/db": "workspace:*",
     "@types/node": "24.13.4",
+    "@types/nodemailer": "8.0.1",
     "@vitest/coverage-v8": "5.0.0",
     "tsup": "8.5.1",
     "tsx": "4.23.13",
