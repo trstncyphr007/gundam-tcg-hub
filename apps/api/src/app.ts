@@ -10,6 +10,7 @@ import type { ApiConfig } from './config.js';
 import { authPlugin } from './plugins/auth.js';
 import { registerAccountRoutes } from './routes/account.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
+import { registerWatchRoutes } from './routes/watches.js';
 
 export interface AppDeps {
   /** Read-only connection for public catalog endpoints (least privilege). */
@@ -110,7 +111,10 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
 
   if (deps.auth) await app.register(authPlugin, { auth: deps.auth });
   if (deps.db) registerCatalogRoutes(app, deps.db);
-  if (deps.writeDb && deps.auth) registerAccountRoutes(app, deps.writeDb);
+  if (deps.writeDb && deps.auth) {
+    registerAccountRoutes(app, deps.writeDb);
+    registerWatchRoutes(app, deps.writeDb);
+  }
 
   return app;
 }
