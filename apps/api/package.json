@@ -1,0 +1,33 @@
+{
+  "name": "@gth/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@fastify/helmet": "13.1.1",
+    "@fastify/rate-limit": "11.2.0",
+    "fastify": "5.12.4",
+    "zod": "4.6.2"
+  },
+  "devDependencies": {
+    "@gth/config": "workspace:*",
+    "@gth/core": "workspace:*",
+    "@types/node": "24.13.4",
+    "@vitest/coverage-v8": "5.0.0",
+    "tsup": "8.5.1",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  }
+}

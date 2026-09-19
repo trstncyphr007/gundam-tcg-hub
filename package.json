@@ -1,0 +1,44 @@
+{
+  "name": "gundam-tcg-hub",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=10.34"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:coverage": "turbo run test:coverage",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "env:init": "bash scripts/init-env.sh",
+    "stack:up": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml up -d --wait",
+    "stack:down": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml down",
+    "stack:reset": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml down -v",
+    "sec:scan": "bash scripts/sec-scan.sh",
+    "licenses:check": "node scripts/check-licenses.mjs",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.2",
+    "@commitlint/config-conventional": "21.2.2",
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.4",
+    "@vitest/coverage-v8": "5.0.0",
+    "eslint": "10.10.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-security": "4.0.1",
+    "globals": "17.12.0",
+    "lefthook": "2.1.12",
+    "prettier": "3.9.6",
+    "turbo": "2.10.12",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.0",
+    "vitest": "5.0.0"
+  }
+}

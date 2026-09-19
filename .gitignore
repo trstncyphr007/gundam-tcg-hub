@@ -1,0 +1,23 @@
+# dependencies / build output
+node_modules/
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# secrets: never commit real env files (SR-0.12)
+.env
+.env.*
+!.env.example
+
+# security scan output
+reports/
+
+# logs / OS / editor
+*.log
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/

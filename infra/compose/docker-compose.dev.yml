@@ -1,0 +1,62 @@
+# Local development stack (plan §9.5). Start with `pnpm stack:up` (needs .env from `pnpm env:init`).
+# Every port binds to 127.0.0.1 only (NFR-0.1). Optional services use profiles:
+#   docker compose ... --profile mail --profile observability up -d
+name: gth-dev
+
+x-dev-hardening: &dev-hardening
+  security_opt: ['no-new-privileges:true']
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *dev-hardening
+    image: postgres:17-bookworm@sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652
+    environment:
+      POSTGRES_USER: ${PG_SUPERUSER:?run pnpm env:init}
+      POSTGRES_PASSWORD: ${PG_SUPERPASSWORD:?run pnpm env:init}
+      POSTGRES_DB: ${PG_DATABASE:-gth}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      PG_MIGRATOR_PASSWORD: ${PG_MIGRATOR_PASSWORD:?run pnpm env:init}
+      PG_WEB_PASSWORD: ${PG_WEB_PASSWORD:?run pnpm env:init}
+      PG_WORKER_PASSWORD: ${PG_WORKER_PASSWORD:?run pnpm env:init}
+      PG_READONLY_PASSWORD: ${PG_READONLY_PASSWORD:?run pnpm env:init}
+    ports: ['127.0.0.1:5432:5432']
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../../packages/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  valkey:
+    <<: *dev-hardening
+    image: valkey/valkey:8-bookworm@sha256:fea8b3e67b15729d4bb70589eb03367bab9ad1ee89c876f54327fc7c6e618571
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run pnpm env:init}
+    command: ['sh', '-c', 'exec valkey-server --requirepass "$$VALKEY_PASSWORD" --appendonly yes']
+    ports: ['127.0.0.1:6379:6379']
+    volumes:
+      - valkeydata:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'valkey-cli --no-auth-warning -a "$$VALKEY_PASSWORD" ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    <<: *dev-hardening
+    profiles: [mail]
+    image: axllent/mailpit@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
+    ports: ['127.0.0.1:8025:8025', '127.0.0.1:1025:1025']
+
+  otel:
+    <<: *dev-hardening
+    profiles: [observability]
+    image: grafana/otel-lgtm@sha256:d6c52678ab5b7144f27ae569fd778608121c0f4a10eb411983750a0d67c1fbe3
+    ports: ['127.0.0.1:3001:3000', '127.0.0.1:4317:4317', '127.0.0.1:4318:4318']
+
+volumes:
+  pgdata: {}
+  valkeydata: {}

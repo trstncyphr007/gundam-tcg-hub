@@ -1,0 +1,36 @@
+# Repo-specific Semgrep rules, run alongside the p/typescript, p/nodejs,
+# p/owasp-top-ten and p/secrets registry rulesets (plan §18.2).
+rules:
+  - id: gth-no-sql-raw
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: sql.raw() bypasses parameterized queries (SR-X.11). Use the sql`` template instead.
+    pattern: sql.raw(...)
+    paths:
+      exclude:
+        - packages/db/migrations/**
+
+  - id: gth-no-child-process
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: child_process is banned in app code (SR-X.13).
+    pattern-regex: (from|require\()\s*['"](node:)?child_process['"]
+    paths:
+      exclude:
+        - scripts/**
+
+  - id: gth-no-dynamic-code
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Dynamic code execution is banned.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+
+  - id: gth-no-tls-verification-bypass
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Never disable TLS certificate verification (SR-X.19).
+    pattern-either:
+      - pattern-regex: NODE_TLS_REJECT_UNAUTHORIZED
+      - pattern: '{..., rejectUnauthorized: false, ...}'

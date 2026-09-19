@@ -1,0 +1,7 @@
+# Security-sensitive paths need owner review (SR-0.6).
+*                          @trstncyphr007
+/.github/                  @trstncyphr007
+/infra/                    @trstncyphr007
+/packages/security/        @trstncyphr007
+/packages/db/              @trstncyphr007
+/scripts/                  @trstncyphr007

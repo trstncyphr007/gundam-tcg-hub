@@ -1,0 +1,24 @@
+{
+  "name": "@gth/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "zod": "4.6.2"
+  },
+  "devDependencies": {
+    "@gth/config": "workspace:*",
+    "@types/node": "24.13.4",
+    "@vitest/coverage-v8": "5.0.0",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  }
+}

@@ -1,0 +1,26 @@
+# Local guardrails (plan §9.3). CI re-runs every check, so --no-verify only defers failures.
+pre-commit:
+  parallel: true
+  commands:
+    gitleaks:
+      run: gitleaks git --pre-commit --staged --redact --no-banner
+    eslint:
+      glob: '*.{ts,tsx,js,mjs,cjs}'
+      run: pnpm exec eslint --max-warnings=0 --no-warn-ignored {staged_files}
+    prettier:
+      glob: '*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}'
+      run: pnpm exec prettier --check {staged_files}
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm exec commitlint --edit {1}
+
+pre-push:
+  commands:
+    protect-main:
+      # GitHub Free + private repo has no branch protection (ADR-014): guard locally.
+      use_stdin: true
+      run: bash scripts/hooks/protect-main.sh
+    typecheck-test:
+      run: pnpm typecheck && pnpm test

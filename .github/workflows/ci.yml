@@ -1,0 +1,174 @@
+# CI + security gates (plan §18.2; ADR-014 for GitHub Free/private compensations).
+# Every gate FAILS the build. Reports go to workflow artifacts (no Security tab on Free/private).
+# Actions are pinned by commit SHA and tool images by digest (SR-0.10, SR-0.11).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 7 * * *' # nightly re-scan catches newly disclosed CVEs (plan §18.3)
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LEFTHOOK: '0'
+  TURBO_TELEMETRY_DISABLED: '1'
+  DO_NOT_TRACK: '1'
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+  SEMGREP_IMAGE: semgrep/semgrep:1.176.0@sha256:12672acdb0949e19f9f6a4c2b288edd0b404f268f0ca7738a2c06f372f50362e
+  OSV_IMAGE: ghcr.io/google/osv-scanner:v2.6.0@sha256:afd838850ac1a0fcc15ff4a041dc9ba11123c3f0d2666217a5f0fcf9222b55fa
+  HADOLINT_IMAGE: hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
+  ACTIONLINT_IMAGE: rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+  ZIZMOR_IMAGE: ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101
+  TRIVY_IMAGE: aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+  SYFT_IMAGE: anchore/syft:v1.52.0@sha256:500e2d872ac019436926e8322b4fc1f39441d94d21f6f4046c6ff29b30e8cb02
+
+jobs:
+  verify:
+    name: format · lint · typecheck · test · build · licenses
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test:coverage
+      - run: pnpm build
+      - run: pnpm licenses:check
+
+  secrets:
+    name: secrets (gitleaks, full history)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: gitleaks
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo \
+            "$GITLEAKS_IMAGE" git . --redact --no-banner --exit-code 1
+
+  sast:
+    name: sast (semgrep)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: semgrep
+        run: |
+          mkdir -p reports
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/src" -w /src \
+            "$SEMGREP_IMAGE" semgrep scan --metrics=off --error \
+            --config p/typescript --config p/nodejs --config p/owasp-top-ten --config p/secrets \
+            --config .semgrep.yml \
+            --sarif-output=reports/semgrep.sarif
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: semgrep-report
+          path: reports/semgrep.sarif
+          retention-days: 14
+          if-no-files-found: ignore
+
+  sca:
+    name: sca (osv-scanner, pnpm audit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - name: osv-scanner
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/src" -w /src \
+            "$OSV_IMAGE" scan source --lockfile /src/pnpm-lock.yaml
+      - name: pnpm audit (prod, high+)
+        run: pnpm audit --prod --audit-level=high
+
+  iac:
+    name: iac + workflow lint (hadolint, actionlint, zizmor, trivy config)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: hadolint
+        run: |
+          for f in infra/docker/*.Dockerfile; do
+            echo "::group::$f"
+            docker run --rm -i "$HADOLINT_IMAGE" hadolint --failure-threshold warning - < "$f"
+            echo "::endgroup::"
+          done
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo "$ACTIONLINT_IMAGE" -color
+      - name: zizmor
+        run: docker run --rm -v "$PWD:/repo" -w /repo "$ZIZMOR_IMAGE" --offline .github/workflows
+      - name: trivy config
+        run: |
+          docker run --rm -v "$PWD:/src" "$TRIVY_IMAGE" config --quiet \
+            --exit-code 1 --severity HIGH,CRITICAL /src
+
+  container:
+    name: container (build, trivy image, sbom)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: build api image
+        run: docker build -f infra/docker/api.Dockerfile -t gth-api:ci .
+      - name: export image
+        run: |
+          mkdir -p reports image
+          docker save gth-api:ci -o image/gth-api.tar
+      - name: trivy image (fixable HIGH/CRITICAL fail)
+        run: |
+          docker run --rm -v "$PWD/image:/image:ro" "$TRIVY_IMAGE" image --quiet \
+            --input /image/gth-api.tar --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed
+      - name: sbom (CycloneDX)
+        run: |
+          docker run --rm -v "$PWD/image:/image:ro" -v "$PWD/reports:/reports" "$SYFT_IMAGE" \
+            docker-archive:/image/gth-api.tar -o cyclonedx-json=/reports/sbom-api.cdx.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-api
+          path: reports/sbom-api.cdx.json
+          retention-days: 30

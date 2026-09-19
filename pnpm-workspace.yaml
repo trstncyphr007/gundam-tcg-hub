@@ -1,0 +1,27 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Supply-chain hygiene (plan §9.4, SR-0.8..0.11)
+# Don't resolve package versions published less than 7 days ago (in minutes).
+minimumReleaseAge: 10080
+
+# pnpm 10 blocks dependency install scripts by default; only these may run them.
+onlyBuiltDependencies:
+  - esbuild
+
+# Transitive deps may only come from the registry (no git/tarball URLs).
+blockExoticSubdeps: true
+
+# Fail install if a new version drops trust signals (e.g. provenance) an older version had.
+trustPolicy: no-downgrade
+# Reviewed exceptions only: exact versions, each with evidence.
+trustPolicyExclude:
+  # Reviewed 2026-09-20: published 2024-12-18 by the sole long-time maintainer (same account as
+  # the attested 4.0.0/4.0.1), same deps, integrity matches the lockfile, ~150M weekly downloads,
+  # no advisories. Build-time only (via tsup), never shipped. Remove when tsup moves to chokidar 5.
+  - chokidar@4.0.3
+
+overrides:
+  # GHSA-g7r4-m6w7-qqqr (esbuild dev-server file read, fixed in 0.28.1).
+  'esbuild@>=0.27.3 <0.28.1': 0.28.2

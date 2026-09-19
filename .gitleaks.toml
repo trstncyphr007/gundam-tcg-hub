@@ -1,0 +1,11 @@
+title = "gundam-tcg-hub gitleaks config"
+
+[extend]
+useDefault = true
+
+# Our own API key format (plan SR-3.1): gth_live_<prefix8>_<secret>
+[[rules]]
+id = "gth-api-key"
+description = "gundam-tcg-hub API key"
+regex = '''gth_(live|test)_[a-z0-9]{8}_[A-Za-z0-9_-]{32,}'''
+keywords = ["gth_live_", "gth_test_"]

@@ -1,0 +1,7 @@
+{
+  "name": "@gth/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Postgres roles/init now; Drizzle schema + migrations arrive in Phase 1."
+}
