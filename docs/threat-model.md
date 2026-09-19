@@ -50,6 +50,18 @@ risk register is in the build plan (§17); this file tracks **current state**.
 | CSRF on state-changing auth routes     | `SameSite=Lax` plus a trusted-origins allowlist                                                                                                                                    |
 | Unauthorised access to account data    | Deny-by-default `authorize()`; anonymous callers get 401, wrong role gets 403 (tested); per-user responses are `no-store`                                                          |
 
+## Watches additions (2026-09-20)
+
+| Threat                                      | Controls                                                                                                                                                                                             |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reading another user's watches (IDOR, T4)   | Two independent layers: `authorize()` ownership checks in the app **and** Postgres row-level security keyed on a per-transaction `app.user_id`. Verified with raw SQL that bypasses the app entirely |
+| Deleting/altering another user's watches    | RLS `USING` clauses on UPDATE/DELETE; the API deletes by `(id, owner)`; a miss returns **404, not 403**, so ids are never confirmed                                                                  |
+| Creating a row owned by someone else        | RLS `WITH CHECK` on INSERT rejects a forged `user_id`; the API takes the owner from the session and rejects unknown body fields                                                                      |
+| Identity leaking between pooled connections | `set_config(..., true)` is transaction-scoped; a connection with no declared user sees zero rows (tested)                                                                                            |
+| Queue flooding via unlimited watches        | 50 watches per user, enforced before insert; duplicates rejected by partial unique indexes                                                                                                           |
+| Malformed subscriptions reaching the worker | DB checks: exactly one target, and at least one channel via `cardinality` (`array_length` is NULL on an empty array, and CHECK passes on NULL)                                                       |
+| Worker over-reach                           | The worker may read all watches (needed for fan-out) but has INSERT/UPDATE/DELETE revoked                                                                                                            |
+
 ## Accepted risks
 
 - Local hooks can be skipped with `--no-verify`; CI re-runs every gate (ADR-014).

@@ -44,11 +44,18 @@ and invalid values are never echoed back.
 | `GET /v1/me`                                    | The signed-in account (`no-store`)                        |
 | `PATCH /v1/me`                                  | Update `displayName` only                                 |
 | `GET /v1/admin/ping`                            | Requires the `admin` role                                 |
+| `GET /v1/watches`                               | The caller's watch subscriptions                          |
+| `POST /v1/watches`                              | Watch a product or one listing (max 50 per user)          |
+| `DELETE /v1/watches/:id`                        | Remove one of the caller's watches                        |
 
 **No passwords exist.** Sign-in is Discord OAuth or a one-time email link. Sessions are
 `HttpOnly`, `SameSite=Lax`, `Path=/` cookies (plus `Secure` and a `__Host-` prefix in
 production), 30-day absolute lifetime. Roles are server-controlled: clients cannot set or
 change `role`.
+
+Watches are **row-level secured**: Postgres itself restricts every row to its owner, so even a
+missing `WHERE` clause cannot leak another user's data. Queries run through `asUser()`, which
+declares the acting user for the duration of one transaction.
 
 Locally, sign-in links go to **Mailpit** (`--profile mail`, inbox at http://127.0.0.1:8025).
 Without SMTP configured, the link is logged in development and the API refuses to start in

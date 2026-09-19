@@ -22,6 +22,27 @@
       "when": 1789856399774,
       "tag": "0002_phase1_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789857287052,
+      "tag": "0003_phase1_watches",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789857311418,
+      "tag": "0004_watch_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789857638953,
+      "tag": "0005_fix_actor_id_and_channels",
+      "breakpoints": true
     }
   ]
 }
