@@ -3,5 +3,35 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Postgres roles/init now; Drizzle schema + migrations arrive in Phase 1."
+  "description": "Drizzle schema, migrations, queries and least-privilege Postgres roles.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./test": "./src/test/harness.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "migrate": "tsx --env-file-if-exists=../../.env src/cli/migrate.ts",
+    "seed": "tsx --env-file-if-exists=../../.env src/cli/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "postgres": "3.4.9",
+    "zod": "4.6.2"
+  },
+  "devDependencies": {
+    "@gth/config": "workspace:*",
+    "@gth/core": "workspace:*",
+    "@testcontainers/postgresql": "12.1.0",
+    "@types/node": "24.13.4",
+    "@vitest/coverage-v8": "5.0.0",
+    "drizzle-kit": "0.31.10",
+    "testcontainers": "12.1.0",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  }
 }

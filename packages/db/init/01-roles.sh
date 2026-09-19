@@ -18,6 +18,8 @@ CREATE ROLE app_readonly LOGIN PASSWORD :'readonly_pw' NOSUPERUSER NOCREATEDB NO
 
 REVOKE ALL ON DATABASE :"db" FROM PUBLIC;
 GRANT CONNECT ON DATABASE :"db" TO app_migrator, app_web, app_worker, app_readonly;
+-- Only the DDL role may create schemas (the migration tool needs this); it is still not a superuser.
+GRANT CREATE ON DATABASE :"db" TO app_migrator;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
 -- Extensions (plan §5) are installed by the superuser, once.
@@ -28,6 +30,10 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- All app tables live in schema "app", owned by the migrator (DDL only via migrations).
 CREATE SCHEMA app AUTHORIZATION app_migrator;
 GRANT USAGE ON SCHEMA app TO app_web, app_worker, app_readonly;
+
+-- Drizzle keeps its migration bookkeeping here. Created up front so app_migrator never
+-- needs CREATE on the database itself.
+CREATE SCHEMA drizzle AUTHORIZATION app_migrator;
 
 ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA app
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_web, app_worker;
