@@ -1,0 +1,26 @@
+{
+  "name": "@gth/auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "better-auth": "1.7.4"
+  },
+  "devDependencies": {
+    "@gth/config": "workspace:*",
+    "@gth/core": "workspace:*",
+    "@gth/db": "workspace:*",
+    "@types/node": "24.13.4",
+    "@vitest/coverage-v8": "5.0.0",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  }
+}
