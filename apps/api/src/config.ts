@@ -15,6 +15,11 @@ const apiEnvSchema = z.object({
   // Only true behind our own reverse proxy (Caddy), otherwise X-Forwarded-For is spoofable.
   API_TRUST_PROXY: booleanStringSchema,
   API_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+  DATABASE_URL_READONLY: z
+    .string()
+    .startsWith('postgres', 'must be a postgres connection string')
+    .default('postgres://app_readonly:change-me@127.0.0.1:5432/gth'),
+  DB_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
 });
 
 export type ApiConfig = z.infer<typeof apiEnvSchema>;

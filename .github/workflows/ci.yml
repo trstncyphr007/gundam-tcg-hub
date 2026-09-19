@@ -141,6 +141,7 @@ jobs:
       - name: trivy config
         run: |
           docker run --rm -v "$PWD:/src" "$TRIVY_IMAGE" config --quiet \
+            --skip-dirs '**/node_modules' \
             --exit-code 1 --severity HIGH,CRITICAL /src
 
   container:

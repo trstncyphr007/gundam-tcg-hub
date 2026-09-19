@@ -18,9 +18,10 @@ describe('health endpoints', () => {
     expect(health.statusCode).toBe(200);
     expect(health.json()).toEqual({ status: 'ok' });
 
+    // Without a database wired in (unit context) readiness still answers, and says so.
     const ready = await app.inject({ method: 'GET', url: '/readyz' });
     expect(ready.statusCode).toBe(200);
-    expect(ready.json()).toEqual({ status: 'ready' });
+    expect(ready.json()).toEqual({ status: 'ready', database: 'not_configured' });
   });
 });
 

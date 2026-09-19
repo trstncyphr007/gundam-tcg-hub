@@ -25,6 +25,17 @@ risk register is in the build plan (§17); this file tracks **current state**.
 | —   | DB privilege escalation / blast radius            | Per-service roles, no superuser; web can't run DDL; read-only role is read-only; statement timeouts; verified 2026-09-20                                               | RLS arrives with the first user-owned tables (Phase 1)           |
 | —   | Container escape / tampering                      | Distroless, non-root 65532, root-owned app files; verified running `--read-only --cap-drop ALL --security-opt no-new-privileges`                                       | Apply the same flags in `docker-compose.prod.yml` (deploy track) |
 
+## Phase 1 additions (catalog + public reads, 2026-09-20)
+
+| Threat                                                     | Controls                                                                                                                                                                        |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SQL injection via search/filter parameters                 | Parameterised queries only (Drizzle); zod validation with `.strict()`; injection payload tests at both the query and HTTP layers                                                |
+| Enumeration / scraping of the catalog                      | Cursor pagination with a hard page cap (100), rate limiting, `max-age=300` caching                                                                                              |
+| Information disclosure through validation errors           | 400 responses carry field names and rule codes only; a test asserts the submitted value is never echoed                                                                         |
+| Compromised API process pivoting to data tampering         | Public reads use the **read-only** role; `stock_snapshots` is insert-only for the worker and forbidden to the web role; `audit_log` cannot be updated, deleted or truncated     |
+| Scanner pointed at an unvetted retailer (T2/T18 precursor) | DB check constraint: a retailer cannot be `enabled` until `tos_reviewed_at` is set **and** `robots_ok` is true; product URLs must be `https://`; minimum scan interval enforced |
+| Publisher IP exposure                                      | `card_variants.image_ref` stores a link; card art is never rehosted (plan §23). The seeded catalog is placeholder data, not publisher data                                      |
+
 ## Accepted risks
 
 - Local hooks can be skipped with `--no-verify`; CI re-runs every gate (ADR-014).

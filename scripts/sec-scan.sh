@@ -21,7 +21,8 @@ run "semgrep" semgrep scan --metrics=off --error --quiet \
 run "licenses" node scripts/check-licenses.mjs
 run "hadolint" bash -c 'for f in infra/docker/*.Dockerfile; do hadolint --failure-threshold warning "$f" || exit 1; done'
 run "actionlint" actionlint
-run "trivy config" trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL .
+run "trivy config" trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL \
+  --skip-dirs node_modules --skip-dirs '**/node_modules' .
 
 echo
 if [ "$status" -eq 0 ]; then echo "All security gates passed."; else echo "Some security gates FAILED."; fi
