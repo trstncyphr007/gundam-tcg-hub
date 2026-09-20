@@ -6,8 +6,8 @@
     "eBay (web), Walmart (web), Star City Games and the Bandai Namco Store explicitly",
     "disallow the search paths the scanner used, and Amazon and TCGplayer were dropped",
     "on terms-of-service grounds, so none of them appear here.",
-    "CoolStuffInc is listed but disabled: robots permits the search page, but the",
-    "results only load from /ajax, which robots disallows. See its note below.",
+    "CoolStuffInc and Premium Bandai are listed but disabled: both permit us in",
+    "robots.txt, but neither serves data we can lawfully read. See their notes.",
     "Product set codes, UPCs and MSRPs are deliberately null until confirmed from a",
     "lawful source (plan §23 IP review)."
   ],
@@ -59,8 +59,9 @@
       "domain": "p-bandai.com",
       "adapterKey": "premiumbandai",
       "robotsOk": true,
+      "enabled": false,
       "minIntervalS": 900,
-      "note": "Allowed, but they disallow offset/limit/sortType query parameters."
+      "note": "Robots permits the search path (they only disallow offset/limit/sortType parameters), but the URL returns ~238KB of obfuscated anti-bot challenge JavaScript instead of a storefront: empty title, no content. Reading it would mean defeating that protection, so it stays off. An official Bandai feed or API would be the way in. robotsOk stays true because that is what their robots.txt says."
     }
   ],
   "products": [
