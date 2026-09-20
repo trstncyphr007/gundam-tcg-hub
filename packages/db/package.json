@@ -18,7 +18,8 @@
     "test:coverage": "vitest run --coverage",
     "import-sources": "tsx --env-file-if-exists=../../.env src/cli/import-sources.ts",
     "api-key": "tsx --env-file-if-exists=../../.env src/cli/api-key.ts",
-    "role": "tsx --env-file-if-exists=../../.env src/cli/role.ts"
+    "role": "tsx --env-file-if-exists=../../.env src/cli/role.ts",
+    "price-rollup": "tsx --env-file-if-exists=../../.env src/cli/price-rollup.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

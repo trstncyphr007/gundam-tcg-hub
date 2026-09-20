@@ -31,7 +31,8 @@
     "keys:create": "pnpm --filter @gth/db api-key create",
     "keys:revoke": "pnpm --filter @gth/db api-key revoke",
     "db:import-sources": "pnpm --filter @gth/db import-sources",
-    "role:set": "pnpm --filter @gth/db role"
+    "role:set": "pnpm --filter @gth/db role",
+    "price:rollup": "pnpm --filter @gth/db price-rollup"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
