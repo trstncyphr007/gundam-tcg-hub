@@ -7,6 +7,18 @@ capture & break transparency → marketplace. Built security-first; see
 The restock **scanner** lives in its own Python repo (`trstncyphr007/gundam-scanner`) and
 integrates with this platform in Phase 1 (ADR-013).
 
+## Licence
+
+**All rights reserved.** The source is public so the security claims in
+[`docs/asvs-checklist.md`](docs/asvs-checklist.md) and
+[`docs/threat-model.md`](docs/threat-model.md) can be checked rather than taken on trust, and
+so the shops this project reads can see exactly what it does.
+
+That is not a grant of licence: no permission is given to copy, modify, redistribute or run
+this code. If you want to use part of it, ask.
+
+Security reports are welcome — see [`SECURITY.md`](SECURITY.md).
+
 ## Quickstart (WSL2 Ubuntu)
 
 ```bash
