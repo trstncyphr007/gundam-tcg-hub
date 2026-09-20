@@ -24,10 +24,12 @@
     "zod": "4.6.2"
   },
   "devDependencies": {
+    "@gth/alerts": "workspace:*",
     "@gth/auth": "workspace:*",
     "@gth/config": "workspace:*",
     "@gth/core": "workspace:*",
     "@gth/db": "workspace:*",
+    "@gth/security": "workspace:*",
     "@types/node": "24.13.4",
     "@types/nodemailer": "8.0.1",
     "@vitest/coverage-v8": "5.0.0",

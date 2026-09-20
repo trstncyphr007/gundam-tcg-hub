@@ -10,6 +10,7 @@ import type { ApiConfig } from './config.js';
 import { authPlugin } from './plugins/auth.js';
 import { registerAccountRoutes } from './routes/account.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
+import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
 import { registerWatchRoutes } from './routes/watches.js';
 
 export interface AppDeps {
@@ -18,6 +19,8 @@ export interface AppDeps {
   /** Read-write connection (app_web) for account data; required alongside `auth`. */
   writeDb?: Database | undefined;
   auth?: Auth | undefined;
+  /** Scanner ingestion, which runs on the app_worker role. */
+  ingest?: IngestDeps | undefined;
 }
 
 /** Never log credentials or session material (SR-X.20). */
@@ -115,6 +118,7 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     registerAccountRoutes(app, deps.writeDb);
     registerWatchRoutes(app, deps.writeDb);
   }
+  if (deps.ingest) registerIngestRoutes(app, deps.ingest);
 
   return app;
 }
