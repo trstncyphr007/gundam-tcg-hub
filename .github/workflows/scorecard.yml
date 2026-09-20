@@ -1,0 +1,56 @@
+# OpenSSF Scorecard (plan §18.5).
+#
+# This was deliberately skipped while the repo was private: it needed a classic PAT with
+# `repo` scope to read the metadata its checks depend on, which is exactly the long-lived
+# broadly-scoped credential SR-0.14 says not to create (ADR-014). Public, it needs no token
+# beyond the per-run one and several checks that could never have passed now can.
+#
+# It does not gate anything. The checks that must block a merge already do, in ci.yml --
+# Scorecard is a second opinion, and a score that drifts down is a prompt to look.
+name: scorecard
+
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Mondays, after the nightly DAST has had its say
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: scorecard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analysis:
+    name: openssf scorecard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # Publishing the result to the public dashboard is what makes the badge work, and it
+      # uses OIDC rather than a stored credential.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: scorecard.sarif
+          results_format: sarif
+          # Publishes to the OpenSSF dashboard. Only possible on a public repo, and it is
+          # half the point: an external record nobody here can quietly edit.
+          publish_results: true
+
+      # Not uploaded to code scanning: the default CodeQL setup owns that surface, and a
+      # second uploader would fight it. The artifact keeps the detail either way.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: scorecard-results
+          path: scorecard.sarif
+          retention-days: 30
+          if-no-files-found: warn

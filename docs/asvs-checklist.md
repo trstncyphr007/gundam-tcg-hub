@@ -129,35 +129,42 @@ execution stays closed — `script-src` has no `unsafe-inline`, asserted in CI.
 _Path out:_ move inline styles to CSS classes and variables, then drop it. Worth doing
 before public launch; not worth an unstyled site now.
 
-### 2. No server-side branch protection (V17 / SR-0.1)
+### 2. ~~No server-side branch protection~~ — **CLOSED 2026-09-20**
 
-GitHub Free + private has no rulesets. Confirmed: the API returns _"Upgrade to GitHub Pro"_.
-A local pre-push hook refuses pushes to `main` (guardrail proof 7), but it can be bypassed
-with `--no-verify` and protects only this machine.
+The repo was made public, which restored rulesets. `main` now requires a pull request, all
+seven status checks (strict), signed commits and linear history, and refuses force-pushes
+and deletion. Secret scanning and push protection are on too.
 
-_Path out:_ make the repo public, or move to an org on Team. This is the single largest
-structural gap in the security posture and it is not fixable in code.
+Verified rather than assumed: an empty commit pushed straight at `main` was refused —
+_"7 of 7 required status checks are expected"_.
+
+What is left is not a platform gap. The ruleset requires a PR but **zero approvals**, because
+there is one maintainer (ADR-012), so it enforces process, not review. Tighten it the moment
+a second contributor appears.
 
 ### 3. No MFA (V6.5)
 
 No admin UI exists yet, so there is nothing privileged to protect. **Must land before any
 admin route ships, and before Phase 5.**
 
-### 4. OpenSSF Scorecard not run
+### 4. ~~OpenSSF Scorecard not run~~ — **CLOSED 2026-09-20**
 
-Plan §18.5 asks for it. On a **private** repo, Scorecard needs a classic PAT with `repo`
-scope to read the metadata its checks depend on — a long-lived, broadly-scoped credential,
-which contradicts SR-0.14 ("no long-lived keys; OIDC where supported"). Several of its
-checks also cannot pass here regardless, because they measure branch protection and code
-scanning, which Free+private does not have.
+Added as `scorecard.yml` once the repo went public. The objection was specific to a private
+repo, where it needed a classic PAT with `repo` scope — a long-lived, broadly-scoped
+credential, which contradicts SR-0.14. Public, it authenticates with OIDC, stores no
+credential, and publishes results externally where they cannot be quietly edited.
 
-Minting that credential to compute a score we already know would be low is a bad trade. The
-checks Scorecard would perform that _matter_ are enforced directly and blockingly instead:
-pinned actions and images (zizmor), token permissions (zizmor), dangerous workflow patterns
-(zizmor), vulnerable dependencies (OSV), and a published security policy (`SECURITY.md`).
+It does not gate merges. The checks that must block already do, in `ci.yml`; Scorecard is a
+second opinion, and a score that drifts down is a prompt to look.
 
-_Path out:_ if the repo goes public, add `scorecard.yml` — it costs nothing there and
-publishes results.
+### 6. CodeQL default setup not enabled (new)
+
+Available now that the repo is public, but the API refuses without the `security_events`
+token scope. It is two clicks in **Settings → Code security → Code scanning → Set up**.
+
+_Compensating meanwhile:_ Semgrep runs on every PR with the OWASP, TypeScript, Node and
+React rule packs and **blocks** on any error-severity finding, plus type-aware ESLint
+security rules. CodeQL adds depth, not the only coverage.
 
 ### 5. Authenticated DAST
 
