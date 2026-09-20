@@ -27,7 +27,18 @@ pnpm env:init         # generates .env with random local secrets (never committe
 pnpm stack:up         # Postgres 17 + Valkey 8 on 127.0.0.1
 pnpm db:migrate       # apply migrations (runs as app_migrator)
 pnpm db:seed          # sample catalog for local dev
+pnpm db:seed-prices   # optional: 90 days of synthetic prices, so the charts have a shape
 pnpm dev              # web on http://127.0.0.1:3000, API on http://127.0.0.1:4000
+```
+
+`db:seed-prices` writes **fake data on purpose**, and only ever about the placeholder
+`SAMPLE-01` catalog — pointed at a database holding the real catalog it finds nothing and
+writes nothing. Every row is tagged `evidence_ref = 'seed:synthetic'`, and the command
+refuses to run with `NODE_ENV=production`: a price index with invented numbers in it is the
+one thing this project cannot afford. Remove it again with
+
+```sql
+delete from app.price_observations where evidence_ref = 'seed:synthetic';
 ```
 
 The web app proxies `/api/auth/*` and `/v1/*` to the API, so the browser only ever talks to one
