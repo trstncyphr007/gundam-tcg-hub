@@ -21,6 +21,9 @@ env:
   TURBO_TELEMETRY_DISABLED: '1'
   DO_NOT_TRACK: '1'
   ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:stable@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef
+  # Pinned exactly, like every other tool that can fail a build (SR-0.10). Dependabot does
+  # not watch pipx installs, so this one is bumped by hand when the fuzzer is updated.
+  SCHEMATHESIS_VERSION: '4.27.5'
 
 jobs:
   dast:
@@ -100,6 +103,22 @@ jobs:
             -v "${RUNNER_TEMP}/zap":/zap/wrk/:rw "${ZAP_IMAGE}" \
             zap-baseline.py -t http://127.0.0.1:4000/healthz \
               -c rules.tsv -J api.json -r api.html
+
+      # The public API is described by a document, so it can be fuzzed against that document
+      # rather than against a list of URLs someone remembered to update (AC-3.4). Schemathesis
+      # generates inputs from the schemas and fails on any 5xx or any response that does not
+      # match what the spec promises -- which is the pair of properties a published API has to
+      # hold if anyone is going to build on it.
+      - name: schemathesis - fuzz /v1 against its own spec
+        run: |
+          curl -fsS http://127.0.0.1:4000/docs/openapi.json -o "${RUNNER_TEMP}/openapi.json"
+          pipx install "schemathesis==${SCHEMATHESIS_VERSION}"
+          schemathesis run "${RUNNER_TEMP}/openapi.json" \
+            --url http://127.0.0.1:4000 \
+            --checks all \
+            --max-examples 40 \
+            --report junit \
+            --report-junit-path "${RUNNER_TEMP}/zap/schemathesis.xml"
 
       - if: failure()
         run: tail -n 100 /tmp/api.log /tmp/web.log || true

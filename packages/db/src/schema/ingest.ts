@@ -1,13 +1,35 @@
 import { sql } from 'drizzle-orm';
 import { check, index, integer, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { users } from './auth.js';
 import { app, retailerProducts, stockSnapshots } from './catalog.js';
 import { alertChannel, watchSubscriptions } from './watches.js';
 
-export const apiKeyScope = app.enum('api_key_scope', ['ingest:write', 'catalog:read']);
+/**
+ * What a key may do.
+ *
+ * `prices:read` joins the original two for the public pricing API (FR-3.7). The plan writes
+ * these the other way round (`read:prices`); the existing values were already
+ * `resource:verb`, and one convention consistently applied beats matching a document at the
+ * cost of having two.
+ */
+export const apiKeyScope = app.enum('api_key_scope', [
+  'ingest:write',
+  'catalog:read',
+  'prices:read',
+]);
+
+/** Request allowance per key. Only one tier exists; the column is what makes a second cheap. */
+export const apiKeyTier = app.enum('api_key_tier', ['free']);
 
 /**
- * Machine credentials (the scanner). Only a keyed hash is stored, never the secret
- * itself (SR-3.1); the plaintext is shown once at creation.
+ * Machine credentials. Only a keyed hash is stored, never the secret itself (SR-3.1); the
+ * plaintext is shown once at creation.
+ *
+ * Two kinds of key live here. A **first-party** key belongs to no user: the scanner's key is
+ * created by an operator at the CLI and `owner_id` is null. A **self-serve** key belongs to
+ * the account that made it (FR-3.7). The column is nullable for exactly that reason, and the
+ * check constraint below is what stops the difference being abused -- a key nobody owns may
+ * not be created from a session, and a session key may not hold an ingest scope.
  */
 export const apiKeys = app.table(
   'api_keys',
@@ -15,18 +37,31 @@ export const apiKeys = app.table(
     id: uuid('id')
       .primaryKey()
       .default(sql`gen_random_uuid()`),
+    /** Null for first-party keys issued at the CLI; set for every self-serve key. */
+    ownerId: text('owner_id').references(() => users.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     /** Public lookup handle, so we never scan every row to find a key. */
     prefix: text('prefix').notNull(),
     keyHash: text('key_hash').notNull(),
     scopes: apiKeyScope('scopes').array().notNull(),
+    tier: apiKeyTier('tier').notNull().default('free'),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex('api_keys_prefix_key').on(t.prefix),
+    index('api_keys_owner_idx').on(t.ownerId),
     check('api_keys_scopes_not_empty', sql`cardinality(${t.scopes}) >= 1`),
+    check('api_keys_name_not_blank', sql`length(btrim(${t.name})) > 0`),
+    check('api_keys_name_length', sql`length(${t.name}) <= 60`),
+    // Writing to the platform is not something a self-serve key may ever do. Enforced here
+    // rather than only where keys are created, because "the UI would never send that" is not
+    // a security control.
+    check(
+      'api_keys_owned_keys_are_read_only',
+      sql`${t.ownerId} is null or not ('ingest:write' = any(${t.scopes}))`,
+    ),
   ],
 );
 

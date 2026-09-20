@@ -1,18 +1,8 @@
 import { type RestockMessage, dispatchRestockEvent } from '@gth/alerts';
-import {
-  type Database,
-  findActiveApiKey,
-  recordStockReport,
-  resolveListing,
-  touchApiKey,
-  writeAuditLog,
-} from '@gth/db';
-import { hashToken, safeEqual } from '@gth/security';
+import { type Database, recordStockReport, resolveListing, writeAuditLog } from '@gth/db';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-
-/** `gth_live_<prefix>_<secret>` — the prefix is a public handle, the secret never stored. */
-const API_KEY_PATTERN = /^gth_(?:live|test)_([a-z0-9]{8})_([A-Za-z0-9_-]{32,})$/;
+import { ApiKeyError, authenticateApiKey } from '../plugins/api-key.js';
 
 const observationSchema = {
   inStock: z.boolean(),
@@ -58,28 +48,27 @@ export interface IngestDeps {
   ) => Promise<RestockMessage | null>;
 }
 
+/**
+ * Ingestion needs a key and the `ingest:write` scope — a scope no self-serve key can hold
+ * (migration 0017, and a CHECK constraint besides). Verification itself is the shared
+ * implementation, so there is one place where a presented key is checked.
+ */
 async function authenticate(
   request: FastifyRequest,
   deps: IngestDeps,
 ): Promise<{ ok: true; keyId: string } | { ok: false; status: 401 | 403 }> {
-  const header = request.headers.authorization;
-  if (typeof header !== 'string' || !header.startsWith('Bearer '))
-    return { ok: false, status: 401 };
-
-  const match = API_KEY_PATTERN.exec(header.slice('Bearer '.length).trim());
-  if (!match) return { ok: false, status: 401 };
-  const [, prefix, secret] = match;
-
-  const key = await findActiveApiKey(deps.workerDb, String(prefix));
-  if (!key) return { ok: false, status: 401 };
-  // Constant-time compare of keyed hashes; a wrong secret leaks no timing signal.
-  if (!safeEqual(hashToken(String(secret), deps.tokenPepper), key.keyHash)) {
-    return { ok: false, status: 401 };
+  try {
+    const key = await authenticateApiKey(request, {
+      keysDb: deps.workerDb,
+      tokenPepper: deps.tokenPepper,
+    });
+    if (!key) return { ok: false, status: 401 };
+    if (!key.scopes.includes('ingest:write')) return { ok: false, status: 403 };
+    return { ok: true, keyId: key.id };
+  } catch (error) {
+    if (error instanceof ApiKeyError) return { ok: false, status: error.status };
+    throw error;
   }
-  if (!key.scopes.includes('ingest:write')) return { ok: false, status: 403 };
-
-  await touchApiKey(deps.workerDb, key.id);
-  return { ok: true, keyId: key.id };
 }
 
 /** Scanner → platform ingestion (ADR-013 data contract). */

@@ -50,21 +50,21 @@ evidence column is not optional.
 
 ## V6 Authentication
 
-| #   | Control                        | Status   | Evidence                                                                                 |
-| --- | ------------------------------ | -------- | ---------------------------------------------------------------------------------------- |
-| 6.1 | No passwords stored            | **Met**  | Discord OAuth and magic links only; no password column exists                            |
-| 6.2 | Single-use, expiring links     | **Met**  | 15-minute expiry, single use; replay mints no session (tested)                           |
-| 6.3 | Account enumeration resistance | **Met**  | Identical response whether or not the address has an account                             |
-| 6.4 | Credentials hashed at rest     | **Met**  | API keys and overlay tokens stored as HMAC with a server pepper; constant-time compare   |
-| 6.5 | MFA for privileged accounts    | **Open** | Passkey/TOTP enrolment not built. Required before any admin UI ships, and before Phase 5 |
+| #   | Control                        | Status   | Evidence                                                                                                                                                                                                                                                                       |
+| --- | ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 6.1 | No passwords stored            | **Met**  | Discord OAuth and magic links only; no password column exists                                                                                                                                                                                                                  |
+| 6.2 | Single-use, expiring links     | **Met**  | 15-minute expiry, single use; replay mints no session (tested)                                                                                                                                                                                                                 |
+| 6.3 | Account enumeration resistance | **Met**  | Identical response whether or not the address has an account                                                                                                                                                                                                                   |
+| 6.4 | Credentials hashed at rest     | **Met**  | API keys and overlay tokens stored as HMAC with a server pepper; constant-time compare. The web role has no SELECT privilege on `key_hash` at all, so the tier serving sessions cannot read the material a forgery would need — proven by a test expecting `permission denied` |
+| 6.5 | MFA for privileged accounts    | **Open** | Passkey/TOTP enrolment not built. Required before any admin UI ships, and before Phase 5                                                                                                                                                                                       |
 
 ## V7 Session management
 
-| #   | Control                          | Status  | Evidence                                                                                                         |
-| --- | -------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
-| 7.1 | Server-side session invalidation | **Met** | Sign-out revokes server-side (tested)                                                                            |
-| 7.2 | Session lifetime bounded         | **Met** | 7-day rolling, 30-day absolute                                                                                   |
-| 7.4 | Token revocation is immediate    | **Met** | Rotating an overlay token overwrites its hash, so the old one matches nothing; live viewers are dropped (AC-2.2) |
+| #   | Control                          | Status  | Evidence                                                                                                                                                                                                  |
+| --- | -------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 7.1 | Server-side session invalidation | **Met** | Sign-out revokes server-side (tested)                                                                                                                                                                     |
+| 7.2 | Session lifetime bounded         | **Met** | 7-day rolling, 30-day absolute                                                                                                                                                                            |
+| 7.4 | Token revocation is immediate    | **Met** | Rotating an overlay token overwrites its hash, so the old one matches nothing; live viewers are dropped (AC-2.2). A revoked API key is refused on the next request — there is no cache to expire (AC-3.3) |
 
 ## V8 Authorization
 

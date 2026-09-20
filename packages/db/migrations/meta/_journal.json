@@ -113,6 +113,20 @@
       "when": 1789925427991,
       "tag": "0015_collection_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789939149820,
+      "tag": "0016_phase3_api_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789939149821,
+      "tag": "0017_api_key_rls",
+      "breakpoints": true
     }
   ]
 }

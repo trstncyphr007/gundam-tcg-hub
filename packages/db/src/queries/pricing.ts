@@ -292,6 +292,87 @@ export async function priceHistory(
     .orderBy(asc(priceIndexDaily.day));
 }
 
+export interface CardPricePoint {
+  cardVariantId: string;
+  finish: string;
+  language: string;
+  condition: CardCondition;
+  day: string;
+  medianCents: number;
+  p25Cents: number;
+  p75Cents: number;
+  lowCents: number;
+  highCents: number;
+  observationCount: number;
+  currency: string;
+}
+
+/**
+ * Published prices for every printing of one card (FR-3.3, FR-3.6).
+ *
+ * Keyed on the **card**, not the variant, because that is what a person or an API client
+ * has: they know they own "Gundam Barbatos", and which of its printings are priced is an
+ * answer, not a question they can be expected to ask.
+ *
+ * A variant with no published price simply has no rows here. That is deliberate -- the API
+ * says "insufficient data" by omission rather than by inventing a zero.
+ */
+export async function priceHistoryForCard(
+  db: Database,
+  cardId: string,
+  options: { condition?: CardCondition | undefined; days?: number | undefined } = {},
+): Promise<CardPricePoint[]> {
+  const days = Math.trunc(options.days ?? 30);
+  const rows = await db.execute<{
+    card_variant_id: string;
+    finish: string;
+    language: string;
+    condition: CardCondition;
+    day: string;
+    median_cents: number;
+    p25_cents: number;
+    p75_cents: number;
+    low_cents: number;
+    high_cents: number;
+    observation_count: number;
+    currency: string;
+  }>(sql`
+    select d.card_variant_id,
+           v.finish::text as finish,
+           v.language::text as language,
+           d.condition,
+           d.day::text as day,
+           d.median_cents,
+           d.p25_cents,
+           d.p75_cents,
+           d.low_cents,
+           d.high_cents,
+           d.observation_count,
+           d.currency
+      from app.price_index_daily d
+      join app.card_variants v on v.id = d.card_variant_id
+     where v.card_id = ${cardId}
+       and d.day >= current_date - make_interval(days => ${days})
+       ${options.condition ? sql`and d.condition = ${options.condition}` : sql``}
+     order by v.finish, v.language, d.condition, d.day
+  `);
+
+  return rows.map((r) => ({
+    cardVariantId: r.card_variant_id,
+    finish: r.finish,
+    language: r.language,
+    condition: r.condition,
+    day: r.day,
+    medianCents: r.median_cents,
+    p25Cents: r.p25_cents,
+    p75Cents: r.p75_cents,
+    lowCents: r.low_cents,
+    highCents: r.high_cents,
+    observationCount: r.observation_count,
+    currency: r.currency,
+  }));
+}
+
 /** Reports waiting on a human (SR-3.5). */
 export async function listPendingReports(db: Database, limit = 50): Promise<PriceObservation[]> {
   return db
