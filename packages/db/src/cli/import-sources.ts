@@ -23,6 +23,12 @@ const fileSchema = z.object({
         .regex(/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/, 'expected a bare domain, no scheme or path'),
       adapterKey: z.string().min(1),
       robotsOk: z.boolean(),
+      // Defaults to robotsOk. Set it false to record a shop whose robots.txt does
+      // permit us but which we still cannot use -- e.g. results rendered only by
+      // client-side JS from a path their robots.txt disallows. Keeping this
+      // separate from robotsOk matters: robotsOk is the record of what their
+      // robots.txt actually says, and must not be falsified to switch a shop off.
+      enabled: z.boolean().optional(),
       minIntervalS: z.number().int().min(60),
       note: z.string().optional(),
     }),
@@ -55,6 +61,9 @@ try {
 
   const reviewedAt = new Date();
   for (const r of parsed.retailers) {
+    // Robots permission is necessary but not sufficient: a shop we are allowed to
+    // read but cannot actually read is switched off too.
+    const enabled = r.robotsOk && (r.enabled ?? true);
     await db
       .insert(retailers)
       .values({
@@ -63,8 +72,7 @@ try {
         adapterKey: r.adapterKey,
         robotsOk: r.robotsOk,
         tosReviewedAt: reviewedAt,
-        // Only a retailer whose review says robots permits our use is switched on.
-        enabled: r.robotsOk,
+        enabled,
         minIntervalS: r.minIntervalS,
       })
       .onConflictDoUpdate({
@@ -74,7 +82,7 @@ try {
           adapterKey: r.adapterKey,
           robotsOk: r.robotsOk,
           tosReviewedAt: reviewedAt,
-          enabled: r.robotsOk,
+          enabled,
           minIntervalS: r.minIntervalS,
           updatedAt: reviewedAt,
         },
