@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb } from '../client.js';
 import { seedSample } from '../seed/sample.js';
 import { type TestDatabase, startTestDatabase } from '../test/harness.js';
+import { createBreak, logPull, setBreakStatus } from './breaks.js';
 import {
   ReportLimitError,
   ingestBreakPulls,
@@ -84,6 +85,51 @@ beforeEach(async () => {
   // Breaks cascade to their pulls. Without this, a pull left by an earlier test is still
   // waiting to be ingested and quietly inflates the next test's sample.
   await asUser(tdb.db, CREATOR, (tx) => tx.execute(`delete from app.breaks`));
+});
+
+describe('the index must not quote itself (FR-2.1, ADR-018)', () => {
+  /**
+   * The break calculator fills a pull's value from the published index, and logged pulls are
+   * fed back into that index at the heaviest weight. Without a rule separating the two, a
+   * number the index published returns as evidence for itself, moves tomorrow's number, and
+   * comes back again — data that looks unusually strong while drifting away from any real
+   * sale. These two tests are the rule.
+   */
+  it('ingests a value a person typed', async () => {
+    const created = await createBreak(tdb.db, CREATOR, {
+      title: 'Manual values',
+      overlayTokenHash: `hash-manual-${String(Date.now())}`,
+    });
+    await setBreakStatus(tdb.db, CREATOR, created.id, 'live');
+    await logPull(tdb.db, CREATOR, created.id, {
+      cardVariantId: variantId,
+      valueCentsAtPull: 1500,
+    });
+
+    expect(await ingestBreakPulls(tdb.db)).toBe(1);
+  });
+
+  it('refuses to ingest a value the index itself produced', async () => {
+    // Publish a price, then log a pull without a value so the server fills it from that price.
+    await seedObservation(1000);
+    await seedObservation(1100);
+    await seedObservation(1200);
+    await rollUpDay(tdb.db, TODAY);
+
+    const created = await createBreak(tdb.db, CREATOR, {
+      title: 'Index values',
+      overlayTokenHash: `hash-index-${String(Date.now())}`,
+    });
+    await setBreakStatus(tdb.db, CREATOR, created.id, 'live');
+    const pull = await logPull(tdb.db, CREATOR, created.id, { cardVariantId: variantId });
+
+    // It did fill it — the feature works.
+    expect(pull.valueSource).toBe('index');
+    expect(pull.valueCentsAtPull).toBeGreaterThan(0);
+
+    // And it is not evidence.
+    expect(await ingestBreakPulls(tdb.db)).toBe(0);
+  });
 });
 
 describe('the source mix (FR-3.3)', () => {

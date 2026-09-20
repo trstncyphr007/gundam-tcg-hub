@@ -150,7 +150,40 @@ export async function rotateOverlayToken(
 export interface LogPullInput {
   cardVariantId?: string | undefined;
   label?: string | undefined;
-  valueCentsAtPull: number;
+  /** Omit to have the index fill it, when the pull names a card variant (FR-2.1). */
+  valueCentsAtPull?: number | undefined;
+}
+
+/**
+ * How long a published price is allowed to stand in for a card's value.
+ *
+ * The same window the collection valuation uses, for the same reason: a stale price is a
+ * memory, not a valuation, and a break log is a claim about what happened tonight.
+ */
+export const INDEX_FILL_MAX_AGE_DAYS = 30;
+
+/**
+ * The latest published price for a freshly-pulled card, or null.
+ *
+ * Near mint is not a guess: a card out of a pack that was sealed an hour ago is near mint by
+ * definition. Returns null rather than zero when the index has nothing to say — the caller
+ * decides what to do with "we don't know", and it must never be the number 0.
+ */
+export async function latestIndexValue(
+  db: Database,
+  cardVariantId: string,
+): Promise<number | null> {
+  const rows = await db.execute<{ median_cents: number }>(sql`
+    select d.median_cents
+      from app.price_index_daily d
+     where d.card_variant_id = ${cardVariantId}
+       and d.condition = 'nm'
+       and d.currency = 'USD'
+       and d.day >= current_date - make_interval(days => ${INDEX_FILL_MAX_AGE_DAYS})
+     order by d.day desc
+     limit 1
+  `);
+  return rows[0]?.median_cents ?? null;
 }
 
 /**
@@ -181,13 +214,31 @@ export async function logPull(
       throw new BreakLimitError(`pull limit reached (${String(MAX_PULLS_PER_BREAK)})`);
     }
 
+    // A value the creator typed always wins. The index only fills a blank, and only when the
+    // pull says which card it was — a free-text label cannot be priced.
+    let valueCentsAtPull = input.valueCentsAtPull;
+    let valueSource: 'manual' | 'index' = 'manual';
+    if (valueCentsAtPull === undefined) {
+      if (input.cardVariantId) {
+        const filled = await latestIndexValue(tx, input.cardVariantId);
+        // No published price means zero *recorded*, but never zero *claimed*: the source
+        // stays `index` so nothing downstream reads the absence as a sale at nothing.
+        valueCentsAtPull = filled ?? 0;
+        valueSource = 'index';
+      } else {
+        // A free-text label cannot be looked up, so a blank here is a blank a person left.
+        valueCentsAtPull = 0;
+      }
+    }
+
     const [row] = await tx
       .insert(breakPulls)
       .values({
         breakId,
         cardVariantId: input.cardVariantId,
         label: input.label,
-        valueCentsAtPull: input.valueCentsAtPull,
+        valueCentsAtPull,
+        valueSource,
         seq: sql`(select coalesce(max(p.seq), 0) + 1 from app.break_pulls p where p.break_id = ${breakId})`,
       })
       .returning();
@@ -200,6 +251,13 @@ export interface PublicPull {
   seq: number;
   label: string;
   valueCentsAtPull: number;
+  /**
+   * Published, because a viewer deserves to know whether a number was typed by the creator
+   * or looked up from the index. A break log people can check is the whole point of the
+   * public page (FR-2.2), and "where did this figure come from" is the first thing anyone
+   * sceptical would ask.
+   */
+  valueSource: 'manual' | 'index';
   pulledAt: Date;
 }
 
@@ -253,6 +311,7 @@ export async function listPulls(db: Database, breakId: string): Promise<PublicPu
       seq: breakPulls.seq,
       label: breakPulls.label,
       valueCentsAtPull: breakPulls.valueCentsAtPull,
+      valueSource: breakPulls.valueSource,
       pulledAt: breakPulls.pulledAt,
       cardName: cards.name,
       finish: cardVariants.finish,
@@ -269,6 +328,7 @@ export async function listPulls(db: Database, breakId: string): Promise<PublicPu
       ? `${r.cardName}${r.finish === 'normal' ? '' : ` (${String(r.finish)})`}`
       : (r.label ?? 'Unknown card'),
     valueCentsAtPull: r.valueCentsAtPull,
+    valueSource: r.valueSource,
     pulledAt: r.pulledAt,
   }));
 }

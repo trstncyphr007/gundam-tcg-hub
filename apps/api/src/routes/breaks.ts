@@ -37,7 +37,10 @@ const pullSchema = z
   .object({
     cardVariantId: z.uuid().optional(),
     label: z.string().trim().min(1).max(120).optional(),
-    valueCentsAtPull: z.number().int().min(0).max(100_000_000).default(0),
+    // No default: omitting it asks the index to fill it (FR-2.1), which is a different
+    // request from "this card is worth nothing". A default of 0 here would silently turn
+    // the first into the second.
+    valueCentsAtPull: z.number().int().min(0).max(100_000_000).optional(),
   })
   .strict()
   .refine((v) => Boolean(v.cardVariantId) || Boolean(v.label), {
