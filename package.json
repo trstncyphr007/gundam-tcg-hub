@@ -25,7 +25,9 @@
     "stack:reset": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml down -v",
     "sec:scan": "bash scripts/sec-scan.sh",
     "licenses:check": "node scripts/check-licenses.mjs",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "keys:create": "pnpm --filter @gth/db exec tsx --env-file-if-exists=../../.env src/cli/api-key.ts create",
+    "keys:revoke": "pnpm --filter @gth/db exec tsx --env-file-if-exists=../../.env src/cli/api-key.ts revoke"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
