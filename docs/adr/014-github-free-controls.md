@@ -1,6 +1,9 @@
 # ADR-014: Compensating controls for GitHub Free + private repo
 
-- Status: Accepted (2026-09-20)
+- Status: **Superseded 2026-09-20 — the repo is now public.** See the amendment at the end.
+  The record below is kept because the controls it introduced are still in place and still
+  doing work; what changed is that they are no longer the _only_ thing standing there.
+- Original status: Accepted (2026-09-20)
 - Context: On GitHub Free, a private repo gets none of the following:
   - branch protection or rulesets
   - secret scanning or push protection
@@ -52,3 +55,43 @@ Revisit if the repo becomes public: there Scorecard needs no PAT, publishes resu
 costs nothing to add.
 
 Recorded in `docs/asvs-checklist.md` as a known gap rather than a silent omission.
+
+## Amendment, 2026-09-20 (later the same day): the repo went public
+
+The decision above was the right one for a private repo on Free. It is no longer the
+situation. The repo is public, which restores every feature this ADR was working around —
+at the cost of the source being readable, which was never a control we relied on.
+
+### What is now enforced by GitHub rather than by discipline
+
+| Was                                   | Is now                                                                                                                                                                                                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A local pre-push hook guarding `main` | A **ruleset**: pull request required, all 7 status checks required and strict, signed commits, linear history, no force-push, no deletion. Verified by pushing an empty commit straight at `main` and being refused: _"7 of 7 required status checks are expected"_ |
+| gitleaks only                         | gitleaks **plus** GitHub secret scanning **and push protection**                                                                                                                                                                                                    |
+| OSV + `pnpm audit` only               | ...plus Dependabot alerts and automated security updates                                                                                                                                                                                                            |
+| No Scorecard (needed a PAT)           | `scorecard.yml`, publishing results, no stored credential                                                                                                                                                                                                           |
+| No provenance attestation             | Available again — `release.yml` already re-enables it for public repos                                                                                                                                                                                              |
+
+### What was cleaned up first
+
+History was rewritten before publishing: 15 squash-merge commits carried the maintainer's
+real email address, because GitHub uses the account address when squashing unless
+"Keep my email addresses private" is on. Every commit was re-signed in the same pass, so
+all 16 commits on `main` remain verified. Content is byte-identical — only metadata changed.
+
+### What still is not enforced
+
+- **CodeQL default setup is not enabled.** The API refuses without the `security_events`
+  token scope; it is two clicks in Settings → Code security. Semgrep still runs and blocks.
+- **A second reviewer.** Still one maintainer, so the ruleset requires a pull request but
+  zero approvals (ADR-012). It enforces _process_, not review. Worth tightening the moment
+  a second contributor appears.
+
+### What publishing costs
+
+Anyone can read the code, the threat model and the ASVS checklist. That is deliberate: the
+security of this system rests on keys, grants and policies, not on the source being secret.
+Publishing it is what lets the claims in `docs/asvs-checklist.md` be checked at all.
+
+The licence position is stated in the README: **all rights reserved**. Public source is not
+a grant of permission to use it.

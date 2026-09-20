@@ -21,17 +21,17 @@ they test the compensating control from ADR-014 instead — noted below.
 
 ## Results
 
-| #   | What it tries to do                        | What stops it                    | Result                |
-| --- | ------------------------------------------ | -------------------------------- | --------------------- |
-| 1   | Commit a staged AWS access key id          | gitleaks (`.gitleaks.toml`)      | **PASS**              |
-| 1b  | Commit a staged `gth_live_` API key        | gitleaks, our own rule           | **PASS**              |
-| 2   | Leave a secret in git history              | gitleaks over full history in CI | **PASS**              |
-| 3   | Add a dependency with a known CVE          | `osv-scanner`                    | **PASS**              |
-| 4   | Use `sql.raw` or `dangerouslySetInnerHTML` | Semgrep + `.semgrep.yml`         | **PASS**              |
-| 5   | Ship a container running as root           | hadolint                         | **PASS**              |
-| 6   | Deploy an unverified image                 | digest validation in `deploy.sh` | **PASS**              |
-| 6b  | `cosign verify` an unsigned image          | cosign                           | _skipped — see below_ |
-| 7   | Push straight to `main`                    | pre-push hook                    | **PASS**              |
+| #   | What it tries to do                        | What stops it                           | Result                |
+| --- | ------------------------------------------ | --------------------------------------- | --------------------- |
+| 1   | Commit a staged AWS access key id          | gitleaks (`.gitleaks.toml`)             | **PASS**              |
+| 1b  | Commit a staged `gth_live_` API key        | gitleaks, our own rule                  | **PASS**              |
+| 2   | Leave a secret in git history              | gitleaks in CI + GitHub push protection | **PASS**              |
+| 3   | Add a dependency with a known CVE          | `osv-scanner`                           | **PASS**              |
+| 4   | Use `sql.raw` or `dangerouslySetInnerHTML` | Semgrep + `.semgrep.yml`                | **PASS**              |
+| 5   | Ship a container running as root           | hadolint                                | **PASS**              |
+| 6   | Deploy an unverified image                 | digest validation in `deploy.sh`        | **PASS**              |
+| 6b  | `cosign verify` an unsigned image          | cosign                                  | _skipped — see below_ |
+| 7   | Push straight to `main`                    | pre-push hook **+ GitHub ruleset**      | **PASS**              |
 
 ---
 
@@ -68,28 +68,33 @@ rules _and_ does not trip the scanner when the repo scans itself.
 
 ---
 
-## The two that test a compensating control instead
+## Proofs 2 and 7 are now enforced by GitHub as well
 
-This repo is **private on GitHub Free**, which has no branch rulesets and no push
-protection (ADR-014). Confirmed directly:
+These two originally tested only a local compensating control, because a **private repo on
+GitHub Free** has no rulesets and no push protection (ADR-014):
 
 ```
 $ gh api repos/trstncyphr007/gundam-tcg-hub/rules/branches/main
 Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)
 ```
 
-So:
+**The repo went public on 2026-09-20 and both are now server-side.** Verified by pushing an
+empty commit straight at `main`, with the local hook deliberately overridden so the _server_
+was what got tested:
 
-- **Proof 2** (push protection blocks a secret) becomes: gitleaks scans the **full history**
-  in CI, which catches the same secret one commit later. The pre-commit hook catches it one
-  commit earlier. Both are proven above.
-- **Proof 7** (ruleset blocks a push to main) becomes: the **pre-push hook** refuses it. The
-  proof feeds the hook exactly what git feeds it on `git push origin HEAD:main`.
+```
+$ ALLOW_MAIN_PUSH=1 git push origin main
+remote: - 7 of 7 required status checks are expected.
+ ! [remote rejected] main -> main (push declined due to repository rule violations)
+```
 
-Be clear about what this does and does not buy. A local hook can be bypassed with
-`--no-verify`, and it protects only this machine. It is a guard against mistakes, not
-against an attacker who already has the repo. **The server-side guarantee does not exist
-today** — it returns if the repo goes public or moves to an org on Team.
+`main` now requires a pull request, all seven checks (strict), signed commits and linear
+history, and refuses force-pushes and deletion. Secret scanning and push protection are on.
+
+The local guards stay, and the script still tests them. They fire a commit earlier than the
+server does — at `git commit` rather than at `git push` — which is the cheaper place to
+find a mistake. The difference now is that bypassing them with `--no-verify` no longer
+bypasses anything that matters.
 
 ## The one that is skipped
 
