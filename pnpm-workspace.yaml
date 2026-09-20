@@ -13,6 +13,13 @@ onlyBuiltDependencies:
 # Transitive deps may only come from the registry (no git/tarball URLs).
 blockExoticSubdeps: true
 
+# Next pulls sharp (LGPL-3.0 libvips) only for server-side image optimisation, which we
+# disable (see apps/web/next.config.ts). Skipping it keeps the licence set clean and the
+# runtime image smaller. Remove these if image optimisation is ever turned on.
+ignoredOptionalDependencies:
+  - sharp
+  - '@img/*'
+
 # Fail install if a new version drops trust signals (e.g. provenance) an older version had.
 trustPolicy: no-downgrade
 # Reviewed exceptions only: exact versions, each with evidence.

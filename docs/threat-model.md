@@ -62,6 +62,19 @@ risk register is in the build plan (§17); this file tracks **current state**.
 | Malformed subscriptions reaching the worker | DB checks: exactly one target, and at least one channel via `cardinality` (`array_length` is NULL on an empty array, and CHECK passes on NULL)                                                       |
 | Worker over-reach                           | The worker may read all watches (needed for fan-out) but has INSERT/UPDATE/DELETE revoked                                                                                                            |
 
+## Web frontend additions (2026-09-20)
+
+| Threat                                    | Controls                                                                                                                                                                                                                            |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| XSS in rendered catalog/profile text (T5) | React escaping only; `dangerouslySetInnerHTML` banned by lint; **nonce-based CSP** per request with `strict-dynamic` and no `script-src 'unsafe-inline'`. An e2e test asserts the header and that no un-nonced inline script exists |
+| Session cookie sent cross-site            | The API is proxied under the web origin, so cookies stay same-origin: no `SameSite=None`, no CORS, no credentialed cross-origin requests                                                                                            |
+| Clickjacking                              | `frame-ancestors 'none'` plus `Cross-Origin-Opener-Policy: same-origin`                                                                                                                                                             |
+| Account enumeration on the sign-in form   | Identical UI response whether or not the address exists (SR-X.4)                                                                                                                                                                    |
+| Stale UI after sign-out                   | Sign-out revokes server-side, then the client refreshes; an e2e test re-opens the protected page and expects it closed                                                                                                              |
+| Client-supplied ownership data            | The watch button sends only a product id; owner comes from the session. Cross-user isolation is re-tested through the browser                                                                                                       |
+| Leaking user data into caches             | Per-user pages are `no-store` at the API; catalog pages are public and cached                                                                                                                                                       |
+| Third-party script/style injection        | No external script or font origins: `default-src 'self'`, `object-src 'none'`, `base-uri 'none'`                                                                                                                                    |
+
 ## Accepted risks
 
 - Local hooks can be skipped with `--no-verify`; CI re-runs every gate (ADR-014).
