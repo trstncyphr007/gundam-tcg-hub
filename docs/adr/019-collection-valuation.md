@@ -84,7 +84,23 @@ than a second, or a second caller wanting the same function.
 that rewrites someone's collection should have been previewed first, and making the safe path
 the one you get by forgetting is the only way that reliably happens.
 
-### 8. Unlisted is enforced by the query, not by the row policy
+### 8. A shared collection publishes the cards, never the receipts
+
+Row-level security decides which _rows_ a shared collection hands out. It cannot mask a
+column, and sharing a card list was never an offer to publish a purchase history alongside
+it. So `listItems` and `valueCollection` null `acquired_price_cents`, `acquired_at` and
+`notes` in SQL for any viewer who is not the owner.
+
+In SQL rather than in the route, so there is one place to get it right instead of one per
+caller — and the valuation then needs no separate rule, because with the cost null every line
+falls out of the comparable subset and the gain reported to a visitor is nothing.
+
+**This was wrong when collections first shipped.** The detail route, the valuation and the
+CSV export all returned the owner's prices and notes to anyone who could open a public
+collection. It was found while building the share page, and it now has tests at the query
+layer and over HTTP.
+
+### 9. Unlisted is enforced by the query, not by the row policy
 
 Row-level security admits `private` rows to their owner and everything else to everyone,
 because it cannot know whether the caller already had the id. The difference between

@@ -184,6 +184,63 @@ describe('visibility (FR-3.4, SR-3.8)', () => {
     expect(await listItems(web, OWNER, created.id)).toHaveLength(1);
     expect(await listItems(web, STRANGER, created.id)).toHaveLength(0);
   });
+
+  it('shows a visitor the cards but never what they cost (SR-3.8)', async () => {
+    // Row-level security decides which rows a shared collection hands out; it cannot mask a
+    // column. Publishing a card list was never meant to publish a purchase history with it.
+    const created = await createCollection(web, OWNER, { name: 'Public', visibility: 'public' });
+    await addItem(web, OWNER, created.id, {
+      cardVariantId: alphaId,
+      quantity: 2,
+      acquiredPriceCents: 1000,
+      acquiredAt: new Date('2026-01-02T00:00:00Z'),
+      notes: 'bought at the shop on the corner',
+    });
+
+    const asOwner = await listItems(web, OWNER, created.id);
+    expect(asOwner[0]?.acquiredPriceCents).toBe(1000);
+    expect(asOwner[0]?.notes).toContain('corner');
+
+    for (const viewer of [STRANGER, null]) {
+      const seen = await listItems(web, viewer, created.id);
+      expect(seen).toHaveLength(1);
+      // The card, the printing and the quantity are the point of sharing. The rest is not.
+      expect(seen[0]?.cardName).toBe(asOwner[0]?.cardName);
+      expect(seen[0]?.quantity).toBe(2);
+      expect(seen[0]?.acquiredPriceCents).toBeNull();
+      expect(seen[0]?.acquiredAt).toBeNull();
+      expect(seen[0]?.notes).toBeNull();
+    }
+  });
+
+  it('values a shared collection for a visitor without revealing its gain', async () => {
+    await publishPrice(alphaId, 1500);
+    const created = await createCollection(web, OWNER, { name: 'Public', visibility: 'public' });
+    await addItem(web, OWNER, created.id, {
+      cardVariantId: alphaId,
+      quantity: 2,
+      acquiredPriceCents: 1000,
+    });
+
+    const owner = await valueCollection(web, OWNER, created.id);
+    expect(owner.currentValueCents).toBe(3000);
+    expect(owner.gainLossCents).toBe(1000);
+
+    const visitor = await valueCollection(web, STRANGER, created.id);
+    // What it is worth is public. What it cost is not, so there is no gain to report.
+    expect(visitor.currentValueCents).toBe(3000);
+    expect(visitor.costBasisCents).toBe(0);
+    expect(visitor.comparableValueCents).toBe(0);
+    expect(visitor.gainLossCents).toBe(0);
+  });
+
+  it('exports a shared collection without the owner’s prices', async () => {
+    const created = await createCollection(web, OWNER, { name: 'Public', visibility: 'public' });
+    await addItem(web, OWNER, created.id, { cardVariantId: alphaId, acquiredPriceCents: 1250 });
+
+    expect(await exportCollectionCsv(web, OWNER, created.id)).toContain('"12.50"');
+    expect(await exportCollectionCsv(web, STRANGER, created.id)).not.toContain('"12.50"');
+  });
 });
 
 describe('the two-user IDOR matrix (AC-3.2, SR-3.3, threat T4)', () => {

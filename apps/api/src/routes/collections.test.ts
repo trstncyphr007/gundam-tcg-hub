@@ -218,6 +218,52 @@ describe('the two-user IDOR matrix over HTTP (AC-3.2, SR-3.3)', () => {
 });
 
 describe('sharing (FR-3.4, SR-3.8)', () => {
+  it('never sends a visitor what the owner paid', async () => {
+    const id = await newCollection(alice, 'Shared prices');
+    await app.inject({
+      method: 'POST',
+      url: `/v1/collections/${id}/items`,
+      headers: { cookie: alice },
+      payload: {
+        cardVariantId: variantId,
+        quantity: 2,
+        acquiredPriceCents: 1000,
+        notes: 'traded for it at locals',
+      },
+    });
+    await app.inject({
+      method: 'PATCH',
+      url: `/v1/collections/${id}`,
+      headers: { cookie: alice },
+      payload: { visibility: 'public' },
+    });
+
+    const asVisitor = await app.inject({ method: 'GET', url: `/v1/collections/${id}` });
+    const item = asVisitor.json<{ items: Record<string, unknown>[] }>().items[0];
+    expect(item?.['quantity']).toBe(2);
+    expect(item?.['acquiredPriceCents']).toBeNull();
+    expect(item?.['notes']).toBeNull();
+    // Belt and braces: the note must not appear anywhere in the response body.
+    expect(asVisitor.body).not.toContain('traded for it at locals');
+
+    const value = await app.inject({ method: 'GET', url: `/v1/collections/${id}/value` });
+    expect(value.json<{ costBasisCents: number; gainLossCents: number }>()).toMatchObject({
+      costBasisCents: 0,
+      gainLossCents: 0,
+    });
+
+    const exported = await app.inject({ method: 'GET', url: `/v1/collections/${id}/export` });
+    expect(exported.body).not.toContain('10.00');
+
+    // The owner still sees all of it.
+    const asOwner = await app.inject({
+      method: 'GET',
+      url: `/v1/collections/${id}`,
+      headers: { cookie: alice },
+    });
+    expect(asOwner.body).toContain('traded for it at locals');
+  });
+
   it('shows a shared collection to a signed-out visitor without naming its owner', async () => {
     const id = await newCollection(alice, 'Shared');
     await app.inject({

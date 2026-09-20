@@ -343,7 +343,15 @@ export interface CollectionItemView {
   notes: string | null;
 }
 
-/** The items of a collection, with enough card detail to display or export them. */
+/**
+ * The items of a collection, with enough card detail to display or export them.
+ *
+ * **What a viewer who is not the owner does not get:** what was paid, when it was bought, and
+ * the owner's notes. Row-level security decides which *rows* a shared collection hands out;
+ * it cannot mask a column, and a public collection was never meant to publish someone's
+ * purchase history alongside their card list. So the columns are nulled in SQL, for the
+ * owner check to live next to the data rather than in whichever route remembered to strip it.
+ */
 export async function listItems(
   db: Database,
   viewerId: string | null,
@@ -374,11 +382,15 @@ export async function listItems(
              v.language::text as language,
              i.condition,
              i.quantity,
-             i.acquired_price_cents,
+             case when col.owner_id = current_setting('app.user_id', true)
+                  then i.acquired_price_cents end as acquired_price_cents,
              i.currency,
-             i.acquired_at,
-             i.notes
+             case when col.owner_id = current_setting('app.user_id', true)
+                  then i.acquired_at end as acquired_at,
+             case when col.owner_id = current_setting('app.user_id', true)
+                  then i.notes end as notes
         from app.collection_items i
+        join app.collections col on col.id = i.collection_id
         join app.card_variants v on v.id = i.card_variant_id
         join app.cards c on c.id = v.card_id
         join app.sets s on s.id = c.set_id
@@ -463,11 +475,17 @@ export async function valueCollection(
       day: string | null;
     }>(sql`
       select i.quantity,
-             i.acquired_price_cents,
+             -- Same rule as listItems: a visitor to a shared collection sees what it is
+             -- worth, never what it cost. With this null, every line falls out of the
+             -- comparable subset and the gain/loss reported to a stranger is nothing --
+             -- which is the correct answer to a question that was not theirs to ask.
+             case when col.owner_id = current_setting('app.user_id', true)
+                  then i.acquired_price_cents end as acquired_price_cents,
              i.currency,
              p.median_cents,
              p.day::text as day
         from app.collection_items i
+        join app.collections col on col.id = i.collection_id
         -- LATERAL, so "latest price" is decided per item rather than by a join that would
         -- multiply each item by its whole price history.
         left join lateral (
