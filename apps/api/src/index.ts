@@ -46,6 +46,8 @@ const app = await buildApp(config, {
   db: readonly.db,
   writeDb: write.db,
   auth,
+  // Breaks are owned by their creator, so they run on the web role under RLS.
+  breaks: { db: write.db, tokenPepper: config.TOKEN_PEPPER },
   ingest: {
     workerDb: worker.db,
     tokenPepper: config.TOKEN_PEPPER,

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import './globals.css';
+import '../globals.css';
 
 /**
  * Every page renders per request. A statically prerendered page has its HTML baked at build
@@ -30,6 +30,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </Link>
             <Link href="/account/watches" className="text-sm" style={{ color: 'var(--muted)' }}>
               My watches
+            </Link>
+            <Link href="/creator/breaks" className="text-sm" style={{ color: 'var(--muted)' }}>
+              Breaks
             </Link>
             <Link href="/sign-in" className="ml-auto text-sm" style={{ color: 'var(--muted)' }}>
               Sign in

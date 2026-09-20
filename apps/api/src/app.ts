@@ -9,6 +9,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { ApiConfig } from './config.js';
 import { authPlugin } from './plugins/auth.js';
 import { registerAccountRoutes } from './routes/account.js';
+import { type BreakDeps, registerBreakRoutes } from './routes/breaks.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
 import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
 import { registerWatchRoutes } from './routes/watches.js';
@@ -21,6 +22,8 @@ export interface AppDeps {
   auth?: Auth | undefined;
   /** Scanner ingestion, which runs on the app_worker role. */
   ingest?: IngestDeps | undefined;
+  /** Creator breaks and the OBS overlay (Phase 2). */
+  breaks?: BreakDeps | undefined;
 }
 
 /** Never log credentials or session material (SR-X.20). */
@@ -30,6 +33,15 @@ export const REDACT_PATHS = [
   'req.headers["x-api-key"]',
   'res.headers["set-cookie"]',
 ];
+
+/**
+ * An overlay token lives in the URL path, so ordinary request logging would write it to
+ * disk — and a creator screen-sharing their logs would leak a live overlay (SR-2.2).
+ * pino's `redact` only reaches object paths, so the URL is masked here instead.
+ */
+export function maskOverlayToken(url: string): string {
+  return url.replace(/(\/v1\/overlay\/)[^/?#]+/, '$1[REDACTED]');
+}
 
 /** Fastify types handler errors as `unknown`; pull out only what we trust. */
 function describeError(error: unknown): { status: number; code: string; message: string } {
@@ -52,7 +64,17 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     logger:
       config.LOG_LEVEL === 'silent'
         ? false
-        : { level: config.LOG_LEVEL, redact: { paths: REDACT_PATHS, censor: '[REDACTED]' } },
+        : {
+            level: config.LOG_LEVEL,
+            redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
+            serializers: {
+              req: (request: { id: string; method: string; url: string }) => ({
+                id: request.id,
+                method: request.method,
+                url: maskOverlayToken(request.url),
+              }),
+            },
+          },
     trustProxy: config.API_TRUST_PROXY,
     genReqId: () => randomUUID(),
     bodyLimit: 1_048_576,
@@ -119,6 +141,7 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     registerWatchRoutes(app, deps.writeDb);
   }
   if (deps.ingest) registerIngestRoutes(app, deps.ingest);
+  if (deps.breaks) registerBreakRoutes(app, deps.breaks);
 
   return app;
 }

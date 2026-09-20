@@ -31,7 +31,23 @@
 
 {$SITE_ADDRESS:localhost} {
 	import security_headers
-	encode zstd gzip
+
+	# An explicit allowlist, because the default (`text/*`) would catch text/event-stream.
+	# A compressor holds bytes back until it has a full block, which for a stream means the
+	# OBS overlay connects, receives headers, and then sits silent until the connection
+	# closes. Next is configured not to compress for the same reason; this is the edge half.
+	# Response matchers have no negation, so the types we serve are listed instead.
+	encode zstd gzip {
+		match {
+			header Content-Type text/html*
+			header Content-Type text/css*
+			header Content-Type text/plain*
+			header Content-Type text/csv*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type image/svg+xml*
+		}
+	}
 
 	# Request bodies are small; uploads (Phase 5) go straight to object storage.
 	request_body {
