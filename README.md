@@ -15,8 +15,24 @@ pnpm env:init         # generates .env with random local secrets (never committe
 pnpm stack:up         # Postgres 17 + Valkey 8 on 127.0.0.1
 pnpm db:migrate       # apply migrations (runs as app_migrator)
 pnpm db:seed          # sample catalog for local dev
-pnpm dev              # API on http://127.0.0.1:4000/healthz
+pnpm dev              # web on http://127.0.0.1:3000, API on http://127.0.0.1:4000
 ```
+
+The web app proxies `/api/auth/*` and `/v1/*` to the API, so the browser only ever talks to one
+origin: session cookies stay same-origin, with no CORS and no `SameSite=None`. Caddy does the
+same path routing in production.
+
+### End-to-end tests
+
+```bash
+pnpm stack:up && pnpm db:migrate && pnpm db:seed
+pnpm --filter @gth/api dev &
+pnpm --filter @gth/web dev &
+pnpm e2e              # Playwright (Chromium) against the running stack
+```
+
+They drive a real browser: catalog search, a full magic-link sign-in read out of Mailpit,
+watch/unwatch, link replay, cross-user isolation, and the CSP headers.
 
 ## Public API (v1)
 
