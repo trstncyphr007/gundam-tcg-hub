@@ -1,0 +1,80 @@
+{
+  "_comment": [
+    "Real retailers and products, imported with `pnpm db:import-sources`.",
+    "Retailers listed here were reviewed on 2026-09-20 against their robots.txt:",
+    "see TCG Market Project/docs/scanner-source-review.md for the evidence.",
+    "eBay (web), Walmart (web), Star City Games and the Bandai Namco Store explicitly",
+    "disallow the search paths the scanner used, and Amazon and TCGplayer were dropped",
+    "on terms-of-service grounds, so none of them appear here.",
+    "Product set codes, UPCs and MSRPs are deliberately null until confirmed from a",
+    "lawful source (plan §23 IP review)."
+  ],
+  "game": { "slug": "gundam", "name": "Gundam Card Game" },
+  "retailers": [
+    {
+      "name": "CoolStuffInc",
+      "domain": "coolstuffinc.com",
+      "adapterKey": "coolstuffinc",
+      "robotsOk": true,
+      "minIntervalS": 900,
+      "note": "Allow: /. A commented-out Crawl-delay: 10 signals their preference."
+    },
+    {
+      "name": "Miniature Market",
+      "domain": "miniaturemarket.com",
+      "adapterKey": "miniaturemarket",
+      "robotsOk": true,
+      "minIntervalS": 1800,
+      "note": "Crawl-delay: 10 is set; interval kept well above it."
+    },
+    {
+      "name": "401 Games",
+      "domain": "401games.ca",
+      "adapterKey": "401games",
+      "robotsOk": true,
+      "minIntervalS": 900,
+      "note": "Shopify storefront, Allow: /."
+    },
+    {
+      "name": "Face to Face Games",
+      "domain": "facetofacegames.com",
+      "adapterKey": "facetoface",
+      "robotsOk": true,
+      "minIntervalS": 900,
+      "note": "Shopify storefront, Allow: /."
+    },
+    {
+      "name": "Troll and Toad",
+      "domain": "trollandtoad.com",
+      "adapterKey": "trollandtoad",
+      "robotsOk": true,
+      "minIntervalS": 900,
+      "note": "Shopify storefront, Allow: /."
+    },
+    {
+      "name": "Premium Bandai US",
+      "domain": "p-bandai.com",
+      "adapterKey": "premiumbandai",
+      "robotsOk": true,
+      "minIntervalS": 900,
+      "note": "Allowed, but they disallow offset/limit/sortType query parameters."
+    }
+  ],
+  "products": [
+    {
+      "slug": "freedom-ascension-booster-box-en",
+      "name": "Freedom Ascension Booster Box (English)",
+      "kind": "booster_box"
+    },
+    {
+      "slug": "freedom-ascension-booster-box-jp",
+      "name": "Freedom Ascension Booster Box (Japanese)",
+      "kind": "booster_box"
+    },
+    {
+      "slug": "steel-requiem-booster-box",
+      "name": "Steel Requiem Booster Box",
+      "kind": "booster_box"
+    }
+  ]
+}

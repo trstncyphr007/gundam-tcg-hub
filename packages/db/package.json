@@ -15,7 +15,8 @@
     "seed": "tsx --env-file-if-exists=../../.env src/cli/seed.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "import-sources": "tsx --env-file-if-exists=../../.env src/cli/import-sources.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

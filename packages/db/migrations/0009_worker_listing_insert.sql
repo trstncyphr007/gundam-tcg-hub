@@ -1,0 +1,13 @@
+-- The scanner reports "this product, at this shop, at this URL" and the platform resolves
+-- it to a listing (ADR-016), creating the row on first sight. That is a catalog write from
+-- the worker, which 0001 revoked wholesale, so grant back exactly one verb.
+--
+-- INSERT only, and only on retailer_products:
+--   * app.retailers stays admin-only, so the worker still cannot approve a shop or flip
+--     `enabled` -- which the CHECK constraint ties to a recorded ToS/robots review.
+--   * app.sealed_products stays admin-only, so the worker cannot invent a product.
+--   * no UPDATE means an existing listing's URL cannot be repointed by a report.
+--   * no DELETE means a report cannot remove a listing others are watching.
+-- resolveListing() adds the rest of the guards (https, host must belong to the retailer,
+-- per-product cap); this grant is the floor under them, not a substitute.
+GRANT INSERT ON "app"."retailer_products" TO app_worker;
