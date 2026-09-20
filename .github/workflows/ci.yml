@@ -83,8 +83,14 @@ jobs:
         run: |
           pnpm --filter @gth/api build
           pnpm --filter @gth/web build
-          node apps/api/dist/index.js > /tmp/api.log 2>&1 &
-          pnpm --filter @gth/web start > /tmp/web.log 2>&1 &
+          # Assemble the standalone output exactly as the Docker image will: the server
+          # bundle does not include static assets, they are copied next to it.
+          cp -r apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
+          # The API reads its configuration from the environment (generated above).
+          set -a; . ./.env; set +a
+          NODE_ENV=production node apps/api/dist/index.js > /tmp/api.log 2>&1 &
+          NODE_ENV=production PORT=3000 HOSTNAME=127.0.0.1 \
+            node apps/web/.next/standalone/apps/web/server.js > /tmp/web.log 2>&1 &
           for _ in $(seq 1 60); do
             if curl -sf http://127.0.0.1:4000/healthz >/dev/null && curl -sf http://127.0.0.1:3000/ >/dev/null; then
               echo "servers up"; exit 0
@@ -92,8 +98,6 @@ jobs:
             sleep 2
           done
           echo "servers failed to start"; tail -n 50 /tmp/api.log /tmp/web.log; exit 1
-        env:
-          NODE_ENV: production
 
       - name: playwright
         run: |
