@@ -52,10 +52,14 @@ test.describe('collections', () => {
     await page.getByTestId('card-search').fill('Sample Unit Alpha');
     await page.getByTestId('card-hits').getByRole('button').first().click();
     await page.getByTestId('quantity').fill('3');
+    // Damaged, deliberately: the index has observations for near mint and lightly played,
+    // and none at all for this condition. That is the case worth asserting — a card the
+    // index cannot speak for, sitting in a collection that does have priced cards elsewhere.
+    await page.getByTestId('condition').selectOption('dmg');
     await page.getByTestId('add-card').click();
 
-    // No index price exists for the sample catalog, so the total is zero -- but the page has
-    // to say *why*, or a collector reads it as "your cards are worthless".
+    // The total is zero -- but the page has to say *why*, or a collector reads it as "your
+    // cards are worthless".
     await expect(page.getByTestId('collection-value')).toHaveText('$0.00');
     await expect(page.getByTestId('not-valued')).toContainText('3 cards');
     await expect(page.getByTestId('not-valued')).toContainText('not worth nothing');

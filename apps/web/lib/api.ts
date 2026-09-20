@@ -152,6 +152,28 @@ export interface CollectionValuation {
   oldestPriceDay: string | null;
 }
 
+export interface PricePoint {
+  cardVariantId: string;
+  finish: string;
+  language: string;
+  condition: string;
+  day: string;
+  medianCents: number;
+  p25Cents: number;
+  p75Cents: number;
+  lowCents: number;
+  highCents: number;
+  observationCount: number;
+  currency: string;
+}
+
+export interface CardPrices {
+  cardId: string;
+  /** Empty means "not enough evidence to publish", never a price of zero. */
+  points: PricePoint[];
+  sources: { source: string; observations: number }[];
+}
+
 /**
  * A key as its owner sees it. There is no secret here and never will be: the server hands
  * the plaintext back exactly once, at creation, and stores only a keyed hash of it.
@@ -220,6 +242,19 @@ export const api = {
     } catch {
       return null;
     }
+  },
+  /**
+   * Price history for a card, with the mix of sources it was computed from.
+   *
+   * Cached briefly rather than for the catalog's five minutes: a stale price is wrong in a
+   * way a stale card name is not.
+   */
+  cardPrices: (id: string, options: { days?: number; condition?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (options.days !== undefined) query.set('days', String(options.days));
+    if (options.condition !== undefined) query.set('condition', options.condition);
+    const suffix = query.size > 0 ? `?${query.toString()}` : '';
+    return getPublic<CardPrices>(`/v1/cards/${id}/prices${suffix}`);
   },
   developerKeys: () =>
     getAuthed<{ items: ApiKeySummary[]; limit: number; scopes: string[] }>('/v1/developer/keys'),
