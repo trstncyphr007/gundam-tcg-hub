@@ -12,3 +12,4 @@ export * from './queries/pricing.js';
 export * from './queries/collections.js';
 export * from './queries/api-keys.js';
 export * from './seed/sample.js';
+export * from './seed/prices.js';
