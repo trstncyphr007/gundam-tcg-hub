@@ -38,6 +38,11 @@ const nextConfig: NextConfig = {
     Promise.resolve([
       { source: '/api/auth/:path*', destination: `${apiUrl}/api/auth/:path*` },
       { source: '/v1/:path*', destination: `${apiUrl}/v1/:path*` },
+      // The API documents itself, and a developer arrives at the site rather than the API
+      // host. Proxying keeps "read the docs" a link rather than an explanation of which
+      // hostname to use.
+      { source: '/docs', destination: `${apiUrl}/docs` },
+      { source: '/docs/:path*', destination: `${apiUrl}/docs/:path*` },
     ]),
 
   // CSP is set per-request in middleware.ts (it carries a nonce); these are static.

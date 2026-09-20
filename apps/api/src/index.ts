@@ -46,6 +46,10 @@ const app = await buildApp(config, {
   db: readonly.db,
   writeDb: write.db,
   auth,
+  // API keys are verified on the worker role, the only one with SELECT on `key_hash`
+  // (migration 0017). Without this the key plugin is not registered at all and every caller
+  // is anonymous — noisy, but never silently trusting an unverified key.
+  keysDb: worker.db,
   // Breaks are owned by their creator, so they run on the web role under RLS.
   breaks: { db: write.db, tokenPepper: config.TOKEN_PEPPER },
   ingest: {

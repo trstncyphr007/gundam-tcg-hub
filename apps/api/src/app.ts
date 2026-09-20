@@ -1,19 +1,26 @@
 import { randomUUID } from 'node:crypto';
+import cors, { type FastifyCorsOptions } from '@fastify/cors';
 import etag from '@fastify/etag';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import type { Auth } from '@gth/auth';
 import { ForbiddenError } from '@gth/auth';
 import { type Database, pingDatabase } from '@gth/db';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import type { ApiConfig } from './config.js';
+import { ApiKeyError, apiKeyPlugin } from './plugins/api-key.js';
 import { authPlugin } from './plugins/auth.js';
+import { QuotaStore, quotaPlugin } from './plugins/quota.js';
 import { registerAccountRoutes } from './routes/account.js';
+import { registerDeveloperRoutes } from './routes/developer.js';
 import { type BreakDeps, registerBreakRoutes } from './routes/breaks.js';
-import { registerCatalogRoutes } from './routes/catalog.js';
 import { registerCollectionRoutes } from './routes/collections.js';
 import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
 import { registerWatchRoutes } from './routes/watches.js';
+import { renderDocsPage } from './v1/docs.js';
+import { buildOpenApiDocument } from './v1/openapi.js';
+import { registerPublicRoutes } from './v1/registry.js';
+import { publicRoutes } from './v1/routes.js';
 
 export interface AppDeps {
   /** Read-only connection for public catalog endpoints (least privilege). */
@@ -25,6 +32,11 @@ export interface AppDeps {
   ingest?: IngestDeps | undefined;
   /** Creator breaks and the OBS overlay (Phase 2). */
   breaks?: BreakDeps | undefined;
+  /**
+   * The pool that may read `key_hash`, for verifying presented API keys. This is the worker
+   * role: the web role has no SELECT privilege on that column at all (migration 0017).
+   */
+  keysDb?: Database | undefined;
 }
 
 /** Never log credentials or session material (SR-X.20). */
@@ -44,6 +56,24 @@ export function maskOverlayToken(url: string): string {
   return url.replace(/(\/v1\/overlay\/)[^/?#]+/, '$1[REDACTED]');
 }
 
+type FastifyCorsCallback = (error: Error | null, options: FastifyCorsOptions) => void;
+
+/** The documented, cross-origin-readable surface. Everything else stays same-origin. */
+const PUBLIC_PATHS = publicRoutes.map((route) => route.path);
+
+export function isPublicPath(url: string): boolean {
+  const path = url.split('?')[0] ?? '';
+  if (path === '/docs' || path === '/docs/openapi.json') return true;
+  // Compare segment by segment so `:id` matches one segment and nothing else — a prefix
+  // check would make `/v1/cards/x/secret` look public.
+  const segments = path.split('/').filter((s) => s.length > 0);
+  return PUBLIC_PATHS.some((pattern) => {
+    const expected = pattern.split('/').filter((s) => s.length > 0);
+    if (expected.length !== segments.length) return false;
+    return expected.every((part, i) => part.startsWith(':') || part === segments.at(i));
+  });
+}
+
 /** Fastify types handler errors as `unknown`; pull out only what we trust. */
 function describeError(error: unknown): { status: number; code: string; message: string } {
   const fields = (typeof error === 'object' && error !== null ? error : {}) as Record<
@@ -61,6 +91,7 @@ function describeError(error: unknown): { status: number; code: string; message:
 }
 
 export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<FastifyInstance> {
+  const quotaStore = new QuotaStore();
   const app = Fastify({
     logger:
       config.LOG_LEVEL === 'silent'
@@ -98,8 +129,50 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     referrerPolicy: { policy: 'no-referrer' },
   });
 
+  /**
+   * CORS for the public API only (SR-3.7).
+   *
+   * Any origin, `GET` only, **no credentials**. That combination is what makes a wildcard
+   * origin safe: a page on another site can read public catalog data, and cannot make the
+   * browser attach anyone's session cookie while doing it. Session-authenticated routes
+   * carry no CORS headers at all, so a cross-origin page cannot call them even with
+   * `credentials: 'include'`.
+   */
+  await app.register(cors, () => (request: FastifyRequest, callback: FastifyCorsCallback) => {
+    // Per request, because the answer differs by path: only the documented public surface
+    // is cross-origin readable. A session route gets no CORS headers at all, so a page on
+    // another site cannot call it even with `credentials: 'include'`.
+    callback(null, {
+      // `'*'`, not `true`: `true` reflects whatever Origin was sent, which means the answer
+      // varies by caller and a shared cache has to be told so. A genuinely public,
+      // credential-less API can just say "anyone".
+      origin: isPublicPath(request.url) ? '*' : false,
+      methods: ['GET', 'HEAD', 'OPTIONS'],
+      credentials: false,
+      allowedHeaders: ['authorization', 'content-type', 'if-none-match'],
+      exposedHeaders: ['etag', 'ratelimit-limit', 'ratelimit-remaining', 'ratelimit-reset'],
+      maxAge: 86_400,
+    });
+  });
+
+  if (deps.keysDb) {
+    await app.register(apiKeyPlugin, {
+      keysDb: deps.keysDb,
+      tokenPepper: config.TOKEN_PEPPER,
+    });
+    await app.register(quotaPlugin, { store: quotaStore, applies: (r) => isPublicPath(r.url) });
+  }
+
   // In-memory limiter for now; moves to Valkey when there is more than one instance (SR-X.27).
-  await app.register(rateLimit, { max: config.API_RATE_LIMIT_MAX, timeWindow: '1 minute' });
+  await app.register(rateLimit, {
+    max: config.API_RATE_LIMIT_MAX,
+    timeWindow: '1 minute',
+    // A request carrying a valid key is counted against that key's quota instead, which is
+    // fairer (a whole office shares one address) and attributable (we know whose it was).
+    // Boolean(), not `!== null`: when no key plugin is registered the property is undefined,
+    // and `undefined !== null` would silently exempt every request from the IP limit.
+    allowList: (request) => Boolean(request.apiKey),
+  });
   // Conditional GETs for the public catalog (FR-3.6).
   await app.register(etag, { weak: true });
 
@@ -110,6 +183,10 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     if (error instanceof ForbiddenError) {
       request.log.warn({ action: error.action, userId: request.subject?.userId }, 'forbidden');
       return reply.code(403).send({ error: 'forbidden' });
+    }
+    // A rejected key is the caller's problem, not ours, and must never log the key itself.
+    if (error instanceof ApiKeyError) {
+      return reply.code(error.status).send({ error: error.message });
     }
     const { status, code, message } = describeError(error);
     if (status >= 500) {
@@ -141,11 +218,47 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
   });
 
   if (deps.auth) await app.register(authPlugin, { auth: deps.auth });
-  if (deps.db) registerCatalogRoutes(app, deps.db);
+
+  if (deps.db) {
+    // One definition of the public surface, used to register the routes and to generate the
+    // document that describes them (FR-3.6).
+    registerPublicRoutes(app, deps.db, publicRoutes);
+
+    const spec = buildOpenApiDocument(publicRoutes, {
+      title: 'Gundam TCG Hub API',
+      version: '1.0.0',
+      description:
+        'An independent catalog and price index for the Gundam Card Game. ' +
+        'Read-only, free, and documented. Prices are a trimmed median of observed sales; ' +
+        'nothing is published below three observations.',
+      serverUrl: config.API_BASE_URL,
+      contactUrl: `${config.APP_BASE_URL}/about`,
+      // The index is ours to license; attribution is the whole ask (open item O5).
+      licenceName: 'CC BY 4.0',
+      licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+    });
+
+    app.get('/docs/openapi.json', (_request, reply) =>
+      reply.header('cache-control', 'public, max-age=300').send(spec),
+    );
+    app.get('/docs', (_request, reply) =>
+      reply
+        .header('content-type', 'text/html; charset=utf-8')
+        .header('cache-control', 'public, max-age=300')
+        // The page carries no script of its own and loads nothing from anywhere else, so it
+        // is served under the same locked-down policy as the rest of the API.
+        .send(renderDocsPage(spec)),
+    );
+  }
+
   if (deps.writeDb && deps.auth) {
     registerAccountRoutes(app, deps.writeDb);
     registerWatchRoutes(app, deps.writeDb);
     registerCollectionRoutes(app, deps.writeDb);
+    registerDeveloperRoutes(app, deps.writeDb, {
+      tokenPepper: config.TOKEN_PEPPER,
+      production: config.NODE_ENV === 'production',
+    });
   }
   if (deps.ingest) registerIngestRoutes(app, deps.ingest);
   if (deps.breaks) registerBreakRoutes(app, deps.breaks);

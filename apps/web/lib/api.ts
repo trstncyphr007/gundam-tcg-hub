@@ -152,6 +152,21 @@ export interface CollectionValuation {
   oldestPriceDay: string | null;
 }
 
+/**
+ * A key as its owner sees it. There is no secret here and never will be: the server hands
+ * the plaintext back exactly once, at creation, and stores only a keyed hash of it.
+ */
+export interface ApiKeySummary {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  tier: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
 export const api = {
   cards: (query: string) =>
     getPublic<Page<Card>>(`/v1/cards?limit=24${query ? `&q=${encodeURIComponent(query)}` : ''}`),
@@ -206,6 +221,8 @@ export const api = {
       return null;
     }
   },
+  developerKeys: () =>
+    getAuthed<{ items: ApiKeySummary[]; limit: number; scopes: string[] }>('/v1/developer/keys'),
   /**
    * Not cached, unlike the rest of the public catalog.
    *

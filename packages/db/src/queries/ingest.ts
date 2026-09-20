@@ -191,7 +191,7 @@ export async function createApiKey(
     name: string;
     prefix: string;
     keyHash: string;
-    scopes: ('ingest:write' | 'catalog:read')[];
+    scopes: ('ingest:write' | 'catalog:read' | 'prices:read')[];
   },
 ): Promise<ApiKey> {
   const [key] = await db.insert(apiKeys).values(input).returning();
