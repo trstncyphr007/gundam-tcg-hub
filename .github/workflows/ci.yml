@@ -73,7 +73,17 @@ jobs:
 
       - name: generate ephemeral secrets and start the stack
         run: |
+          set -euo pipefail
           pnpm env:init
+          # Docker Hub resets connections often enough to break a run; retry before failing.
+          for attempt in 1 2 3; do
+            if docker compose --env-file .env -f infra/compose/docker-compose.dev.yml \
+                 --profile mail pull --quiet; then
+              break
+            fi
+            echo "image pull failed (attempt ${attempt}); retrying"
+            sleep $((attempt * 10))
+          done
           docker compose --env-file .env -f infra/compose/docker-compose.dev.yml \
             --profile mail up -d --wait
           pnpm db:migrate

@@ -95,12 +95,16 @@ jobs:
       - name: sign images and attach SBOMs (keyless)
         env:
           OWNER: ${{ github.repository_owner }}
+          # $GITHUB_OUTPUT is per-step: a later step sees a fresh, empty file, so the
+          # digests have to come from the step's declared outputs.
+          API_DIGEST: ${{ steps.push.outputs.api-digest }}
+          WEB_DIGEST: ${{ steps.push.outputs.web-digest }}
         run: |
           set -euo pipefail
           owner=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
-          for name in api web; do
-            digest_var="${name}-digest"
-            digest=$(grep "^${digest_var}=" "$GITHUB_OUTPUT" | cut -d= -f2-)
+          for pair in "api:${API_DIGEST}" "web:${WEB_DIGEST}"; do
+            name="${pair%%:*}"; digest="${pair#*:}"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "missing digest for ${name}"; exit 1; }
             image="${REGISTRY}/${owner}/gth-${name}@${digest}"
             cosign sign --yes "$image"
             cosign attest --yes --type cyclonedx --predicate "reports/sbom-${name}.cdx.json" "$image"
