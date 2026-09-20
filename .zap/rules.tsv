@@ -1,0 +1,43 @@
+# ZAP baseline accepted risks (plan §18.3).
+#
+# Format: <ruleId>	<WARN|FAIL|IGNORE>	<justification>
+# Anything NOT listed here fails the nightly scan. Every entry states why, and entries are
+# reviewed whenever the nightly run changes -- an ignore with no reasoning is how a real
+# finding gets buried.
+#
+# Reviewed: 2026-09-20.
+
+# Non-Storable Content. Flags pages that cannot be cached. Ours are deliberately
+# `no-store`: every page is either personalised, an overlay whose URL is a credential, or a
+# break page that must never serve a stale total. This rule is the inverse of a finding for
+# us -- storable content would be the bug.
+10049	IGNORE	Pages are intentionally no-store (per-user, overlay credentials, live totals)
+
+# Modern Web Application. Informational: ZAP noting the app is JS-driven and it therefore
+# cannot follow every link by spidering. True, and not a vulnerability. It is why the
+# Playwright suite carries the browser-level security assertions instead.
+10109	IGNORE	Informational: app is JS-driven by design; browser assertions live in the e2e suite
+
+# Cross-Origin-Embedder-Policy missing. COEP `require-corp` exists to enable cross-origin
+# isolation (SharedArrayBuffer, precise timers). We use neither, and enabling it would
+# break the OBS overlay's ability to be embedded by a browser source without buying
+# anything. COOP and CORP -- the two that actually limit what other origins can do to us --
+# ARE set. Revisit if we ever need cross-origin isolation.
+90004	IGNORE	COEP not set deliberately: no cross-origin isolation needed; COOP and CORP are set
+
+# CSP rule family. Accepted ONLY for `style-src 'unsafe-inline'`, which React's style prop
+# and Tailwind's injected styles both require; removing it means nonced <style> tags plus
+# style-src-attr, whose browser support is uneven enough to risk an unstyled page in Safari.
+# Tracked as a known gap in docs/asvs-checklist.md rather than pretended away.
+#
+# This rule id also covers wildcard sources, which we do NOT accept -- a ZAP baseline found
+# `img-src ... https:` on 2026-09-20 and it was fixed. Because an ignore here would hide a
+# regression of that, the narrower property is asserted directly in the browser instead:
+# see "carries no wildcard fetch sources" in apps/web/e2e/catalog.spec.ts.
+10055	IGNORE	style-src 'unsafe-inline' accepted; wildcards guarded by an e2e assertion instead
+
+# Absence of Anti-CSRF Tokens. A heuristic that looks for a hidden token field in a form.
+# Ours is submitted by script to the auth API, which checks the Origin header -- verified
+# by accident during Phase 2, when a request without an Origin was rejected with 403.
+# Session cookies are also SameSite=Lax. A hidden field would add nothing.
+10202	IGNORE	CSRF is handled by Origin checks + SameSite=Lax cookies, not by a form token

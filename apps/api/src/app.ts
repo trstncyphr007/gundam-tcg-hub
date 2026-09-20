@@ -120,10 +120,15 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
   });
 
   // Liveness: is the process up? Never touches dependencies.
-  app.get('/healthz', { config: { rateLimit: false } }, () => ({ status: 'ok' }));
+  // `no-store` because a cached health check is a lie: a proxy could keep answering "ok"
+  // for a process that has already fallen over.
+  app.get('/healthz', { config: { rateLimit: false } }, (_request, reply) =>
+    reply.header('cache-control', 'no-store').send({ status: 'ok' }),
+  );
 
   // Readiness: can we actually serve traffic? Checks dependencies (Valkey follows in Phase 1).
   app.get('/readyz', { config: { rateLimit: false } }, async (request, reply) => {
+    reply.header('cache-control', 'no-store');
     if (!deps.db) return { status: 'ready', database: 'not_configured' };
     try {
       await pingDatabase(deps.db);

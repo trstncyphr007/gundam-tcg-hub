@@ -48,6 +48,39 @@ test.describe('security headers (SR-X.14)', () => {
     expect(response?.headers()['referrer-policy']).toBe('strict-origin-when-cross-origin');
   });
 
+  test('carries no wildcard fetch sources', async ({ page }) => {
+    // `img-src ... https:` is a wildcard: any HTTPS origin, which is an exfiltration
+    // channel (the path carries the data) and a tracking one. A ZAP baseline found exactly
+    // that on 2026-09-20. The nightly scan now accepts CSP rule 10055 so it can tolerate
+    // style-src 'unsafe-inline', which would otherwise hide a wildcard regression -- so the
+    // narrower thing is asserted here instead.
+    const response = await page.goto('/');
+    const csp = response?.headers()['content-security-policy'] ?? '';
+
+    const directives = new Map(
+      csp
+        .split(';')
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .map((part) => {
+          const [name, ...values] = part.split(/\s+/);
+          return [name ?? '', values] as const;
+        }),
+    );
+
+    for (const name of ['default-src', 'script-src', 'img-src', 'connect-src', 'font-src']) {
+      const values = directives.get(name) ?? [];
+      for (const value of values) {
+        expect(value, `${name} must not allow a whole scheme or every origin`).not.toBe('*');
+        expect(value, `${name} must not allow a whole scheme`).not.toBe('https:');
+        expect(value, `${name} must not allow a whole scheme`).not.toBe('http:');
+      }
+    }
+    // script-src is deliberately looser on the dev server (fast refresh needs un-nonced
+    // inline scripts), so the assertion that inline execution stays closed belongs with the
+    // other production-build checks below.
+  });
+
   // The dev server needs un-nonced inline scripts for fast refresh, so the strict policy is
   // only asserted against a production build (which is what CI and prod actually run).
   test('uses a strict nonce policy in production builds', async ({ page }) => {
@@ -58,6 +91,7 @@ test.describe('security headers (SR-X.14)', () => {
     expect(csp).toMatch(/script-src [^;]*'nonce-/);
     expect(csp).toMatch(/script-src [^;]*'strict-dynamic'/);
     expect(csp).not.toMatch(/script-src [^;]*'unsafe-eval'/);
+    expect(csp).not.toMatch(/script-src [^;]*'unsafe-inline'/);
 
     const unnonced = await page.locator('script:not([nonce]):not([src])').count();
     expect(unnonced).toBe(0);

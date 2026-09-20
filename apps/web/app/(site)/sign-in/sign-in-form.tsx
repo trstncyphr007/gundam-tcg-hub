@@ -54,7 +54,14 @@ export function SignInForm() {
         <span className="h-px flex-1" style={{ background: 'var(--border)' }} />
       </div>
 
-      <form onSubmit={(event) => void requestLink(event)} className="space-y-3">
+      {/*
+        method="post" matters even though JavaScript handles the submit. A form with no
+        method defaults to GET, so if the script ever fails to run the browser navigates to
+        `/sign-in?email=...` and the address lands in the URL bar, history, and any referrer.
+        A ZAP baseline caught exactly that, and the hydration bug we hit in Phase 2 showed
+        the degraded path is not hypothetical.
+      */}
+      <form method="post" onSubmit={(event) => void requestLink(event)} className="space-y-3">
         <label htmlFor="email" className="block text-sm">
           Email address
         </label>

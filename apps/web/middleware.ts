@@ -23,7 +23,11 @@ export function middleware(request: NextRequest): NextResponse {
     scriptSrc,
     // Tailwind injects styles at build time; inline styles stay allowed, scripts do not.
     `style-src 'self' 'unsafe-inline'`,
-    `img-src 'self' data: https:`,
+    // No `https:` here. That is a wildcard: it permits an image from any HTTPS origin,
+    // which is both an exfiltration channel (the path carries data) and a tracking one.
+    // We render no remote images -- card art is linked, not embedded (plan §23) -- so when
+    // an approved image host does arrive, name it here rather than reopening the scheme.
+    `img-src 'self' data:`,
     `font-src 'self'`,
     `connect-src 'self'`,
     `object-src 'none'`,
