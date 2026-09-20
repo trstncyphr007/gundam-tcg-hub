@@ -21,8 +21,11 @@ test.describe('catalog', () => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Sample Unit Alpha' }).click();
     await expect(page.getByRole('heading', { name: 'Sample Unit Alpha' })).toBeVisible();
-    await expect(page.getByText('normal · EN')).toBeVisible();
-    await expect(page.getByText('parallel · EN')).toBeVisible();
+    // Scoped to the printings list: the chart legend now names the same printings, and an
+    // unscoped match would pass for the wrong reason (or fail on strict mode, as it did).
+    const printings = page.getByRole('list').filter({ hasText: 'normal · EN' });
+    await expect(printings.getByText('normal · EN')).toBeVisible();
+    await expect(printings.getByText('parallel · EN')).toBeVisible();
   });
 
   test('treats a SQL-looking search term as plain text', async ({ page }) => {

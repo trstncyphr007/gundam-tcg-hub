@@ -4,6 +4,7 @@ import {
   listSealedProducts,
   listSets,
   priceHistoryForCard,
+  priceSourceMix,
   searchCards,
 } from '@gth/db';
 import type { PublicRoute } from './registry.js';
@@ -108,11 +109,18 @@ export const publicRoutes: readonly PublicRoute[] = [
       // and "no prices yet" stay different answers to a client.
       const card = await getCardById(db, cardId);
       if (!card) return null;
-      const points = await priceHistoryForCard(db, cardId, {
+
+      const window = {
         condition: query['condition'] as 'nm' | 'lp' | 'mp' | 'hp' | 'dmg' | undefined,
         days: query['days'] as number | undefined,
-      });
-      return { cardId, points };
+      };
+      // The same window for both, or the mix would describe a different set of numbers from
+      // the one being charted.
+      const [points, sources] = await Promise.all([
+        priceHistoryForCard(db, cardId, window),
+        priceSourceMix(db, cardId, window),
+      ]);
+      return { cardId, points, sources };
     },
   },
   {

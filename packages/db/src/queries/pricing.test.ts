@@ -9,6 +9,7 @@ import {
   listPendingReports,
   moderateObservation,
   priceHistory,
+  priceSourceMix,
   reportPrice,
   rollUpDay,
 } from './pricing.js';
@@ -83,6 +84,41 @@ beforeEach(async () => {
   // Breaks cascade to their pulls. Without this, a pull left by an earlier test is still
   // waiting to be ingested and quietly inflates the next test's sample.
   await asUser(tdb.db, CREATOR, (tx) => tx.execute(`delete from app.breaks`));
+});
+
+describe('the source mix (FR-3.3)', () => {
+  it('counts real observations per source, not their weighted expansion', async () => {
+    await seedObservation(1000, { source: 'live_sale' });
+    await seedObservation(1100, { source: 'live_sale' });
+    await seedObservation(1200, { source: 'ebay_api' });
+
+    const cards = await tdb.db.execute<{ card_id: string }>(
+      `select card_id from app.card_variants where id = '${variantId}'`,
+    );
+    const mix = await priceSourceMix(tdb.db, String(cards[0]?.card_id));
+
+    // live_sale weighs 3x in the median. It is still two sales, and that is what we report.
+    expect(mix).toEqual([
+      { source: 'live_sale', observations: 2 },
+      { source: 'ebay_api', observations: 1 },
+    ]);
+  });
+
+  it('leaves out anything that does not count towards the index', async () => {
+    await seedObservation(1000, { source: 'live_sale' });
+    // Unapproved: a report nobody has looked at must not appear as evidence.
+    await tdb.db.execute(
+      `insert into app.price_observations
+         (card_variant_id, source, sale_type, condition, price_cents, observed_at, reporter_id)
+       values ('${variantId}', 'user_report', 'sold', 'nm', 9999, now(), '${REPORTER}')`,
+    );
+
+    const cards = await tdb.db.execute<{ card_id: string }>(
+      `select card_id from app.card_variants where id = '${variantId}'`,
+    );
+    const mix = await priceSourceMix(tdb.db, String(cards[0]?.card_id));
+    expect(mix.map((m) => m.source)).not.toContain('user_report');
+  });
 });
 
 describe('the rollup (FR-3.2, AC-3.1)', () => {

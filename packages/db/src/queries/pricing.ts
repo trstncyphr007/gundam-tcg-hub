@@ -373,6 +373,42 @@ export async function priceHistoryForCard(
   }));
 }
 
+export interface PriceSourceMix {
+  source: PriceSourceKind;
+  observations: number;
+}
+
+/**
+ * Where a card's prices came from, over the same window as its history (FR-3.3).
+ *
+ * This is the transparency half of the index. A median is only worth believing if you can
+ * see what went into it, and "412 live sales and 96 marketplace pulls" is a different claim
+ * from "508 numbers". Published alongside the chart for that reason.
+ *
+ * Counts **real observations**, never the weighted expansion of them — the same rule the
+ * published `observation_count` follows, for the same reason (ADR-018).
+ */
+export async function priceSourceMix(
+  db: Database,
+  cardId: string,
+  options: { condition?: CardCondition | undefined; days?: number | undefined } = {},
+): Promise<PriceSourceMix[]> {
+  const days = Math.trunc(options.days ?? 30);
+  const rows = await db.execute<{ source: PriceSourceKind; observations: number }>(sql`
+    select o.source, count(*)::int as observations
+      from app.price_observations o
+      join app.card_variants v on v.id = o.card_variant_id
+     where v.card_id = ${cardId}
+       and o.approved_at is not null
+       and o.flagged_at is null
+       and o.observed_at >= current_date - make_interval(days => ${days})
+       ${options.condition ? sql`and o.condition = ${options.condition}` : sql``}
+     group by o.source
+     order by observations desc, o.source
+  `);
+  return rows.map((r) => ({ source: r.source, observations: r.observations }));
+}
+
 /** Reports waiting on a human (SR-3.5). */
 export async function listPendingReports(db: Database, limit = 50): Promise<PriceObservation[]> {
   return db

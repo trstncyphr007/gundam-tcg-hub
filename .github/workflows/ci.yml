@@ -88,6 +88,9 @@ jobs:
             --profile mail up -d --wait
           pnpm db:migrate
           pnpm db:seed
+          # The price-chart tests need an index to draw. 30 days rather than 90: enough for
+          # a line, a gap and an empty condition, without spending the time on 4,000 rows.
+          pnpm db:seed-prices --days 30
 
       - name: build and start api + web
         run: |

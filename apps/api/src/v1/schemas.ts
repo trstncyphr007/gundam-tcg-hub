@@ -140,6 +140,11 @@ export const pricePointSchema = z.object({
   currency: z.string(),
 });
 
+export const sourceMixSchema = z.object({
+  source: z.enum(['break_pull', 'live_sale', 'user_report', 'ebay_api', 'walmart_api']),
+  observations: z.int().describe('Real observations, never the weighted expansion of them.'),
+});
+
 export const cardPricesSchema = z.object({
   cardId: z.uuid(),
   /**
@@ -147,6 +152,11 @@ export const cardPricesSchema = z.object({
    * as one: fewer than three observations publishes nothing at all (ADR-018).
    */
   points: z.array(pricePointSchema),
+  /**
+   * What the numbers above were computed from, over the same window. A median is only worth
+   * believing if you can see what went into it.
+   */
+  sources: z.array(sourceMixSchema),
 });
 
 export const gamePageSchema = page(gameSchema);
