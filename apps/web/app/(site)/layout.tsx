@@ -31,6 +31,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <Link href="/account/watches" className="text-sm" style={{ color: 'var(--muted)' }}>
               My watches
             </Link>
+            <Link href="/account/collections" className="text-sm" style={{ color: 'var(--muted)' }}>
+              My collections
+            </Link>
             <Link href="/creator/breaks" className="text-sm" style={{ color: 'var(--muted)' }}>
               Breaks
             </Link>

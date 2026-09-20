@@ -86,12 +86,12 @@ evidence column is not optional.
 
 ## V14 Data protection
 
-| #    | Control             | Status   | Evidence                                                                                                 |
-| ---- | ------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
-| 14.1 | Data minimisation   | **Met**  | Public and overlay queries select no creator id, name or email — enforced by the query, not the template |
-| 14.2 | No secrets in logs  | **Met**  | pino redaction; the overlay token is masked out of the request URL before logging                        |
-| 14.3 | Caching controlled  | **Met**  | `no-store` on per-user, overlay and health responses                                                     |
-| 14.5 | Export and deletion | **Open** | SR-X.25. Required before public launch                                                                   |
+| #    | Control             | Status   | Evidence                                                                                                                                                                                                                                                                         |
+| ---- | ------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 14.1 | Data minimisation   | **Met**  | Public and overlay queries select no creator id, name or email — enforced by the query, not the template. A shared collection returns the cards but nulls the owner's cost, purchase date and notes in SQL, so no route can leak them and no gain/loss is computed for a visitor |
+| 14.2 | No secrets in logs  | **Met**  | pino redaction; the overlay token is masked out of the request URL before logging                                                                                                                                                                                                |
+| 14.3 | Caching controlled  | **Met**  | `no-store` on per-user, overlay and health responses                                                                                                                                                                                                                             |
+| 14.5 | Export and deletion | **Open** | SR-X.25. Required before public launch                                                                                                                                                                                                                                           |
 
 ## V16 Logging and monitoring
 
