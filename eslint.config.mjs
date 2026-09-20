@@ -12,7 +12,18 @@ const bannedChildProcess = {
 
 export default defineConfig(
   {
-    ignores: ['**/dist/**', '**/coverage/**', '**/.turbo/**', '**/node_modules/**', 'reports/**'],
+    ignores: [
+      '**/dist/**',
+      '**/coverage/**',
+      '**/.turbo/**',
+      '**/node_modules/**',
+      'reports/**',
+      // Generated output, not our source.
+      '**/.next/**',
+      '**/playwright-report/**',
+      '**/test-results/**',
+      '**/next-env.d.ts',
+    ],
   },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,

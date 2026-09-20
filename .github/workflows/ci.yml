@@ -54,6 +54,62 @@ jobs:
       - run: pnpm build
       - run: pnpm licenses:check
 
+  e2e:
+    name: e2e (playwright, real stack)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: generate ephemeral secrets and start the stack
+        run: |
+          pnpm env:init
+          docker compose --env-file .env -f infra/compose/docker-compose.dev.yml \
+            --profile mail up -d --wait
+          pnpm db:migrate
+          pnpm db:seed
+
+      - name: build and start api + web
+        run: |
+          pnpm --filter @gth/api build
+          pnpm --filter @gth/web build
+          node apps/api/dist/index.js > /tmp/api.log 2>&1 &
+          pnpm --filter @gth/web start > /tmp/web.log 2>&1 &
+          for _ in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4000/healthz >/dev/null && curl -sf http://127.0.0.1:3000/ >/dev/null; then
+              echo "servers up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "servers failed to start"; tail -n 50 /tmp/api.log /tmp/web.log; exit 1
+        env:
+          NODE_ENV: production
+
+      - name: playwright
+        run: |
+          pnpm --filter @gth/web exec playwright install --with-deps chromium
+          pnpm --filter @gth/web e2e
+
+      - if: failure()
+        run: tail -n 100 /tmp/api.log /tmp/web.log || true
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+
   secrets:
     name: secrets (gitleaks, full history)
     runs-on: ubuntu-24.04

@@ -28,7 +28,10 @@ LOG_LEVEL=debug
 
 API_HOST=127.0.0.1
 API_PORT=4000
-API_TRUST_PROXY=false
+# The API sits behind the web app's proxy (and Caddy in production), so the real client IP
+# arrives in X-Forwarded-For. Without this, every user shares one rate-limit bucket.
+# Safe only because the proxy overwrites the header (see infra/caddy/Caddyfile).
+API_TRUST_PROXY=true
 API_RATE_LIMIT_MAX=120
 
 PG_SUPERUSER=gth_admin

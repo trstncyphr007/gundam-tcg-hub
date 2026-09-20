@@ -13,6 +13,14 @@ coverage/
 # security scan output
 reports/
 
+# next.js / playwright
+.next/
+next-env.d.ts
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
 # logs / OS / editor
 *.log
 .DS_Store
