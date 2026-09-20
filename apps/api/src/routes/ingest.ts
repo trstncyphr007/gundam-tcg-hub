@@ -3,6 +3,7 @@ import {
   type Database,
   findActiveApiKey,
   recordStockReport,
+  resolveListing,
   touchApiKey,
   writeAuditLog,
 } from '@gth/db';
@@ -13,18 +14,34 @@ import { z } from 'zod';
 /** `gth_live_<prefix>_<secret>` — the prefix is a public handle, the secret never stored. */
 const API_KEY_PATTERN = /^gth_(?:live|test)_([a-z0-9]{8})_([A-Za-z0-9_-]{32,})$/;
 
-const reportSchema = z
+const observationSchema = {
+  inStock: z.boolean(),
+  priceCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  currency: z
+    .string()
+    .regex(/^[A-Z]{3}$/)
+    .optional(),
+  rawHash: z.string().max(128).nullable().optional(),
+};
+
+/** A report about a listing we already know. */
+const byIdSchema = z.object({ retailerProductId: z.uuid(), ...observationSchema }).strict();
+
+/**
+ * A report in the scanner's own terms: "this product, at this shop, at this URL".
+ * The scanner searches by name and does not know our listing ids (ADR-013), so the
+ * platform resolves the listing — and refuses if the shop is not an approved one.
+ */
+const byUrlSchema = z
   .object({
-    retailerProductId: z.uuid(),
-    inStock: z.boolean(),
-    priceCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
-    currency: z
-      .string()
-      .regex(/^[A-Z]{3}$/)
-      .optional(),
-    rawHash: z.string().max(128).nullable().optional(),
+    productSlug: z.string().regex(/^[a-z0-9][a-z0-9-]{1,78}[a-z0-9]$/),
+    retailerDomain: z.string().regex(/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/),
+    url: z.url().startsWith('https://').max(2048),
+    ...observationSchema,
   })
   .strict();
+
+const reportSchema = z.union([byIdSchema, byUrlSchema]);
 
 const ingestSchema = z.object({ reports: z.array(reportSchema).min(1).max(100) }).strict();
 
@@ -89,12 +106,43 @@ export function registerIngestRoutes(app: FastifyInstance, deps: IngestDeps): vo
         });
       }
 
-      const results: { retailerProductId: string; restock: boolean; deliveries: number }[] = [];
+      const results: {
+        retailerProductId: string;
+        restock: boolean;
+        deliveries: number;
+        listingCreated?: boolean;
+      }[] = [];
 
       for (const report of parsed.data.reports) {
+        let retailerProductId: string;
+        let listingCreated = false;
+
+        if ('retailerProductId' in report) {
+          retailerProductId = report.retailerProductId;
+        } else {
+          const resolved = await resolveListing(deps.workerDb, {
+            productSlug: report.productSlug,
+            retailerDomain: report.retailerDomain,
+            url: report.url,
+          });
+          if (!resolved.ok) {
+            // Say why, but only in our own vocabulary: these are operator-facing reasons,
+            // and an unapproved retailer must never be silently accepted.
+            return reply.code(422).send({ error: 'unprocessable_report', reason: resolved.reason });
+          }
+          retailerProductId = resolved.retailerProductId;
+          listingCreated = resolved.created;
+        }
+
         let outcome;
         try {
-          outcome = await recordStockReport(deps.workerDb, report);
+          outcome = await recordStockReport(deps.workerDb, {
+            retailerProductId,
+            inStock: report.inStock,
+            priceCents: report.priceCents,
+            currency: report.currency,
+            rawHash: report.rawHash,
+          });
         } catch (error) {
           // Unknown listing ids are a client mistake, not a server fault.
           request.log.warn({ err: error }, 'stock report rejected');
@@ -105,14 +153,14 @@ export function registerIngestRoutes(app: FastifyInstance, deps: IngestDeps): vo
         if (outcome.event) {
           const message = await deps.buildMessage(
             deps.workerDb,
-            report.retailerProductId,
+            retailerProductId,
             report.priceCents ?? null,
             report.currency ?? 'USD',
           );
           if (message) {
             const dispatched = await dispatchRestockEvent(
               { db: deps.workerDb, transports: deps.transports, logger: request.log },
-              { id: outcome.event.id, retailerProductId: report.retailerProductId },
+              { id: outcome.event.id, retailerProductId },
               message,
             );
             deliveries = dispatched.claimed;
@@ -120,14 +168,15 @@ export function registerIngestRoutes(app: FastifyInstance, deps: IngestDeps): vo
           await writeAuditLog(deps.workerDb, {
             action: 'stock.restock_detected',
             targetType: 'retailer_product',
-            targetId: report.retailerProductId,
+            targetId: retailerProductId,
           });
         }
 
         results.push({
-          retailerProductId: report.retailerProductId,
+          retailerProductId,
           restock: outcome.event !== null,
           deliveries,
+          ...(listingCreated ? { listingCreated: true } : {}),
         });
       }
 

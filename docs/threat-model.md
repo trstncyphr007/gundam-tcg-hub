@@ -90,6 +90,22 @@ risk register is in the build plan (§17); this file tracks **current state**.
 | SSH exposed to the internet                 | Tailscale-only administration; UFW allows 80/443 only                                                                                                            |
 | Ransomware destroying backups               | Server holds write-only backup credentials; pruning uses a separate offline key; restore drill documented and scheduled                                          |
 
+## Real sources and listing resolution (2026-09-20)
+
+Accepting reports in the scanner's own vocabulary (`productSlug` + `retailerDomain` + `url`,
+ADR-016) means a machine credential can now cause a row to be written to the catalog. Treat the
+scanner as semi-trusted: authenticated, but possibly buggy or compromised.
+
+| Threat                                                | Controls                                                                                                                                                               |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A report introduces a shop we never reviewed          | The retailer must already exist **and** be enabled; a CHECK constraint ties `enabled` to a recorded ToS/robots review. `app_worker` has no write access to `retailers` |
+| A report points a listing at an arbitrary site (SSRF) | URL must be `https:` and its host must equal the retailer's domain or sit under it on a label boundary; `shop.invalid.evil.test` and `notshop.invalid` both fail       |
+| A report repoints or deletes an existing listing      | Grant is INSERT only (migration 0009); UPDATE and DELETE stay revoked, proven by a role-level test                                                                     |
+| A report invents products to pollute the catalog      | `productSlug` must resolve to an existing `sealed_products` row; `app_worker` cannot write that table                                                                  |
+| A malfunctioning scanner floods `retailer_products`   | 20 auto-created listings per product per retailer, then `listing_limit_reached`; ingestion is rate-limited at 120 req/min per key                                      |
+| Silent acceptance of a rejected report                | Rejections return 422 with an explicit reason, so the operator sees why rather than assuming success                                                                   |
+| Scraping a shop that forbids it                       | `sources.json` records the robots.txt evidence per shop (`docs/scanner-source-review.md`); disallowed shops are imported with `enabled = false`                        |
+
 ## Accepted risks
 
 - Local hooks can be skipped with `--no-verify`; CI re-runs every gate (ADR-014).

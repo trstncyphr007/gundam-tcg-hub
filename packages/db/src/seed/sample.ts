@@ -58,6 +58,7 @@ export async function seedSample(db: Database): Promise<void> {
       setId: set.id,
       kind: 'booster_box',
       name: 'Sample Set One Booster Box',
+      slug: 'sample-set-one-booster-box',
       msrpCents: 9999,
     })
     .returning();

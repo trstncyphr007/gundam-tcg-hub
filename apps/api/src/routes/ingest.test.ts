@@ -177,6 +177,141 @@ describe('payload validation', () => {
   });
 });
 
+describe('reports by product + shop + url (ADR-016)', () => {
+  const SHOP = 'ingest-shop.invalid';
+
+  beforeAll(async () => {
+    await tdb.db.execute(
+      `insert into app.retailers (name, domain, adapter_key, robots_ok, tos_reviewed_at, enabled)
+       values ('Ingest Shop', '${SHOP}', 'ingest', true, now(), true)`,
+    );
+  });
+
+  it('registers the listing on first sight and detects the restock on the next report', async () => {
+    const url = `https://${SHOP}/products/booster-box`;
+    const first = await report(validKey, {
+      reports: [
+        {
+          productSlug: 'sample-set-one-booster-box',
+          retailerDomain: SHOP,
+          url,
+          inStock: false,
+        },
+      ],
+    });
+    expect(first.statusCode).toBe(202);
+    const created = first.json<{
+      results: { retailerProductId: string; listingCreated?: boolean; restock: boolean }[];
+    }>().results[0];
+    expect(created?.listingCreated).toBe(true);
+    expect(created?.restock).toBe(false);
+
+    // Second report, same URL: no new listing, and the transition is a real restock.
+    const second = await report(validKey, {
+      reports: [
+        {
+          productSlug: 'sample-set-one-booster-box',
+          retailerDomain: SHOP,
+          url,
+          inStock: true,
+          priceCents: 8499,
+        },
+      ],
+    });
+    const again = second.json<{
+      results: { retailerProductId: string; listingCreated?: boolean; restock: boolean }[];
+    }>().results[0];
+    expect(again?.listingCreated).toBeUndefined();
+    expect(again?.retailerProductId).toBe(created?.retailerProductId);
+    expect(again?.restock).toBe(true);
+  });
+
+  it('refuses reports that would invent a listing somewhere we have not approved', async () => {
+    const cases: [string, object, string][] = [
+      [
+        'a shop we have never reviewed',
+        {
+          productSlug: 'sample-set-one-booster-box',
+          retailerDomain: 'nope.invalid',
+          url: 'https://nope.invalid/x',
+        },
+        'unknown_retailer',
+      ],
+      [
+        'a known shop that is not enabled',
+        {
+          productSlug: 'sample-set-one-booster-box',
+          retailerDomain: 'sample-retailer.invalid',
+          url: 'https://sample-retailer.invalid/x',
+        },
+        'retailer_not_enabled',
+      ],
+      [
+        'a product not in the catalog',
+        { productSlug: 'not-a-product', retailerDomain: SHOP, url: `https://${SHOP}/x` },
+        'unknown_product',
+      ],
+      [
+        'a url belonging to someone else',
+        {
+          productSlug: 'sample-set-one-booster-box',
+          retailerDomain: SHOP,
+          url: 'https://evil.test/x',
+        },
+        'url_host_mismatch',
+      ],
+      [
+        'a lookalike host',
+        {
+          productSlug: 'sample-set-one-booster-box',
+          retailerDomain: SHOP,
+          url: `https://${SHOP}.evil.test/x`,
+        },
+        'url_host_mismatch',
+      ],
+    ];
+
+    for (const [label, fields, reason] of cases) {
+      const res = await report(validKey, { reports: [{ ...fields, inStock: true }] });
+      expect(res.statusCode, label).toBe(422);
+      expect(res.json<{ reason: string }>().reason, label).toBe(reason);
+    }
+  });
+
+  it('rejects malformed by-url reports before they reach the resolver', async () => {
+    const bad: object[] = [
+      { productSlug: 'Sample_Set', retailerDomain: SHOP, url: `https://${SHOP}/x`, inStock: true },
+      {
+        productSlug: 'sample-set-one-booster-box',
+        retailerDomain: 'not a domain',
+        url: `https://${SHOP}/x`,
+        inStock: true,
+      },
+      {
+        productSlug: 'sample-set-one-booster-box',
+        retailerDomain: SHOP,
+        url: `http://${SHOP}/x`,
+        inStock: true,
+      },
+      // Half a report: neither shape is satisfied, so the union rejects it.
+      { productSlug: 'sample-set-one-booster-box', inStock: true },
+      { retailerDomain: SHOP, url: `https://${SHOP}/x`, inStock: true },
+      // Mixing both shapes is not a way to smuggle an id past the guards.
+      {
+        retailerProductId: '00000000-0000-0000-0000-000000000000',
+        productSlug: 'sample-set-one-booster-box',
+        retailerDomain: SHOP,
+        url: `https://${SHOP}/x`,
+        inStock: true,
+      },
+    ];
+    for (const payload of bad) {
+      const res = await report(validKey, { reports: [payload] });
+      expect(res.statusCode, JSON.stringify(payload).slice(0, 70)).toBe(400);
+    }
+  });
+});
+
 describe('restock detection (FR-1.7)', () => {
   it('does not alert on a first sighting, even if in stock', async () => {
     const fresh = await tdb.db.execute<{ id: string }>(
