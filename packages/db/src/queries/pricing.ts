@@ -85,6 +85,13 @@ export async function reportPrice(
  *
  * Idempotent: a unique index on `break_pull_id` means re-running cannot inflate the sample,
  * which matters because this is the source we weight most heavily.
+ *
+ * **Only `manual` values.** The break calculator can fill a pull's value from the published
+ * index; ingesting those would make the index quote itself at triple weight — a number it
+ * published coming back as evidence, moving tomorrow's number, which comes back again. The
+ * result would look like unusually strong data while drifting away from anything anyone
+ * actually paid. A typed value is a sale someone saw. An index value is our own opinion, and
+ * an opinion is not evidence for itself.
  */
 export async function ingestBreakPulls(db: Database): Promise<number> {
   const inserted = await db.execute<{ id: string }>(sql`
@@ -105,6 +112,8 @@ export async function ingestBreakPulls(db: Database): Promise<number> {
       join app.breaks b on b.id = p.break_id
      where p.card_variant_id is not null
        and b.status <> 'draft'
+       -- See the note above: an index-filled value is a quote, not a sale.
+       and p.value_source = 'manual'
     on conflict (break_pull_id) where break_pull_id is not null do nothing
     returning id
   `);

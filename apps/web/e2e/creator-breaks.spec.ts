@@ -153,6 +153,69 @@ test.describe('creator breaks', () => {
     await overlay.close();
   });
 
+  test('fills a pull value from the price index (FR-2.1)', async ({ page }) => {
+    const title = `Calculator ${randomUUID().slice(0, 8)}`;
+    await startBreak(page, title);
+    await page.getByRole('link', { name: title }).click();
+    await page.getByRole('button', { name: /start break/i }).click();
+
+    // The fast path: type a few letters, Enter picks the top match, Enter logs it — and the
+    // value arrives from the index without anyone typing a number.
+    await page.getByTestId('pull-label').fill('Sample Pilot');
+    await expect(page.getByTestId('pull-suggestions')).toBeVisible();
+    await page.getByTestId('pull-label').press('Enter');
+
+    const candidate = page.getByTestId('pull-candidate');
+    await expect(candidate).toContainText('Sample Pilot Gamma');
+    await expect(page.getByTestId('index-value')).toContainText('Index says $');
+    const quoted = (await page.getByTestId('index-value').textContent()) ?? '';
+    const expected = /Index says (\$[\d,]+\.\d{2})/.exec(quoted)?.[1];
+    expect(expected, 'the index should have quoted a price').toBeTruthy();
+
+    await page.getByTestId('log-pull').click();
+    await expect(page.getByTestId('pull-count')).toHaveText('1');
+    // Logged at exactly what was quoted, and marked as coming from the index rather than
+    // from the creator — the two are different claims.
+    await expect(page.getByTestId('pull-list')).toContainText(String(expected));
+    await expect(page.getByTestId('pull-list')).toContainText('index');
+    await expect(page.getByTestId('running-total')).toHaveText(String(expected));
+  });
+
+  test('a typed value overrides the index, and is not marked as one', async ({ page }) => {
+    const title = `Override ${randomUUID().slice(0, 8)}`;
+    await startBreak(page, title);
+    await page.getByRole('link', { name: title }).click();
+    await page.getByRole('button', { name: /start break/i }).click();
+
+    await page.getByTestId('pull-label').fill('Sample Pilot');
+    await expect(page.getByTestId('pull-suggestions')).toBeVisible();
+    await page.getByTestId('pull-label').press('Enter');
+    await expect(page.getByTestId('pull-candidate')).toBeVisible();
+
+    // The creator saw it go for more than the index says. What they saw wins.
+    await page.getByTestId('pull-value').fill('250.00');
+    await page.getByTestId('log-pull').click();
+
+    await expect(page.getByTestId('running-total')).toHaveText('$250.00');
+    await expect(page.getByTestId('pull-list')).not.toContainText('index');
+  });
+
+  test('a card the catalog has never heard of still logs', async ({ page }) => {
+    // A creator must never be blocked mid-break by a gap in our data.
+    const title = `Freetext ${randomUUID().slice(0, 8)}`;
+    await startBreak(page, title);
+    await page.getByRole('link', { name: title }).click();
+    await page.getByRole('button', { name: /start break/i }).click();
+
+    await page.getByTestId('pull-label').fill('Some Card We Do Not Have');
+    await page.getByTestId('pull-value').fill('40');
+    await page.getByTestId('log-pull').click();
+
+    await expect(page.getByTestId('pull-count')).toHaveText('1');
+    await expect(page.getByTestId('pull-list')).toContainText('Some Card We Do Not Have');
+    await expect(page.getByTestId('running-total')).toHaveText('$40.00');
+  });
+
   test('an exported CSV neutralises a formula (AC-2.4)', async ({ page }) => {
     const title = `Export ${randomUUID().slice(0, 8)}`;
     await startBreak(page, title);

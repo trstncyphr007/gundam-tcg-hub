@@ -6,6 +6,24 @@ import { app, cardVariants, sealedProducts } from './catalog.js';
 export const breakStatus = app.enum('break_status', ['draft', 'live', 'ended']);
 
 /**
+ * Where a pull's value came from — and the reason this column has to exist.
+ *
+ * The break calculator can fill a card's value from the published index (FR-2.1). Logged
+ * pulls are also *fed back into* that index as `break_pull` observations, weighted most
+ * heavily of all because we watched them happen (ADR-018).
+ *
+ * Put those two together without this column and the index quotes itself: a price the index
+ * published becomes an observation at triple weight, which moves the price it publishes
+ * tomorrow, which becomes tomorrow's observation. The numbers would look like strong
+ * evidence while drifting away from anything anyone paid.
+ *
+ * So provenance is recorded per pull, and ingestion takes only `manual` ones — a value a
+ * person typed because that is what the card went for. An `index` value is a quote, not a
+ * sale, and quoting it back would be circular.
+ */
+export const pullValueSource = app.enum('pull_value_source', ['manual', 'index']);
+
+/**
  * A pack-opening session run by a creator (FR-2.2).
  *
  * Row-level security restricts writes to the owning creator; the public break page reads
@@ -79,6 +97,11 @@ export const breakPulls = app.table(
     /** Free-text fallback, so a creator is never blocked by a gap in the catalog. */
     label: text('label'),
     valueCentsAtPull: integer('value_cents_at_pull').notNull().default(0),
+    /**
+     * `manual` by default, which is what every pull logged before the calculator existed
+     * was: a number a person typed. Only those are evidence (see `pullValueSource`).
+     */
+    valueSource: pullValueSource('value_source').notNull().default('manual'),
     /** Position in the break, assigned server-side. */
     seq: integer('seq').notNull(),
     pulledAt: timestamp('pulled_at', { withTimezone: true }).notNull().defaultNow(),

@@ -1,12 +1,35 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { type SyntheticEvent, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type KeyboardEvent,
+  type SyntheticEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { centsFromInput } from '@/lib/money';
 
 interface Pull {
   seq: number;
   label: string;
   valueCentsAtPull: number;
+  valueSource?: 'manual' | 'index';
+}
+
+interface CardHit {
+  id: string;
+  name: string;
+  number: string;
+}
+
+interface Candidate {
+  cardName: string;
+  variantId: string;
+  finish: string;
+  /** Null when the index has nothing recent to say — which is not a price of zero. */
+  indexCents: number | null;
 }
 
 type Status = 'draft' | 'live' | 'ended';
@@ -16,9 +39,17 @@ function dollars(cents: number): string {
 }
 
 /**
- * Keyboard-first pull logging (FR-2.2): a break moves fast, so the card name and value are
- * two fields and Enter submits. Focus returns to the card field immediately, so a whole
- * pull is type-tab-type-Enter without ever reaching for the mouse.
+ * Keyboard-first pull logging with index-filled values (FR-2.1, FR-2.2).
+ *
+ * A break moves fast, so the fastest path has to stay fast: type a few letters, press Enter,
+ * and the top match is logged at the price the index currently publishes. Arrow keys move
+ * through the matches; the value field is an override, not a requirement; and typing a card
+ * the catalog has never heard of still works, as free text, because a creator must never be
+ * blocked mid-break by a gap in our data.
+ *
+ * A typed value is recorded as `manual` and an index-filled one as `index`. That difference
+ * is not cosmetic — pulls feed the price index, and ingesting a value the index itself
+ * produced would make it quote itself (see `pullValueSource` in the schema).
  */
 export function PullLogger({
   breakId,
@@ -38,10 +69,85 @@ export function PullLogger({
   const [error, setError] = useState<string | null>(null);
   const [rotated, setRotated] = useState<string | null>(null);
   const [version, setVersion] = useState(tokenVersion);
+  const [hits, setHits] = useState<CardHit[]>([]);
+  const [highlighted, setHighlighted] = useState(0);
+  const [candidate, setCandidate] = useState<Candidate | null>(null);
   const labelRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   const total = pulls.reduce((sum, p) => sum + p.valueCentsAtPull, 0);
+
+  /**
+   * Search as the creator types, but not on every keystroke.
+   *
+   * Skipped once a card is chosen: the list would otherwise reopen over the confirmed
+   * selection and the next Enter would pick something else.
+   */
+  useEffect(() => {
+    const term = label.trim();
+    if (term.length < 2 || candidate) {
+      setHits([]);
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const response = await fetch(`/v1/cards?limit=5&q=${encodeURIComponent(term)}`);
+          if (!response.ok) return;
+          setHits(((await response.json()) as { items: CardHit[] }).items);
+          setHighlighted(0);
+        } catch {
+          // A failed search just means no suggestions; free text still works.
+        }
+      })();
+    }, 200);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [label, candidate]);
+
+  /** Resolve a card to a printing and the price the index currently publishes for it. */
+  const choose = useCallback(async (hit: CardHit) => {
+    setHits([]);
+    try {
+      const [detail, prices] = await Promise.all([
+        fetch(`/v1/cards/${hit.id}`),
+        fetch(`/v1/cards/${hit.id}/prices?condition=nm&days=30`),
+      ]);
+      if (!detail.ok) return;
+      const variants = ((await detail.json()) as { variants: { id: string; finish: string }[] })
+        .variants;
+      const first = variants.at(0);
+      if (!first) return;
+
+      // Latest published point for this printing, if there is one inside the window.
+      let indexCents: number | null = null;
+      if (prices.ok) {
+        const points = (
+          (await prices.json()) as {
+            points: { cardVariantId: string; medianCents: number }[];
+          }
+        ).points.filter((p) => p.cardVariantId === first.id);
+        indexCents = points.at(-1)?.medianCents ?? null;
+      }
+      setCandidate({
+        cardName: hit.name,
+        variantId: first.id,
+        finish: first.finish,
+        indexCents,
+      });
+      setLabel(hit.name);
+    } catch {
+      // Leave it as free text rather than blocking the break on a failed lookup.
+    }
+  }, []);
+
+  function clearCandidate(): void {
+    setCandidate(null);
+    setLabel('');
+    setValue('');
+    labelRef.current?.focus();
+  }
 
   const load = useCallback(async () => {
     const response = await fetch(`/v1/breaks/${breakId}/public`, { cache: 'no-store' });
@@ -79,22 +185,38 @@ export function PullLogger({
     if (trimmed.length === 0) return;
     setError(null);
 
-    const cents = value.trim() === '' ? 0 : Math.round(Number(value) * 100);
-    if (!Number.isFinite(cents) || cents < 0) {
-      setError('That value is not a number.');
-      return;
+    // A typed value always wins over the index. Blank is not zero: it is "you tell me",
+    // which the server answers from the index when the pull names a card.
+    let override: number | undefined;
+    if (value.trim() !== '') {
+      const cents = centsFromInput(value);
+      if (cents === null) {
+        setError('That value is not an amount.');
+        return;
+      }
+      override = cents;
     }
 
-    // Clear first so the next pull can be typed while this one is in flight; a break
-    // does not pause for the network.
+    const chosen = candidate;
+    // Clear first so the next pull can be typed while this one is in flight; a break does
+    // not pause for the network.
     setLabel('');
     setValue('');
+    setCandidate(null);
+    setHits([]);
     labelRef.current?.focus();
+
+    const body = chosen
+      ? {
+          cardVariantId: chosen.variantId,
+          ...(override === undefined ? {} : { valueCentsAtPull: override }),
+        }
+      : { label: trimmed, valueCentsAtPull: override ?? 0 };
 
     const response = await fetch(`/v1/breaks/${breakId}/pulls`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ label: trimmed, valueCentsAtPull: cents }),
+      body: JSON.stringify(body),
     });
     if (!response.ok) {
       setError(`Could not log "${trimmed}". It was not saved.`);
@@ -102,6 +224,31 @@ export function PullLogger({
     }
     const pull = (await response.json()) as Pull;
     setPulls((current) => [...current, { ...pull, label: trimmed }]);
+  }
+
+  /**
+   * Enter picks the highlighted suggestion instead of submitting, when the list is open.
+   *
+   * That is what makes the fast path fast: three letters, Enter to pick, Enter to log — and
+   * the value comes from the index without anyone typing a number.
+   */
+  function onSearchKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (hits.length === 0) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setHighlighted((i) => (i + 1) % hits.length);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setHighlighted((i) => (i - 1 + hits.length) % hits.length);
+    } else if (event.key === 'Enter') {
+      const hit = hits.at(highlighted);
+      if (hit) {
+        event.preventDefault();
+        void choose(hit);
+      }
+    } else if (event.key === 'Escape') {
+      setHits([]);
+    }
   }
 
   async function rotateToken(): Promise<void> {
@@ -175,49 +322,114 @@ export function PullLogger({
       {status === 'live' && (
         <form
           onSubmit={(e) => void submitPull(e)}
-          className="flex flex-wrap gap-3 rounded border p-4"
+          className="space-y-3 rounded border p-4"
           style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
         >
-          <label className="flex-1 text-sm" style={{ minWidth: '16rem' }}>
-            <span style={{ color: 'var(--muted)' }}>Card</span>
-            <input
-              ref={labelRef}
-              autoFocus
-              value={label}
-              maxLength={120}
-              onChange={(e) => {
-                setLabel(e.target.value);
-              }}
-              placeholder="Gundam Barbatos (parallel)"
-              data-testid="pull-label"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
-            />
-          </label>
-          <label className="text-sm" style={{ width: '9rem' }}>
-            <span style={{ color: 'var(--muted)' }}>Value (USD)</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={value}
-              onChange={(e) => {
-                setValue(e.target.value);
-              }}
-              placeholder="0.00"
-              data-testid="pull-value"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
-            />
-          </label>
-          <button
-            type="submit"
-            data-testid="log-pull"
-            className="self-end rounded px-4 py-2 text-sm font-medium"
-            style={{ background: 'var(--accent)' }}
-          >
-            Log pull
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <div className="relative flex-1" style={{ minWidth: '16rem' }}>
+              <label className="block text-sm">
+                <span style={{ color: 'var(--muted)' }}>Card</span>
+                <input
+                  ref={labelRef}
+                  autoFocus
+                  value={label}
+                  maxLength={120}
+                  autoComplete="off"
+                  role="combobox"
+                  aria-expanded={hits.length > 0}
+                  aria-controls="pull-suggestions"
+                  onKeyDown={onSearchKeyDown}
+                  onChange={(e) => {
+                    setLabel(e.target.value);
+                    // Typing again abandons the chosen card: the text no longer describes it.
+                    if (candidate) setCandidate(null);
+                  }}
+                  placeholder="Start typing — Enter picks the top match"
+                  data-testid="pull-label"
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                />
+              </label>
+
+              {hits.length > 0 && (
+                <ul
+                  id="pull-suggestions"
+                  data-testid="pull-suggestions"
+                  className="absolute z-10 mt-1 w-full divide-y rounded border"
+                  style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                >
+                  {hits.map((hit, index) => (
+                    <li key={hit.id}>
+                      <button
+                        type="button"
+                        onClick={() => void choose(hit)}
+                        className="flex w-full gap-3 px-3 py-2 text-left text-sm"
+                        style={{
+                          background: index === highlighted ? 'var(--surface)' : 'transparent',
+                        }}
+                      >
+                        <span className="min-w-0 flex-1">{hit.name}</span>
+                        <span style={{ color: 'var(--muted)' }}>#{hit.number}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <label className="text-sm" style={{ width: '10rem' }}>
+              <span style={{ color: 'var(--muted)' }}>Value (USD)</span>
+              <input
+                inputMode="decimal"
+                value={value}
+                onChange={(e) => {
+                  setValue(e.target.value);
+                }}
+                placeholder={candidate?.indexCents != null ? dollars(candidate.indexCents) : '0.00'}
+                data-testid="pull-value"
+                className="mt-1 w-full rounded border px-3 py-2"
+                style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              />
+            </label>
+
+            <button
+              type="submit"
+              data-testid="log-pull"
+              className="self-end rounded px-4 py-2 text-sm font-medium"
+              style={{ background: 'var(--accent)' }}
+            >
+              Log pull
+            </button>
+          </div>
+
+          {candidate && (
+            <p className="flex flex-wrap items-center gap-2 text-xs" data-testid="pull-candidate">
+              <span
+                className="rounded px-2 py-0.5"
+                style={{ background: 'var(--bg)', color: 'var(--accent)' }}
+              >
+                {candidate.cardName}
+                {candidate.finish === 'normal' ? '' : ` (${candidate.finish.replace('_', ' ')})`}
+              </span>
+              {candidate.indexCents === null ? (
+                <span style={{ color: 'var(--muted)' }}>
+                  No recent index price — type a value or it logs at $0.00.
+                </span>
+              ) : (
+                <span style={{ color: 'var(--muted)' }} data-testid="index-value">
+                  Index says {dollars(candidate.indexCents)}. Leave the value blank to use it.
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={clearCandidate}
+                className="underline"
+                style={{ color: 'var(--muted)' }}
+              >
+                clear
+              </button>
+            </p>
+          )}
         </form>
       )}
 
@@ -257,6 +469,17 @@ export function PullLogger({
             >
               <span style={{ color: 'var(--muted)' }}>#{pull.seq}</span>
               <span className="min-w-0 flex-1">{pull.label}</span>
+              {/* Marked, because a figure from the index is a different claim from one the
+                  creator typed — and only the typed ones feed the index back. */}
+              {pull.valueSource === 'index' && (
+                <span
+                  className="text-xs"
+                  style={{ color: 'var(--muted)' }}
+                  title="From the price index"
+                >
+                  index
+                </span>
+              )}
               <span>{dollars(pull.valueCentsAtPull)}</span>
             </li>
           ))}
