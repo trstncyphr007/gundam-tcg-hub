@@ -31,11 +31,11 @@ evidence column is not optional.
 
 ## V2 Validation and business logic
 
-| #   | Control                              | Status  | Evidence                                                                                                                                             |
-| --- | ------------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2.1 | Business logic enforced server-side  | **Met** | Break state machine `draft → live → ended` is one-way and enforced in queries _and_ by a DB CHECK; a finished log cannot be reopened                 |
-| 2.2 | Anti-automation on sensitive actions | **Met** | Per-IP and per-user rate limits; 5 auth links/min, 120 pulls/min, 120 ingest/min. Caps: 50 watches, 200 breaks, 2000 pulls, 20 auto-created listings |
-| 2.3 | Monetary values as integers          | **Met** | Cents everywhere, `integer` columns, no floats crossing a boundary                                                                                   |
+| #   | Control                              | Status  | Evidence                                                                                                                                                                                                                                                                                                                                                               |
+| --- | ------------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.1 | Business logic enforced server-side  | **Met** | Break state machine `draft → live → ended` is one-way and enforced in queries _and_ by a DB CHECK; a finished log cannot be reopened                                                                                                                                                                                                                                   |
+| 2.2 | Anti-automation on sensitive actions | **Met** | Per-IP and per-user rate limits; 5 auth links/min, 120 pulls/min, 120 ingest/min, 10 CSV imports/min. Caps: 50 watches, 200 breaks, 2000 pulls, 25 collections, 5000 import rows, 20 auto-created listings. Server-rendered pages forward the visitor's IP, so the per-IP limit counts the visitor instead of pooling everyone into the web container's single address |
+| 2.3 | Monetary values as integers          | **Met** | Cents everywhere, `integer` columns, no floats crossing a boundary                                                                                                                                                                                                                                                                                                     |
 
 ## V3 Web frontend security
 

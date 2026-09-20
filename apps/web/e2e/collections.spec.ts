@@ -17,7 +17,12 @@ async function newCollection(page: import('@playwright/test').Page, name: string
   await expect(link).toBeVisible();
   await link.click();
   await expect(page.getByRole('heading', { name })).toBeVisible();
-  return page.url().split('/').pop() ?? '';
+
+  // Matched, not split off the end: a trailing slash or a query string would otherwise be
+  // carried into the id and every request built from it would 404 for the wrong reason.
+  const id = /\/account\/collections\/([0-9a-f-]{36})/.exec(page.url())?.[1];
+  expect(id, `expected a collection id in ${page.url()}`).toBeDefined();
+  return String(id);
 }
 
 test.describe('collections', () => {
@@ -80,7 +85,7 @@ test.describe('collections', () => {
     page,
   }) => {
     await signIn(page, `formula-${randomUUID().slice(0, 8)}@example.com`);
-    const id = await newCollection(page, `Formula ${randomUUID().slice(0, 8)}`);
+    await newCollection(page, `Formula ${randomUUID().slice(0, 8)}`);
 
     await page
       .getByTestId('csv-text')
@@ -89,7 +94,10 @@ test.describe('collections', () => {
     await page.getByTestId('apply-import').click();
     await expect(page.getByTestId('item-table').locator('tbody tr')).toHaveCount(1);
 
-    const csv = await page.request.get(`/v1/collections/${id}/export`);
+    // Follow the link the page actually offers, rather than a URL rebuilt from an id: this
+    // is the thing a person clicks, so it is the thing worth asserting.
+    const href = await page.getByTestId('export-csv').getAttribute('href');
+    const csv = await page.request.get(String(href));
     expect(csv.status()).toBe(200);
     const body = await csv.text();
     expect(body).toContain(`"'=cmd|'/c calc'!A1"`);

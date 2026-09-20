@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 
 const MAILPIT = process.env['MAILPIT_URL'] ?? 'http://127.0.0.1:8025';
 
@@ -42,6 +42,36 @@ export async function asNewClient(page: Page): Promise<void> {
   await page.context().setExtraHTTPHeaders({
     'x-forwarded-for': `203.0.113.${String(clientIpCounter % 250)}`,
   });
+}
+
+type Cookies = Awaited<ReturnType<BrowserContext['cookies']>>;
+
+const sessions = new Map<string, Cookies>();
+
+/**
+ * Sign in once per account, then reuse the session.
+ *
+ * Sign-in links are rate limited to five a minute **per account identifier** (SR-1.9), which
+ * is a real control we want. A suite whose every test signs in as the same seeded account
+ * trips it, and then fails somewhere unrelated with "you need to sign in" — the control
+ * working, looking like a bug.
+ *
+ * The full form → email → link journey is still exercised end to end by the sign-in suite;
+ * repeating it before every test proved nothing extra and cost the run its reliability.
+ */
+export async function signInOnce(page: Page, email: string): Promise<void> {
+  const cached = sessions.get(email);
+  if (cached) {
+    // Still a new client: reusing the session must not also mean reusing the IP. Every
+    // endpoint is rate limited per IP, and a whole suite arriving from one address
+    // eventually gets 429s that surface as "you need to sign in" — the API refusing, the
+    // page unable to tell that apart from a missing session.
+    await asNewClient(page);
+    await page.context().addCookies(cached);
+    return;
+  }
+  await signIn(page, email);
+  sessions.set(email, await page.context().cookies());
 }
 
 /** Complete a full sign-in the way a person would: form → email → link. */

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { signIn } from './helpers';
+import { signInOnce } from './helpers';
 
 /**
  * Phase 2 acceptance (AC-2.1 to AC-2.4), through a real browser against the real stack.
@@ -29,7 +29,9 @@ async function startBreak(
 
 test.describe('creator breaks', () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, CREATOR_EMAIL);
+    // Once per run: six sign-ins as the same account in one minute is exactly what the
+    // per-identifier auth rate limit exists to stop.
+    await signInOnce(page, CREATOR_EMAIL);
   });
 
   test('a pull reaches the overlay in under a second (AC-2.1)', async ({ page, context }) => {

@@ -26,11 +26,30 @@ export interface Card {
   cardType: string | null;
 }
 
+/**
+ * Say who the request is really for.
+ *
+ * A server-rendered page calls the API from the web container, so without this every visitor
+ * shares one address and one rate-limit bucket: a single busy user exhausts 120 requests a
+ * minute for everybody, and the API starts refusing pages for people who did nothing wrong.
+ * Worse, a 429 is indistinguishable from "not signed in" by the time it reaches a page, so
+ * the site would tell signed-in users to sign in.
+ *
+ * The header is the one Caddy set from the real peer (plan §15.3), and the API only honours
+ * it when `API_TRUST_PROXY` is on, which is only true behind that proxy. Browser calls
+ * through the `/v1` rewrite already carry it, so this makes the two paths agree rather than
+ * trusting anything new.
+ */
+async function forwardedFor(): Promise<Record<string, string>> {
+  const value = (await headers()).get('x-forwarded-for');
+  return value === null ? {} : { 'x-forwarded-for': value };
+}
+
 /** Fetch public catalog data during server rendering. Never forwards the user's cookies. */
 async function getPublic<T>(path: string): Promise<T | null> {
   try {
     const response = await fetch(`${INTERNAL_API}${path}`, {
-      headers: { accept: 'application/json' },
+      headers: { accept: 'application/json', ...(await forwardedFor()) },
       next: { revalidate: 60 },
     });
     if (!response.ok) return null;
@@ -46,7 +65,7 @@ async function getAuthed<T>(path: string): Promise<T | null> {
   if (!cookie) return null;
   try {
     const response = await fetch(`${INTERNAL_API}${path}`, {
-      headers: { accept: 'application/json', cookie },
+      headers: { accept: 'application/json', cookie, ...(await forwardedFor()) },
       cache: 'no-store',
     });
     if (!response.ok) return null;
@@ -157,7 +176,11 @@ export const api = {
     const cookie = (await headers()).get('cookie');
     try {
       const response = await fetch(`${INTERNAL_API}/v1/collections/${id}`, {
-        headers: { accept: 'application/json', ...(cookie ? { cookie } : {}) },
+        headers: {
+          accept: 'application/json',
+          ...(cookie ? { cookie } : {}),
+          ...(await forwardedFor()),
+        },
         cache: 'no-store',
       });
       if (!response.ok) return null;
@@ -170,7 +193,11 @@ export const api = {
     const cookie = (await headers()).get('cookie');
     try {
       const response = await fetch(`${INTERNAL_API}/v1/collections/${id}/value`, {
-        headers: { accept: 'application/json', ...(cookie ? { cookie } : {}) },
+        headers: {
+          accept: 'application/json',
+          ...(cookie ? { cookie } : {}),
+          ...(await forwardedFor()),
+        },
         cache: 'no-store',
       });
       if (!response.ok) return null;
@@ -189,7 +216,7 @@ export const api = {
   publicCollections: async (): Promise<{ items: CollectionSummary[] } | null> => {
     try {
       const response = await fetch(`${INTERNAL_API}/v1/collections/public`, {
-        headers: { accept: 'application/json' },
+        headers: { accept: 'application/json', ...(await forwardedFor()) },
         cache: 'no-store',
       });
       if (!response.ok) return null;
@@ -202,7 +229,7 @@ export const api = {
   publicBreak: async (id: string): Promise<PublicBreak | null> => {
     try {
       const response = await fetch(`${INTERNAL_API}/v1/breaks/${id}/public`, {
-        headers: { accept: 'application/json' },
+        headers: { accept: 'application/json', ...(await forwardedFor()) },
         cache: 'no-store',
       });
       if (!response.ok) return null;
