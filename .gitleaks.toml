@@ -9,3 +9,19 @@ id = "gth-api-key"
 description = "gundam-tcg-hub API key"
 regex = '''gth_(live|test)_[a-z0-9]{8}_[A-Za-z0-9_-]{32,}'''
 keywords = ["gth_live_", "gth_test_"]
+
+# AWS access key IDs.
+#
+# The upstream default rule needs a nearby secret access key before it fires, because the
+# bare pattern is noisy in the wild. That means a lone `AKIA...` committed on its own is
+# NOT caught by the defaults -- which the guardrail proofs discovered on 2026-09-20, since
+# plan §27 uses exactly that as its first proof. An access key ID is still half a
+# credential and worth blocking on sight.
+#
+# The shape is fixed (a 4-letter prefix and 16 uppercase alphanumerics), so false positives
+# are rare; if one ever appears, allowlist that path rather than dropping the rule.
+[[rules]]
+id = "aws-access-key-id"
+description = "AWS access key ID"
+regex = '''\b(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}\b'''
+keywords = ["AKIA", "ASIA", "ABIA", "ACCA"]

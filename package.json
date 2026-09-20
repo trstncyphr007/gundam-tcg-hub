@@ -25,6 +25,7 @@
     "stack:down": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml down",
     "stack:reset": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml down -v",
     "sec:scan": "bash scripts/sec-scan.sh",
+    "sec:proofs": "bash scripts/guardrail-proofs.sh",
     "licenses:check": "node scripts/check-licenses.mjs",
     "prepare": "lefthook install",
     "keys:create": "pnpm --filter @gth/db api-key create",
