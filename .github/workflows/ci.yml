@@ -115,7 +115,11 @@ jobs:
       - name: playwright
         run: |
           pnpm --filter @gth/web exec playwright install --with-deps chromium
-          pnpm --filter @gth/web e2e
+          # The e2e global setup seeds the creator account directly, because the role
+          # cannot be granted through the app (SR-2.6). Read just the one variable rather
+          # than sourcing .env: some values contain spaces and would break a shell source.
+          DATABASE_URL_MIGRATOR="$(grep -m1 '^DATABASE_URL_MIGRATOR=' .env | cut -d= -f2-)" \
+            pnpm --filter @gth/web e2e
 
       - if: failure()
         run: tail -n 100 /tmp/api.log /tmp/web.log || true

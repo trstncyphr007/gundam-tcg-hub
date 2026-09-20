@@ -12,6 +12,24 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
 
+  /**
+   * Next gzips responses by default, including the ones it proxies. A gzip stream buffers
+   * until it has enough to emit a block, which silently breaks server-sent events: the OBS
+   * overlay's connection opens, the headers arrive, and then no event is delivered until
+   * the connection closes. Caddy compresses at the edge in production, so Next doing it
+   * again behind the proxy bought nothing anyway.
+   */
+  compress: false,
+
+  /**
+   * Dev only. The dev server refuses to serve its own HMR and chunk requests to an origin
+   * it does not recognise, and the e2e suite drives the app on 127.0.0.1 rather than
+   * localhost. Without this the pages render but never hydrate: a form then submits as a
+   * plain GET, which looks like a broken app and is really a blocked script.
+   * Has no effect on a production build.
+   */
+  allowedDevOrigins: ['127.0.0.1', 'localhost'],
+
   // No server-side image optimisation: we render no remote images yet, and it would pull
   // sharp/libvips (LGPL-3.0) into the shipped image for nothing. Revisit if we serve images.
   images: { unoptimized: true },

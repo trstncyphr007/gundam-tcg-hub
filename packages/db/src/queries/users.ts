@@ -55,6 +55,12 @@ export interface AuditEntry {
   targetId?: string | null;
   ipHash?: string | null;
   uaHash?: string | null;
+  /**
+   * What changed, for actions where "it changed" is not enough to reconstruct later --
+   * a role grant, for instance, is only meaningful with the previous role beside it.
+   * Never put credentials or PII here; the audit log is retained for a year (SR-X.23).
+   */
+  diff?: Record<string, unknown> | null;
 }
 
 /** Append-only by database grant; failures must never break the request path. */
@@ -66,5 +72,6 @@ export async function writeAuditLog(db: Database, entry: AuditEntry): Promise<vo
     targetId: entry.targetId ?? null,
     ipHash: entry.ipHash ?? null,
     uaHash: entry.uaHash ?? null,
+    diff: entry.diff ?? null,
   });
 }
