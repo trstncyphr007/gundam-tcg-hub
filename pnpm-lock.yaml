@@ -246,6 +246,12 @@ importers:
 
   packages/db:
     dependencies:
+      '@gth/core':
+        specifier: workspace:*
+        version: link:../core
+      '@gth/security':
+        specifier: workspace:*
+        version: link:../security
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2(kysely@0.29.5)(postgres@3.4.9)
@@ -259,12 +265,6 @@ importers:
       '@gth/config':
         specifier: workspace:*
         version: link:../config
-      '@gth/core':
-        specifier: workspace:*
-        version: link:../core
-      '@gth/security':
-        specifier: workspace:*
-        version: link:../security
       '@testcontainers/postgresql':
         specifier: 12.1.0
         version: 12.1.0
