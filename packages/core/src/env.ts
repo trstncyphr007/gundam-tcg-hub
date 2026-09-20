@@ -39,6 +39,15 @@ export const logLevelSchema = z
 
 export const portSchema = z.coerce.number().int().min(1).max(65535);
 
+/**
+ * Treat an empty value as absent. Compose, systemd and CI all pass unset variables through
+ * as empty strings, and "" is not a configured value — without this, an optional setting
+ * left blank fails validation and the service refuses to boot.
+ */
+export function optional<T extends z.ZodType>(schema: T) {
+  return z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+}
+
 export const booleanStringSchema = z
   .enum(['true', 'false'])
   .default('false')

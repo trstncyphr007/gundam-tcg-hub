@@ -1,7 +1,9 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  // The migration runner ships with the app so a deploy applies exactly the migrations
+  // that were built and scanned.
+  entry: ['src/index.ts', 'src/migrate.ts'],
   format: ['esm'],
   platform: 'node',
   target: 'node24',

@@ -1,0 +1,18 @@
+# LOCAL VERIFICATION ONLY — overlays docker-compose.prod.yml so the production stack can be
+# exercised on this machine:
+#   - plain HTTP on 8080 (no ACME certificate for "localhost")
+#   - Postgres published on 5433 for seeding/inspection. In production it sits on an
+#     internal-only network, which Docker cannot publish ports from at all — that isolation
+#     is the point, so this override exists to weaken it *only* on a developer machine.
+# Never use this file on a server.
+name: gth-prod
+
+services:
+  caddy:
+    ports: !override
+      - '127.0.0.1:8080:8080'
+
+  postgres:
+    networks: !override [internal, edge]
+    ports:
+      - '127.0.0.1:5433:5432'
