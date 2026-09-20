@@ -7,6 +7,9 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  // Grants the creator role to the e2e account, which the app deliberately cannot do
+  // to itself (SR-2.6).
+  globalSetup: './e2e/global-setup.ts',
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

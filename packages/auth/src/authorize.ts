@@ -21,6 +21,8 @@ export type Action =
   | 'account:write'
   | 'watch:read'
   | 'watch:write'
+  | 'break:read'
+  | 'break:write'
   | 'admin:access';
 
 const BASE_ACTIONS: readonly Action[] = [
@@ -31,12 +33,19 @@ const BASE_ACTIONS: readonly Action[] = [
   'watch:write',
 ];
 
+/**
+ * Running a break is a creator privilege (FR-2.2). The public break page and the OBS
+ * overlay are read by people with no account at all, so they don't go through here --
+ * the overlay is gated by its token and the public page by the break being published.
+ */
+const CREATOR_ACTIONS: readonly Action[] = ['break:read', 'break:write'];
+
 /** Role → actions granted to every holder of that role, regardless of ownership. */
 const ROLE_GRANTS = new Map<Role, readonly Action[]>([
   ['user', BASE_ACTIONS],
-  ['creator', BASE_ACTIONS],
+  ['creator', [...BASE_ACTIONS, ...CREATOR_ACTIONS]],
   ['seller', BASE_ACTIONS],
-  ['admin', [...BASE_ACTIONS, 'catalog:write', 'admin:access']],
+  ['admin', [...BASE_ACTIONS, ...CREATOR_ACTIONS, 'catalog:write', 'admin:access']],
 ]);
 
 function grantsFor(role: Role): readonly Action[] {

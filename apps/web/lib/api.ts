@@ -56,6 +56,32 @@ async function getAuthed<T>(path: string): Promise<T | null> {
   }
 }
 
+export interface BreakSummary {
+  id: string;
+  title: string;
+  status: 'draft' | 'live' | 'ended';
+  costCents: number | null;
+  overlayTokenVersion: number;
+  createdAt: string;
+}
+
+export interface PublicPull {
+  seq: number;
+  label: string;
+  valueCentsAtPull: number;
+  pulledAt: string;
+}
+
+export interface PublicBreak {
+  id: string;
+  title: string;
+  status: 'draft' | 'live' | 'ended';
+  costCents: number | null;
+  productName: string | null;
+  pulls: PublicPull[];
+  totalCents: number;
+}
+
 export const api = {
   cards: (query: string) =>
     getPublic<Page<Card>>(`/v1/cards?limit=24${query ? `&q=${encodeURIComponent(query)}` : ''}`),
@@ -69,4 +95,18 @@ export const api = {
       items: { id: string; sealedProductId: string | null; channels: string[] }[];
       limit: number;
     }>('/v1/watches'),
+  breaks: () => getAuthed<{ items: BreakSummary[] }>('/v1/breaks'),
+  // A break page must never serve a stale total, so it opts out of the 60s cache.
+  publicBreak: async (id: string): Promise<PublicBreak | null> => {
+    try {
+      const response = await fetch(`${INTERNAL_API}/v1/breaks/${id}/public`, {
+        headers: { accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!response.ok) return null;
+      return (await response.json()) as PublicBreak;
+    } catch {
+      return null;
+    }
+  },
 };

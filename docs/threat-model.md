@@ -106,6 +106,28 @@ scanner as semi-trusted: authenticated, but possibly buggy or compromised.
 | Silent acceptance of a rejected report                | Rejections return 422 with an explicit reason, so the operator sees why rather than assuming success                                                                   |
 | Scraping a shop that forbids it                       | `sources.json` records the robots.txt evidence per shop (`docs/scanner-source-review.md`); disallowed shops are imported with `enabled = false`                        |
 
+## Creator tooling and the OBS overlay (Phase 2, 2026-09-20)
+
+The overlay is opened by a URL with no account behind it, on a machine that is broadcasting
+its own screen. That combination is the whole threat model for this phase: **the URL is the
+credential, and the display is public by construction.**
+
+| Threat                                                   | Controls                                                                                                                                                                        |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overlay token leaked on stream, in a clip, or in a repo  | 32 CSPRNG bytes, stored as an HMAC and shown exactly once. Regenerating it kills the old one instantly — the hash is overwritten, so there is nothing left to match (AC-2.2)    |
+| Token leaking through logs or referrers                  | The token lives in the URL path, so the request-log serialiser masks that segment; responses are `no-store`, `no-referrer` and `noindex`                                        |
+| Token guessed or brute-forced                            | Lookup is a single indexed probe on the hash; a wrong token is indistinguishable from a missing break. 43 characters of base64url is not searchable                             |
+| A revoked token kept working for someone already viewing | The live stream notices the rotation, emits `revoked` and closes the connection                                                                                                 |
+| Reading a draft break by guessing its id                 | Row-level security: readable only by the creator, or by presenting the token's hash to Postgres for that transaction (ADR-017). Proven by a test that counts zero rows unscoped |
+| One creator reading or editing another's break           | RLS on both tables plus ownership checks; "not found" and "not yours" return the same answer                                                                                    |
+| XSS through a break title or card label on stream        | React escaping, nonce CSP, no `dangerouslySetInnerHTML`. A payload is stored verbatim as data and rendered as text — asserted in the browser on the page _and_ the overlay      |
+| Personal data appearing on stream (FR-2.4)               | The public and overlay queries select no creator id, name or email. Stream-safe is a property of the query, not of the template                                                 |
+| A spreadsheet executing an exported cell                 | Formula-injection escaping on every cell, including headers; the Excel DDE payload is in the test corpus (AC-2.4)                                                               |
+| Rewriting a pull log after the fact                      | `UPDATE`/`DELETE` revoked from the app roles before any data existed; a live break cannot be reopened once ended. Phase 4 hash-chains on top of this                            |
+| A creator flooding the tables                            | 200 breaks per creator, 2000 pulls per break, 120 pulls/min rate limit                                                                                                          |
+| Overlay connections exhausting the server                | 5 concurrent streams per token, heartbeats, and a server-side idle timeout                                                                                                      |
+| Self-granting the creator role                           | `role` is `input: false`; grants are CLI-only and write the previous and new value to the audit log                                                                             |
+
 ## Accepted risks
 
 - Local hooks can be skipped with `--no-verify`; CI re-runs every gate (ADR-014).

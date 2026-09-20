@@ -71,6 +71,20 @@
       "when": 1789875471738,
       "tag": "0009_worker_listing_insert",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789881396693,
+      "tag": "0010_phase2_breaks",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789881396694,
+      "tag": "0011_break_rls",
+      "breakpoints": true
     }
   ]
 }
