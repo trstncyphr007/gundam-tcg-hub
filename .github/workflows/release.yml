@@ -1,0 +1,135 @@
+# Build, sign and publish the deployable images (plan §18.4).
+# Deployment itself is a separate, manually triggered workflow (deploy.yml) so a merge can
+# never push to a server on its own.
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  SYFT_IMAGE: anchore/syft:v1.52.0@sha256:500e2d872ac019436926e8322b4fc1f39441d94d21f6f4046c6ff29b30e8cb02
+  TRIVY_IMAGE: aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+  COSIGN_VERSION: v3.1.3
+
+jobs:
+  publish:
+    name: build · scan · sign · push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write # push to GHCR
+      id-token: write # keyless signing (Sigstore)
+      attestations: write # build provenance
+    outputs:
+      api-digest: ${{ steps.push.outputs.api-digest }}
+      web-digest: ${{ steps.push.outputs.web-digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: install cosign (checksum-verified)
+        run: |
+          set -euo pipefail
+          base="https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}"
+          curl -fsSL -o cosign "${base}/cosign-linux-amd64"
+          curl -fsSL -o checksums.txt "${base}/cosign_checksums.txt"
+          grep ' cosign-linux-amd64$' checksums.txt | sed 's/cosign-linux-amd64/cosign/' | sha256sum -c -
+          chmod +x cosign && sudo mv cosign /usr/local/bin/cosign
+          cosign version
+
+      - name: build images
+        run: |
+          docker build -f infra/docker/api.Dockerfile -t gth-api:build .
+          docker build -f infra/docker/web.Dockerfile -t gth-web:build .
+
+      - name: scan images (fixable HIGH/CRITICAL block the release)
+        run: |
+          mkdir -p image reports
+          docker save gth-api:build -o image/api.tar
+          docker save gth-web:build -o image/web.tar
+          for name in api web; do
+            docker run --rm -v "$PWD/image:/image:ro" "$TRIVY_IMAGE" image --quiet \
+              --input "/image/${name}.tar" --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed
+          done
+
+      - name: sbom for each image
+        run: |
+          for name in api web; do
+            docker run --rm -v "$PWD/image:/image:ro" -v "$PWD/reports:/reports" "$SYFT_IMAGE" \
+              "docker-archive:/image/${name}.tar" -o "cyclonedx-json=/reports/sbom-${name}.cdx.json"
+          done
+
+      - name: log in to GHCR
+        env:
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$TOKEN" | docker login "$REGISTRY" -u "$ACTOR" --password-stdin
+
+      - name: push
+        id: push
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          owner=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          for name in api web; do
+            ref="${REGISTRY}/${owner}/gth-${name}:sha-${GITHUB_SHA}"
+            docker tag "gth-${name}:build" "$ref"
+            docker push "$ref"
+            digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$ref" | cut -d@ -f2)
+            echo "${name}-digest=${digest}" >> "$GITHUB_OUTPUT"
+            echo "${name}: ${ref}@${digest}"
+          done
+
+      - name: sign images and attach SBOMs (keyless)
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          owner=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          for name in api web; do
+            digest_var="${name}-digest"
+            digest=$(grep "^${digest_var}=" "$GITHUB_OUTPUT" | cut -d= -f2-)
+            image="${REGISTRY}/${owner}/gth-${name}@${digest}"
+            cosign sign --yes "$image"
+            cosign attest --yes --type cyclonedx --predicate "reports/sbom-${name}.cdx.json" "$image"
+          done
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/gth-api
+          subject-digest: ${{ steps.push.outputs.api-digest }}
+          push-to-registry: true
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sboms
+          path: reports/*.cdx.json
+          retention-days: 30
+
+      - name: summary
+        env:
+          OWNER: ${{ github.repository_owner }}
+          API_DIGEST: ${{ steps.push.outputs.api-digest }}
+          WEB_DIGEST: ${{ steps.push.outputs.web-digest }}
+        run: |
+          owner=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          {
+            echo "### Signed images"
+            echo ""
+            echo "- \`${REGISTRY}/${owner}/gth-api@${API_DIGEST}\`"
+            echo "- \`${REGISTRY}/${owner}/gth-web@${WEB_DIGEST}\`"
+            echo ""
+            echo "Deploy with the **deploy** workflow, passing these digests."
+          } >> "$GITHUB_STEP_SUMMARY"

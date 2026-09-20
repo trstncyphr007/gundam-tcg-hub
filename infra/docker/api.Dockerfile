@@ -41,6 +41,8 @@ COPY --from=prod-deps /repo/node_modules /app/node_modules
 COPY --from=prod-deps /repo/apps/api/node_modules ./node_modules
 COPY --from=build /repo/apps/api/package.json ./package.json
 COPY --from=build /repo/apps/api/dist ./dist
+# The bundled migration runner resolves its SQL relative to dist/ (../migrations).
+COPY --from=build /repo/packages/db/migrations ./migrations
 USER 65532:65532
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \

@@ -1,0 +1,57 @@
+# Reverse proxy (plan §15.3). One public entry point; everything else stays on an
+# internal network with no published ports.
+{
+	email {$ACME_EMAIL:ops@localhost}
+	servers {
+		protocols h1 h2 h3
+	}
+	# Local runs use the internal CA instead of ACME; prod sets neither.
+	{$CADDY_GLOBAL_EXTRA}
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(self)"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+		-X-Powered-By
+	}
+}
+
+(proxy_client_ip) {
+	# Overwrite, never append: the API trusts X-Forwarded-For for per-IP rate limits
+	# (API_TRUST_PROXY=true). A client-supplied value would let one caller pose as many
+	# and walk straight past those limits.
+	header_up X-Forwarded-For {remote_host}
+	header_up X-Real-IP {remote_host}
+}
+
+{$SITE_ADDRESS:localhost} {
+	import security_headers
+	encode zstd gzip
+
+	# Request bodies are small; uploads (Phase 5) go straight to object storage.
+	request_body {
+		max_size 1MB
+	}
+
+	# The API is served under the web origin so session cookies stay same-origin.
+	handle /api/auth/* {
+		reverse_proxy api:4000 {
+			import proxy_client_ip
+		}
+	}
+	handle /v1/* {
+		reverse_proxy api:4000 {
+			import proxy_client_ip
+		}
+	}
+	handle {
+		reverse_proxy web:3000 {
+			import proxy_client_ip
+		}
+	}
+}

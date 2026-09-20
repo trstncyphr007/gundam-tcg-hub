@@ -1,0 +1,106 @@
+# Manual deploy (plan §15.5). Never triggered by a merge: a human names the digests.
+# The server refuses anything that is not a signed image built by this repository.
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_digest:
+        description: 'API image digest, e.g. sha256:...'
+        required: true
+      web_digest:
+        description: 'Web image digest, e.g. sha256:...'
+        required: true
+      environment:
+        description: 'Target environment'
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions: {}
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write # verify keyless signatures
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: install cosign (checksum-verified)
+        run: |
+          set -euo pipefail
+          base="https://github.com/sigstore/cosign/releases/download/v3.1.3"
+          curl -fsSL -o cosign "${base}/cosign-linux-amd64"
+          curl -fsSL -o checksums.txt "${base}/cosign_checksums.txt"
+          grep ' cosign-linux-amd64$' checksums.txt | sed 's/cosign-linux-amd64/cosign/' | sha256sum -c -
+          chmod +x cosign && sudo mv cosign /usr/local/bin/cosign
+
+      # Gate: only images this repository built and signed may be deployed. A digest from
+      # anywhere else fails here, before the server is touched at all.
+      - name: verify signatures
+        env:
+          # Inputs go through the environment, never into the script text: an interpolated
+          # `${{ }}` inside `run:` would let a crafted "digest" execute commands here.
+          API_DIGEST: ${{ inputs.api_digest }}
+          WEB_DIGEST: ${{ inputs.web_digest }}
+          REPOSITORY: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          for d in "$API_DIGEST" "$WEB_DIGEST"; do
+            [[ "$d" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "not a digest: $d"; exit 1; }
+          done
+          owner=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          for pair in "api:${API_DIGEST}" "web:${WEB_DIGEST}"; do
+            name="${pair%%:*}"; digest="${pair#*:}"
+            cosign verify "ghcr.io/${owner}/gth-${name}@${digest}" \
+              --certificate-identity-regexp "^https://github.com/${REPOSITORY}/.github/workflows/release.yml@refs/heads/main$" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          done
+
+      - name: connect to the tailnet
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          API_DIGEST: ${{ inputs.api_digest }}
+          WEB_DIGEST: ${{ inputs.web_digest }}
+          TARGET_ENV: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          install -m 600 /dev/null key && printf '%s' "$SSH_KEY" > key
+          ssh -i key -o StrictHostKeyChecking=accept-new "deploy@${HOST}" \
+            "sudo /srv/gth/deploy.sh '${TARGET_ENV}' '${API_DIGEST}' '${WEB_DIGEST}'"
+          rm -f key
+
+      - name: smoke test
+        env:
+          BASE_URL: ${{ vars.BASE_URL }}
+        run: |
+          set -euo pipefail
+          for path in / /v1/games; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "${BASE_URL}${path}")
+            echo "${path} -> ${code}"
+            [ "$code" = "200" ] || { echo "smoke test failed"; exit 1; }
+          done
+          # Per-user data must still require a session.
+          code=$(curl -s -o /dev/null -w '%{http_code}' "${BASE_URL}/v1/me")
+          [ "$code" = "401" ] || { echo "/v1/me should be 401, got ${code}"; exit 1; }
