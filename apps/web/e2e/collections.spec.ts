@@ -94,14 +94,21 @@ test.describe('collections', () => {
     await page.getByTestId('apply-import').click();
     await expect(page.getByTestId('item-table').locator('tbody tr')).toHaveCount(1);
 
-    // Follow the link the page actually offers, rather than a URL rebuilt from an id: this
-    // is the thing a person clicks, so it is the thing worth asserting.
+    // Follow the link the page actually offers, rather than a URL rebuilt from an id.
     const href = await page.getByTestId('export-csv').getAttribute('href');
-    const csv = await page.request.get(String(href));
-    expect(csv.status()).toBe(200);
-    const body = await csv.text();
-    expect(body).toContain(`"'=cmd|'/c calc'!A1"`);
-    expect(body).not.toContain('"=cmd');
+
+    // Fetched *inside the page*, not through `page.request`. Playwright's API client applies
+    // cookie rules strictly, and a `Secure` session cookie is never sent to an http:// URL --
+    // no localhost exception, unlike a browser. Against a production build that means no
+    // session, and a private collection correctly answers 404. This is what the browser does.
+    const csv = await page.evaluate(async (url: string) => {
+      const response = await fetch(url);
+      return { status: response.status, body: await response.text() };
+    }, String(href));
+
+    expect(csv.status).toBe(200);
+    expect(csv.body).toContain(`"'=cmd|'/c calc'!A1"`);
+    expect(csv.body).not.toContain('"=cmd');
   });
 
   test('a private collection is not reachable by anyone else (AC-3.2)', async ({
