@@ -5,6 +5,7 @@ import {
   booleanStringSchema,
   logLevelSchema,
   nodeEnvSchema,
+  optional,
   parseEnv,
   portSchema,
 } from './env.js';
@@ -73,5 +74,45 @@ describe('parseEnv', () => {
 
   it('defaults to process.env', () => {
     expect(() => parseEnv(z.object({}))).not.toThrow();
+  });
+});
+
+describe('optional', () => {
+  const schema = z.object({
+    FEATURE_URL: optional(z.url()),
+    FEATURE_KEY: optional(z.string().min(8)),
+  });
+
+  it('treats an empty value as absent', () => {
+    // Compose, systemd and CI pass unset variables through as empty strings. If "" were
+    // treated as a value, a deployment that simply leaves a feature unconfigured would
+    // fail validation and refuse to boot.
+    const env = parseEnv(schema, { FEATURE_URL: '', FEATURE_KEY: '' });
+    expect(env.FEATURE_URL).toBeUndefined();
+    expect(env.FEATURE_KEY).toBeUndefined();
+  });
+
+  it('treats a missing variable as absent', () => {
+    const env = parseEnv(schema, {});
+    expect(env.FEATURE_URL).toBeUndefined();
+  });
+
+  it('still validates a value that is present', () => {
+    const env = parseEnv(schema, {
+      FEATURE_URL: 'https://example.com',
+      FEATURE_KEY: 'long-enough',
+    });
+    expect(env.FEATURE_URL).toBe('https://example.com');
+    expect(env.FEATURE_KEY).toBe('long-enough');
+  });
+
+  it('rejects a present but invalid value', () => {
+    expect(() => parseEnv(schema, { FEATURE_URL: 'not-a-url' })).toThrow(EnvValidationError);
+    expect(() => parseEnv(schema, { FEATURE_KEY: 'short' })).toThrow(EnvValidationError);
+  });
+
+  it('does not treat whitespace as empty', () => {
+    // " " is a real (if odd) value; only "" means unset.
+    expect(() => parseEnv(schema, { FEATURE_KEY: ' ' })).toThrow(EnvValidationError);
   });
 });

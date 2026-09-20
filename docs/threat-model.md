@@ -75,7 +75,24 @@ risk register is in the build plan (§17); this file tracks **current state**.
 | Leaking user data into caches             | Per-user pages are `no-store` at the API; catalog pages are public and cached                                                                                                                                                       |
 | Third-party script/style injection        | No external script or font origins: `default-src 'self'`, `object-src 'none'`, `base-uri 'none'`                                                                                                                                    |
 
+## Deploy track additions (2026-09-20)
+
+| Threat                                      | Controls                                                                                                                                                         |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deploying a tampered or foreign image (T13) | Keyless signing at build; **verified twice** — in CI and again on the server — against this repo's release workflow identity. Digest format validated before use |
+| Command injection through deploy inputs     | Workflow inputs pass via the environment, never interpolated into shell; digests must match `^sha256:[0-9a-f]{64}$` (zizmor clean)                               |
+| A merge silently reaching production        | Deploy is `workflow_dispatch` only, environment chosen by a human; release never deploys                                                                         |
+| Secrets on disk                             | SOPS+age encrypted at rest; decrypted only into tmpfs (`/run/gth`) at deploy time, mode 0400                                                                     |
+| Broken release left running                 | Migrations run first as a one-off job; failure rolls back to the recorded last-good digests                                                                      |
+| Container escape / lateral movement         | Non-root, read-only, all capabilities dropped (minimum re-added for Postgres/Valkey), no-new-privileges, per-service CPU/memory/PID limits                       |
+| Reaching the databases from outside         | Postgres and Valkey sit on an `internal: true` network with **no published ports** — Docker cannot publish from it at all (proven locally)                       |
+| Rate-limit evasion behind the proxy         | Caddy overwrites `X-Forwarded-For`; the API trusts it only because of that                                                                                       |
+| SSH exposed to the internet                 | Tailscale-only administration; UFW allows 80/443 only                                                                                                            |
+| Ransomware destroying backups               | Server holds write-only backup credentials; pruning uses a separate offline key; restore drill documented and scheduled                                          |
+
 ## Accepted risks
 
 - Local hooks can be skipped with `--no-verify`; CI re-runs every gate (ADR-014).
 - Solo maintainer self-merges after green CI (ADR-012).
+- The deploy workflow and server script are written but **unexercised** until the VPS exists;
+  the production stack itself is verified locally (`scripts/verify-prod-stack.sh`).

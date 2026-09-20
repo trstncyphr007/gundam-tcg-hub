@@ -87,7 +87,10 @@ jobs:
           # bundle does not include static assets, they are copied next to it.
           cp -r apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
           # The API reads its configuration from the environment (generated above).
-          set -a; . ./.env; set +a
+          set -a
+          # shellcheck disable=SC1091,SC1094
+          . ./.env
+          set +a
           NODE_ENV=production node apps/api/dist/index.js > /tmp/api.log 2>&1 &
           NODE_ENV=production PORT=3000 HOSTNAME=127.0.0.1 \
             node apps/web/.next/standalone/apps/web/server.js > /tmp/web.log 2>&1 &

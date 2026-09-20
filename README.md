@@ -100,6 +100,22 @@ Optional services: `docker compose --env-file .env -f infra/compose/docker-compo
 | `pnpm stack:down` / `pnpm stack:reset`                     | Stop the stack / stop and **delete** local data                     |
 | `docker build -f infra/docker/api.Dockerfile -t gth-api .` | Hardened distroless API image                                       |
 
+## Deploying
+
+```bash
+bash scripts/verify-prod-stack.sh   # build the real images and run the production stack locally
+```
+
+That brings up Caddy + web + API + Postgres + Valkey exactly as production does (hardened,
+non-root, read-only containers; databases on an internal network with no published ports),
+runs migrations as a one-off job, and drives the result in a browser.
+
+On a merge to `main`, **release** builds, scans, SBOMs, signs (keyless/Sigstore) and pushes
+images to GHCR. **deploy** is manual: you paste the digests, and both CI _and_ the server
+verify the signature chain before anything starts. Server setup:
+[`docs/runbooks/vps-setup.md`](docs/runbooks/vps-setup.md) ·
+backups: [`docs/runbooks/backups.md`](docs/runbooks/backups.md).
+
 ## Layout
 
 ```
