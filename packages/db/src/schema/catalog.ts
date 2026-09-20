@@ -108,6 +108,11 @@ export const sealedProducts = app.table(
     setId: uuid('set_id').references(() => sets.id, { onDelete: 'set null' }),
     kind: sealedKind('kind').notNull(),
     name: text('name').notNull(),
+    /**
+     * Stable key the scanner uses to name a product without knowing database ids
+     * (ADR-013 data contract), e.g. "freedom-ascension-booster-box-en".
+     */
+    slug: text('slug').notNull(),
     upc: text('upc'),
     msrpCents: integer('msrp_cents'),
     createdAt: createdAt(),
@@ -115,7 +120,9 @@ export const sealedProducts = app.table(
   },
   (t) => [
     uniqueIndex('sealed_products_game_name_key').on(t.gameId, t.name),
+    uniqueIndex('sealed_products_slug_key').on(t.slug),
     check('sealed_products_msrp_nonneg', sql`${t.msrpCents} is null or ${t.msrpCents} >= 0`),
+    check('sealed_products_slug_format', sql`${t.slug} ~ '^[a-z0-9][a-z0-9-]{1,78}[a-z0-9]$'`),
   ],
 );
 
