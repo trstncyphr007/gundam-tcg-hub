@@ -26,7 +26,7 @@ evidence column is not optional.
 | 1.4  | Parameterised database access             | **Met**     | Drizzle only; `sql.raw` banned outside migrations, enforced by `.semgrep.yml` (proof 4). SQL-injection payload tests at query and HTTP layers                                                                                                        |
 | 1.5  | OS command injection                      | **Met**     | No shell-out in app code; `child_process` banned by lint                                                                                                                                                                                             |
 | 1.6  | No untrusted deserialization              | **Met**     | JSON only, schema-validated                                                                                                                                                                                                                          |
-| 1.9  | CSV / spreadsheet injection               | **Met**     | `csvCell` escapes formula prefixes; 17 tests including the Excel DDE payload (AC-2.4, and in the browser)                                                                                                                                            |
+| 1.9  | CSV / spreadsheet injection               | **Met**     | `csvCell` escapes formula prefixes on export; the reader never evaluates anything, so a payload survives import as plain text and comes back out neutralised. Tested end to end through a collection (AC-2.4, AC-3.5)                                |
 | 1.12 | SSRF defence                              | **Partial** | Listing URLs must be https and host-matched to an approved retailer; the scanner resolves robots.txt with its own UA and fails closed on 401/403. **Gap:** no DNS-rebinding check on resolved IPs — lands with the first user-supplied URL (Phase 3) |
 
 ## V2 Validation and business logic
@@ -68,12 +68,12 @@ evidence column is not optional.
 
 ## V8 Authorization
 
-| #   | Control                            | Status  | Evidence                                                                                                                   |
-| --- | ---------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
-| 8.1 | Deny by default                    | **Met** | `authorize()` requires an explicit action; every route declares one                                                        |
-| 8.2 | Ownership checked on every object  | **Met** | Two-user IDOR tests for watches and breaks; "not found" and "not yours" return the same answer                             |
-| 8.3 | Defence in depth at the data layer | **Met** | RLS `FORCE` on watches, breaks and pulls. Proven by a test that counts a draft row on an unscoped connection and gets zero |
-| 8.4 | Roles are server-controlled        | **Met** | `role` is `input: false`; grants are CLI-only and audited with before/after                                                |
+| #   | Control                            | Status  | Evidence                                                                                                                                                                                                                             |
+| --- | ---------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 8.1 | Deny by default                    | **Met** | `authorize()` requires an explicit action; every route declares one                                                                                                                                                                  |
+| 8.2 | Ownership checked on every object  | **Met** | Two-user IDOR tests for watches, breaks and collections, at the query layer and over HTTP; "not found" and "not yours" return the same answer (AC-3.2)                                                                               |
+| 8.3 | Defence in depth at the data layer | **Met** | RLS `FORCE` on watches, breaks, pulls and collections. Proven by a test that counts a draft row on an unscoped connection and gets zero, and by one showing a _public_ collection is readable by everyone and writable by one person |
+| 8.4 | Roles are server-controlled        | **Met** | `role` is `input: false`; grants are CLI-only and audited with before/after                                                                                                                                                          |
 
 ## V11 Cryptography
 

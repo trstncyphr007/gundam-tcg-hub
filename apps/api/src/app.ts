@@ -11,6 +11,7 @@ import { authPlugin } from './plugins/auth.js';
 import { registerAccountRoutes } from './routes/account.js';
 import { type BreakDeps, registerBreakRoutes } from './routes/breaks.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
+import { registerCollectionRoutes } from './routes/collections.js';
 import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
 import { registerWatchRoutes } from './routes/watches.js';
 
@@ -144,6 +145,7 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
   if (deps.writeDb && deps.auth) {
     registerAccountRoutes(app, deps.writeDb);
     registerWatchRoutes(app, deps.writeDb);
+    registerCollectionRoutes(app, deps.writeDb);
   }
   if (deps.ingest) registerIngestRoutes(app, deps.ingest);
   if (deps.breaks) registerBreakRoutes(app, deps.breaks);

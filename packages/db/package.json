@@ -22,14 +22,14 @@
     "price-rollup": "tsx --env-file-if-exists=../../.env src/cli/price-rollup.ts"
   },
   "dependencies": {
+    "@gth/core": "workspace:*",
+    "@gth/security": "workspace:*",
     "drizzle-orm": "0.45.2",
     "postgres": "3.4.9",
     "zod": "4.6.2"
   },
   "devDependencies": {
     "@gth/config": "workspace:*",
-    "@gth/core": "workspace:*",
-    "@gth/security": "workspace:*",
     "@testcontainers/postgresql": "12.1.0",
     "@types/node": "24.13.4",
     "@vitest/coverage-v8": "5.0.0",

@@ -21,6 +21,8 @@ export type Action =
   | 'account:write'
   | 'watch:read'
   | 'watch:write'
+  | 'collection:read'
+  | 'collection:write'
   | 'break:read'
   | 'break:write'
   | 'admin:access';
@@ -31,6 +33,11 @@ const BASE_ACTIONS: readonly Action[] = [
   'account:write',
   'watch:read',
   'watch:write',
+  // A collection is a user's own list. Reading someone else's is decided by the row's
+  // visibility, not by a role, which is why both of these are ownership-checked at the call
+  // site and again by row-level security.
+  'collection:read',
+  'collection:write',
 ];
 
 /**
