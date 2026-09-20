@@ -8,4 +8,5 @@ export * from './queries/ingest.js';
 export * from './queries/messages.js';
 export * from './queries/listings.js';
 export * from './queries/breaks.js';
+export * from './queries/pricing.js';
 export * from './seed/sample.js';
