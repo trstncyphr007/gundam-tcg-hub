@@ -211,6 +211,20 @@
       "when": 1790029508279,
       "tag": "0029_passkey_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790033470084,
+      "tag": "0030_sign_in_devices",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790033485121,
+      "tag": "0031_sign_in_device_rls",
+      "breakpoints": true
     }
   ]
 }

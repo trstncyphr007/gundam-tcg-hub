@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { PasskeyManager } from './passkey-manager';
+import { SessionManager } from './session-manager';
 
 export const metadata = {
   title: 'Security · Gundam TCG Hub',
@@ -25,10 +26,11 @@ export default async function SecurityPage(): Promise<React.JSX.Element> {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Security</h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
-          How you sign in to this account.
+          How you sign in to this account, and where it is signed in.
         </p>
       </header>
       <PasskeyManager />
+      <SessionManager />
     </div>
   );
 }

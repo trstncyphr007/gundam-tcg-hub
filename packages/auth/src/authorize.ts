@@ -19,6 +19,11 @@ export interface Subject {
    * from the client (ADR-025). Only `passkey` passes the admin gate.
    */
   authMethod?: 'passkey' | 'magic_link' | 'discord' | null | undefined;
+  /**
+   * The id of the session making this request — never its token. Lets the sessions page say
+   * "this device" and keep it when signing out everywhere else (ADR-026).
+   */
+  sessionId?: string | undefined;
 }
 
 export interface OwnedResource {

@@ -16,5 +16,6 @@ export * from './queries/profiles.js';
 export * from './queries/live-sales.js';
 export * from './queries/moderation.js';
 export * from './queries/passkeys.js';
+export * from './queries/sessions.js';
 export * from './seed/sample.js';
 export * from './seed/prices.js';

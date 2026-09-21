@@ -19,6 +19,7 @@ import { registerCollectionRoutes } from './routes/collections.js';
 import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
 import { type LiveSaleDeps, registerLiveSaleRoutes } from './routes/live-sales.js';
 import { registerProfileRoutes } from './routes/profile.js';
+import { registerSessionRoutes } from './routes/sessions.js';
 import { registerWatchRoutes } from './routes/watches.js';
 import { renderDocsPage } from './v1/docs.js';
 import { buildOpenApiDocument } from './v1/openapi.js';
@@ -280,6 +281,7 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
 
   if (deps.writeDb && deps.auth) {
     registerAccountRoutes(app, deps.writeDb);
+    registerSessionRoutes(app, deps.writeDb);
     registerWatchRoutes(app, deps.writeDb);
     registerCollectionRoutes(app, deps.writeDb);
     registerProfileRoutes(app, deps.writeDb);
