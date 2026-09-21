@@ -80,8 +80,80 @@ export interface BreakSummary {
   title: string;
   status: 'draft' | 'live' | 'ended';
   costCents: number | null;
+  /** The denominator for every hit-rate comparison on the creator's profile (FR-4.3). */
+  packsOpened: number | null;
   overlayTokenVersion: number;
   createdAt: string;
+}
+
+export interface CreatorProfile {
+  id: string;
+  handle: string;
+  displayName: string;
+  bio: string | null;
+  published: boolean;
+}
+
+export interface BreakerSummary {
+  handle: string;
+  displayName: string;
+  bio: string | null;
+}
+
+export type OddsVerdict =
+  'unpublished' | 'insufficient' | 'not_comparable' | 'consistent' | 'above' | 'below';
+
+export interface RarityComparison {
+  rarity: string;
+  hits: number;
+  packs: number;
+  observedRate: number | null;
+  published: { numerator: number; denominator: number } | null;
+  publishedRate: number | null;
+  lowRate: number | null;
+  highRate: number | null;
+  verdict: OddsVerdict;
+}
+
+export interface BreakerProfile extends BreakerSummary {
+  totals: {
+    breaks: number;
+    endedBreaks: number;
+    pulls: number;
+    totalValueCents: number;
+    packsOpened: number;
+    breaksWithoutPackCount: number;
+  };
+  fairness: {
+    committed: number;
+    revealed: number;
+    endedBreaks: number;
+    chainsChecked: number;
+    chainsValid: number;
+    chainsBroken: number;
+    chainsUnverifiable: number;
+    badge: 'verified' | 'none' | 'broken';
+  };
+  rarityCounts: { rarity: string; pulls: number }[];
+  oddsReports: {
+    sealedProductId: string;
+    productName: string;
+    breaks: number;
+    packs: number;
+    unidentifiedPulls: number;
+    rarities: RarityComparison[];
+    sources: { rarity: string; sourceUrl: string; publishedAt: string | null }[];
+  }[];
+  recentBreaks: {
+    id: string;
+    title: string;
+    productName: string | null;
+    status: 'draft' | 'live' | 'ended';
+    packsOpened: number | null;
+    pulls: number;
+    totalCents: number;
+    endedAt: string | null;
+  }[];
 }
 
 export interface PublicPull {
@@ -303,6 +375,25 @@ export const api = {
       });
       if (!response.ok) return null;
       return (await response.json()) as { items: CollectionSummary[] };
+    } catch {
+      return null;
+    }
+  },
+  myProfile: () => getAuthed<{ profile: CreatorProfile | null }>('/v1/me/profile'),
+  breakers: () => getPublic<{ items: BreakerSummary[] }>('/v1/breakers'),
+  /**
+   * Not cached. The page carries a fairness verdict about a named person, and a cached
+   * "verified" surviving a chain that has just been found broken is the single worst thing
+   * this page could do.
+   */
+  breaker: async (handle: string): Promise<BreakerProfile | null> => {
+    try {
+      const response = await fetch(`${INTERNAL_API}/v1/breakers/${encodeURIComponent(handle)}`, {
+        headers: { accept: 'application/json', ...(await forwardedFor()) },
+        cache: 'no-store',
+      });
+      if (!response.ok) return null;
+      return (await response.json()) as BreakerProfile;
     } catch {
       return null;
     }

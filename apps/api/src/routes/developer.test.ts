@@ -1,5 +1,5 @@
 import { createAuth } from '@gth/auth';
-import { createDb, seedSample } from '@gth/db';
+import { asUser, createDb, seedSample } from '@gth/db';
 import { type TestDatabase, startTestDatabase } from '@gth/db/test';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -16,6 +16,8 @@ let workerPool: ReturnType<typeof createDb>;
 let alice: string;
 let bob: string;
 let cardId: string;
+/** Stands in for `:handle` the way `cardId` stands in for `:id`. */
+const CONTRACT_HANDLE = 'contract-breaker';
 const sentLinks: { email: string; url: string }[] = [];
 
 let ipCounter = 0;
@@ -88,6 +90,21 @@ beforeAll(async () => {
 
   alice = await signIn('dev-alice@example.com');
   bob = await signIn('dev-bob@example.com');
+
+  // A published breaker profile, so the contract test below has something for `:handle` to
+  // resolve to. Written as the owner, because `creator_profiles` is FORCE'd: even the table
+  // owner cannot insert somebody's public identity without declaring who it belongs to.
+  const owners = await tdb.db.execute<{ id: string }>(
+    `select id from app.users where email = 'dev-alice@example.com'`,
+  );
+  const ownerId = String(owners[0]?.id);
+  await asUser(tdb.db, ownerId, (tx) =>
+    tx.execute(
+      `insert into app.creator_profiles (user_id, handle, display_name, published)
+       values ('${ownerId}', '${CONTRACT_HANDLE}', 'Contract Breaker', true)
+       on conflict do nothing`,
+    ),
+  );
 });
 
 afterAll(async () => {
@@ -366,7 +383,11 @@ describe('the contract (plan §24)', () => {
   it.each(publicRoutes.map((route) => [route.path, route] as const))(
     'GET %s returns exactly what it promises',
     async (_path, route) => {
-      const url = route.path.replaceAll(':id', cardId);
+      // Every path parameter needs a real value, or the route answers 400 and this test
+      // silently stops checking the schema it was written to check.
+      const url = route.path.replaceAll(':id', cardId).replaceAll(':handle', CONTRACT_HANDLE);
+      expect(url, 'every path parameter needs a fixture above').not.toContain(':');
+
       const response = await app.inject({ method: 'GET', url });
       expect(response.statusCode, url).toBe(200);
 

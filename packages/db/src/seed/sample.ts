@@ -8,6 +8,7 @@ import {
   sealedProducts,
   sets,
 } from '../schema/catalog.js';
+import { packOdds } from '../schema/profiles.js';
 
 /**
  * Minimal SAMPLE catalog for local development and tests.
@@ -83,4 +84,30 @@ export async function seedSample(db: Database): Promise<void> {
     sealedProductId: product.id,
     url: 'https://sample-retailer.invalid/products/sample-booster-box',
   });
+
+  /**
+   * Invented pack odds for the invented product (FR-4.3).
+   *
+   * Real published odds for a real set are the publisher's data and arrive with the catalog
+   * import, under the same IP review as everything else (plan §23, open item O2). These
+   * exist so the breaker profile's comparison is visible locally, and the `.invalid` source
+   * says plainly that nobody published them — which is also why `source_url` is NOT NULL: an
+   * odds row that cannot be cited announces itself.
+   */
+  await db.insert(packOdds).values([
+    {
+      sealedProductId: product.id,
+      rarity: 'SR',
+      numerator: 1,
+      denominator: 12,
+      sourceUrl: 'https://sample-publisher.invalid/sample-set-one/odds',
+    },
+    {
+      sealedProductId: product.id,
+      rarity: 'R',
+      numerator: 1,
+      denominator: 4,
+      sourceUrl: 'https://sample-publisher.invalid/sample-set-one/odds',
+    },
+  ]);
 }

@@ -6,7 +6,7 @@ import {
   verifyChain,
 } from '@gth/core';
 import { type KeyRing, decryptField, encryptField, generateToken } from '@gth/security';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { breakCommitments, breakPulls, breaks } from '../schema/breaks.js';
 import { asUser } from './watches.js';
@@ -223,21 +223,36 @@ export interface ChainStatus {
  * here, at the pull where it happened.
  */
 export async function checkChain(db: Database, breakId: string): Promise<ChainStatus> {
-  const rows = await db
-    .select({
-      seq: breakPulls.seq,
-      cardVariantId: breakPulls.cardVariantId,
-      label: breakPulls.label,
-      valueCentsAtPull: breakPulls.valueCentsAtPull,
-      valueSource: breakPulls.valueSource,
-      pulledAt: breakPulls.pulledAt,
-      prevHash: breakPulls.prevHash,
-      rowHash: breakPulls.rowHash,
-    })
-    .from(breakPulls)
-    .where(eq(breakPulls.breakId, breakId))
-    .orderBy(asc(breakPulls.seq));
+  const results = await checkChains(db, [breakId]);
+  return results.get(breakId) ?? { state: 'empty', brokenAtSeq: null, head: null };
+}
 
+/** The columns the chain committed to, named once so the two readers cannot drift apart. */
+const chainColumns = {
+  breakId: breakPulls.breakId,
+  seq: breakPulls.seq,
+  cardVariantId: breakPulls.cardVariantId,
+  label: breakPulls.label,
+  valueCentsAtPull: breakPulls.valueCentsAtPull,
+  valueSource: breakPulls.valueSource,
+  pulledAt: breakPulls.pulledAt,
+  prevHash: breakPulls.prevHash,
+  rowHash: breakPulls.rowHash,
+};
+
+interface ChainRow {
+  breakId: string;
+  seq: number;
+  cardVariantId: string | null;
+  label: string | null;
+  valueCentsAtPull: number;
+  valueSource: string;
+  pulledAt: Date;
+  prevHash: string | null;
+  rowHash: string | null;
+}
+
+async function statusOf(rows: readonly ChainRow[]): Promise<ChainStatus> {
   if (rows.length === 0) return { state: 'empty', brokenAtSeq: null, head: null };
   if (rows.some((r) => r.prevHash === null || r.rowHash === null)) {
     return { state: 'unverifiable', brokenAtSeq: null, head: null };
@@ -261,6 +276,43 @@ export async function checkChain(db: Database, breakId: string): Promise<ChainSt
     brokenAtSeq: result.brokenAtSeq,
     head: result.valid ? String(rows.at(-1)?.rowHash) : null,
   };
+}
+
+/**
+ * Re-check several breaks' chains in one pass.
+ *
+ * A breaker profile summarises many breaks at once, and a query per break would turn one
+ * page view into dozens of round trips. The verification itself is unchanged: the same rows,
+ * the same hashes, in the same order — grouped in memory rather than fetched repeatedly.
+ *
+ * Ids not present in the result had no pulls at all.
+ */
+export async function checkChains(
+  db: Database,
+  breakIds: readonly string[],
+): Promise<Map<string, ChainStatus>> {
+  const results = new Map<string, ChainStatus>();
+  if (breakIds.length === 0) return results;
+
+  const rows = await db
+    .select(chainColumns)
+    .from(breakPulls)
+    .where(inArray(breakPulls.breakId, [...breakIds]))
+    // By break, then by seq: the chain is only meaningful in order, and one ORDER BY here
+    // is what lets the grouping below stay a single pass.
+    .orderBy(asc(breakPulls.breakId), asc(breakPulls.seq));
+
+  const grouped = new Map<string, ChainRow[]>();
+  for (const row of rows) {
+    const bucket = grouped.get(row.breakId);
+    if (bucket) bucket.push(row);
+    else grouped.set(row.breakId, [row]);
+  }
+
+  for (const [breakId, bucket] of grouped) {
+    results.set(breakId, await statusOf(bucket));
+  }
+  return results;
 }
 
 /** The hash the next pull in this break chains from. `GENESIS_HASH` when it is the first. */

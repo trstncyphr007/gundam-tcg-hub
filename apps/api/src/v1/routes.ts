@@ -1,6 +1,8 @@
 import {
+  getBreakerProfile,
   getCardById,
   listGames,
+  listPublishedProfiles,
   listSealedProducts,
   listSets,
   priceHistoryForCard,
@@ -9,6 +11,8 @@ import {
 } from '@gth/db';
 import type { PublicRoute } from './registry.js';
 import {
+  breakerPageSchema,
+  breakerProfileSchema,
   cardDetailSchema,
   cardPageSchema,
   cardPricesSchema,
@@ -16,6 +20,7 @@ import {
   cursorQuery,
   gamePageSchema,
   gameQuery,
+  handleParam,
   idParam,
   priceQuery,
   productPageSchema,
@@ -29,6 +34,12 @@ const CATALOG_CACHE = 'public, max-age=300';
  * way a stale card name is not, so this window is much shorter.
  */
 const PRICE_CACHE = 'public, max-age=60';
+/**
+ * A profile is re-verified on every miss, which is the expensive part, so it is worth
+ * caching — but only briefly. A creator who has just unpublished their page, or a chain that
+ * has just been found broken, must not keep reading as fine for five minutes.
+ */
+const PROFILE_CACHE = 'public, max-age=30';
 
 export const publicRoutes: readonly PublicRoute[] = [
   {
@@ -138,5 +149,38 @@ export const publicRoutes: readonly PublicRoute[] = [
         limit: query['limit'] as number | undefined,
         cursor: query['cursor'] as string | undefined,
       }),
+  },
+  {
+    path: '/v1/breakers',
+    operationId: 'listBreakers',
+    summary: 'List published breaker profiles',
+    description:
+      'Creators who have published a profile. A profile is off by default and appears ' +
+      'here only once its owner publishes it.',
+    tags: ['breakers'],
+    query: cursorQuery,
+    response: breakerPageSchema,
+    cache: PROFILE_CACHE,
+    handler: async ({ db, query }) => ({
+      items: await listPublishedProfiles(db, query['limit'] as number | undefined),
+      nextCursor: null,
+    }),
+  },
+  {
+    path: '/v1/breakers/:handle',
+    operationId: 'getBreaker',
+    summary: 'A breaker profile',
+    description:
+      'Break counts, pull totals and hit rates by rarity against published pack odds ' +
+      'where they exist (FR-4.3). Read `verdict` carefully: `insufficient` is the ' +
+      'ordinary answer, because the packs needed to distinguish a real rate from luck ' +
+      'run to the hundreds. Comparisons are made per product, never pooled across ' +
+      'products whose odds differ, and the confidence interval is widened for the ' +
+      'number of rarities compared at once.',
+    tags: ['breakers'],
+    params: handleParam,
+    response: breakerProfileSchema,
+    cache: PROFILE_CACHE,
+    handler: ({ db, params }) => getBreakerProfile(db, params['handle'] as string),
   },
 ];

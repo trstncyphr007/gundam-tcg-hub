@@ -16,6 +16,7 @@ import { registerDeveloperRoutes } from './routes/developer.js';
 import { type BreakDeps, registerBreakRoutes } from './routes/breaks.js';
 import { registerCollectionRoutes } from './routes/collections.js';
 import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
+import { registerProfileRoutes } from './routes/profile.js';
 import { registerWatchRoutes } from './routes/watches.js';
 import { renderDocsPage } from './v1/docs.js';
 import { buildOpenApiDocument } from './v1/openapi.js';
@@ -255,6 +256,7 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     registerAccountRoutes(app, deps.writeDb);
     registerWatchRoutes(app, deps.writeDb);
     registerCollectionRoutes(app, deps.writeDb);
+    registerProfileRoutes(app, deps.writeDb);
     registerDeveloperRoutes(app, deps.writeDb, {
       tokenPepper: config.TOKEN_PEPPER,
       production: config.NODE_ENV === 'production',
