@@ -64,7 +64,14 @@ async function runBreak(
     await page.getByTestId('log-pull').click();
     await expect(page.getByTestId('pull-count')).toHaveText(String(i + 1));
   }
+  // Wait for the server to have ended it. The caller navigates away next, and a break still
+  // live when the profile is read is — correctly — left out of the comparison, which is how
+  // this raced once the timing shifted.
+  const ended = page.waitForResponse(
+    (r) => r.url().endsWith('/status') && r.request().method() === 'POST',
+  );
   await page.getByRole('button', { name: /end break/i }).click();
+  expect((await ended).ok()).toBe(true);
 }
 
 test.describe('breaker profiles', () => {
