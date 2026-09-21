@@ -4,7 +4,7 @@ import etag from '@fastify/etag';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import type { Auth } from '@gth/auth';
-import { ForbiddenError, StepUpRequiredError } from '@gth/auth';
+import { ForbiddenError, PasskeyRequiredError, StepUpRequiredError } from '@gth/auth';
 import { type Database, pingDatabase } from '@gth/db';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import type { ApiConfig } from './config.js';
@@ -202,6 +202,14 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
         .code(403)
         .header('cache-control', 'no-store')
         .send({ error: 'step_up_required', maxAgeSeconds: Math.floor(error.maxAgeMs / 1000) });
+    }
+    // Also distinct: the session is fine and recent, just not opened with a passkey. The fix
+    // is "sign in with your passkey" — asking for another email link would loop forever.
+    if (error instanceof PasskeyRequiredError) {
+      return reply
+        .code(403)
+        .header('cache-control', 'no-store')
+        .send({ error: 'passkey_required' });
     }
     // A rejected key is the caller's problem, not ours, and must never log the key itself.
     if (error instanceof ApiKeyError) {

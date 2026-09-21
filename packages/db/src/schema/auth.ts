@@ -1,4 +1,5 @@
-import { boolean, index, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { boolean, check, index, integer, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { app } from './catalog.js';
 
 /**
@@ -38,6 +39,15 @@ export const sessions = app.table(
     /** Stored for "your active sessions" and anomaly review; IP is truncated by Better Auth. */
     ipAddress: text('ip_address'),
     userAgent: text('user_agent'),
+    /**
+     * How this session was opened (SR-1.10, ADR-025): `passkey`, `magic_link` or `discord`.
+     *
+     * Set on the server by the hook that runs when a session is created, from *which endpoint*
+     * created it — never from anything the client sent. Admin routes require `passkey`, which
+     * is what makes the admin gate multi-factor rather than merely recent. Null for sessions
+     * that predate this column: unknown, and treated as not a passkey.
+     */
+    authMethod: text('auth_method'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -45,6 +55,43 @@ export const sessions = app.table(
     uniqueIndex('sessions_token_key').on(t.token),
     index('sessions_user_idx').on(t.userId),
     index('sessions_expires_idx').on(t.expiresAt),
+    check(
+      'sessions_auth_method_known',
+      sql`${t.authMethod} is null or ${t.authMethod} in ('passkey', 'magic_link', 'discord')`,
+    ),
+  ],
+);
+
+/**
+ * WebAuthn credentials (SR-X.3, SR-1.10). Property names match the Better Auth passkey plugin.
+ *
+ * Nothing here is secret — `publicKey` is a *public* key, and a credential cannot be used
+ * without the authenticator holding the private half. The sensitive operations are adding
+ * and removing a row, which the auth layer guards (ADR-025), not reading one.
+ */
+export const passkeys = app.table(
+  'passkeys',
+  {
+    id: text('id').primaryKey(),
+    /** A label the user chose, e.g. "MacBook Touch ID". Shown on their security page. */
+    name: text('name'),
+    publicKey: text('public_key').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    credentialID: text('credential_id').notNull(),
+    /** Signature counter; a counter going backwards is how a cloned authenticator shows up. */
+    counter: integer('counter').notNull(),
+    deviceType: text('device_type').notNull(),
+    backedUp: boolean('backed_up').notNull(),
+    transports: text('transports'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    aaguid: text('aaguid'),
+  },
+  (t) => [
+    uniqueIndex('passkeys_credential_id_key').on(t.credentialID),
+    index('passkeys_user_idx').on(t.userId),
+    check('passkeys_counter_non_negative', sql`${t.counter} >= 0`),
   ],
 );
 

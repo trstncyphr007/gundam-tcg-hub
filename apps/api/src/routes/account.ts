@@ -1,4 +1,4 @@
-import { authorize, requireFreshSession } from '@gth/auth';
+import { authorize, requireAdminStepUp } from '@gth/auth';
 import { type Database, getSelfProfile, updateDisplayName, writeAuditLog } from '@gth/db';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -62,7 +62,7 @@ export function registerAccountRoutes(app: FastifyInstance, db: Database): void 
   app.get('/v1/admin/ping', async (request, reply) => {
     if (!request.subject) return reply.code(401).send({ error: 'unauthenticated' });
     authorize(request.subject, 'admin:access');
-    requireFreshSession(request.subject);
+    requireAdminStepUp(request.subject);
     return reply.header('cache-control', 'no-store').send({ status: 'ok', role: 'admin' });
   });
 }

@@ -14,6 +14,11 @@ export interface Subject {
    * absent means "not fresh" to `requireFreshSession`, never "just now".
    */
   authenticatedAt?: Date | undefined;
+  /**
+   * How the session was opened — set server-side from the endpoint that created it, never
+   * from the client (ADR-025). Only `passkey` passes the admin gate.
+   */
+  authMethod?: 'passkey' | 'magic_link' | 'discord' | null | undefined;
 }
 
 export interface OwnedResource {

@@ -67,6 +67,9 @@ APP_BASE_URL=http://127.0.0.1:3000
 BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
 SMTP_URL=smtp://127.0.0.1:1025
 EMAIL_FROM="gundam-tcg-hub <no-reply@localhost>"
+# Passkeys need a domain name, not an IP: open the site at http://localhost:3000 to use them.
+WEBAUTHN_RP_ID=localhost
+WEBAUTHN_ORIGIN=http://localhost:3000
 # Discord OAuth: create an app at https://discord.com/developers/applications,
 # add redirect URI http://127.0.0.1:4000/api/auth/callback/discord, then fill these in.
 # DISCORD_CLIENT_ID=

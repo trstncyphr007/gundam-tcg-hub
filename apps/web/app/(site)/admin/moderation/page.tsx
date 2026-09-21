@@ -85,22 +85,35 @@ export default async function ModerationPage(): Promise<React.JSX.Element> {
     );
   }
 
-  if (result.kind === 'step_up') {
+  if (result.kind === 'step_up' || result.kind === 'passkey_required') {
+    // Both are fixed the same way — a fresh sign-in with a passkey — but the reason differs,
+    // and the page says which: an admin signed in by email ten minutes ago is not "too old",
+    // they are missing the second factor (ADR-025).
     return (
-      <div className="max-w-prose space-y-4" data-testid="step-up-required">
+      <div
+        className="max-w-prose space-y-4"
+        data-testid="step-up-required"
+        data-reason={result.kind}
+      >
         <h1 className="text-2xl font-semibold tracking-tight">Moderation</h1>
         <p className="text-sm">
-          You are signed in, but not recently enough for this page. Decisions here change what the
-          price index publishes, so they need a sign-in from within the last twelve hours.
+          {result.kind === 'passkey_required'
+            ? 'This page needs a sign-in with your passkey. An emailed link or Discord is not enough here: decisions change what the price index publishes.'
+            : 'You are signed in, but not recently enough for this page. Decisions here change what the price index publishes, so they need a passkey sign-in from within the last twelve hours.'}
         </p>
-        <Link
-          href="/sign-in?reason=step-up&next=%2Fadmin%2Fmoderation"
-          className="inline-block rounded px-4 py-2 text-sm font-medium"
-          style={{ background: 'var(--accent)' }}
-          data-testid="step-up-link"
-        >
-          Sign in again
-        </Link>
+        <div className="flex flex-wrap items-center gap-4">
+          <Link
+            href="/sign-in?reason=step-up&next=%2Fadmin%2Fmoderation"
+            className="inline-block rounded px-4 py-2 text-sm font-medium"
+            style={{ background: 'var(--accent)' }}
+            data-testid="step-up-link"
+          >
+            Sign in with your passkey
+          </Link>
+          <Link href="/account/security" className="text-sm underline" data-testid="enroll-link">
+            No passkey yet? Add one
+          </Link>
+        </div>
       </div>
     );
   }

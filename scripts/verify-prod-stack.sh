@@ -46,6 +46,10 @@ DATABASE_URL_READONLY=postgres://app_readonly:${PG_RO}@postgres:5432/gth
 VALKEY_PASSWORD=$(rand)
 BETTER_AUTH_SECRET=$(openssl rand -base64 32)
 TOKEN_PEPPER=$(openssl rand -base64 32)
+DATA_ENCRYPTION_KEYS='{"k1":"$(openssl rand -base64 32)"}'
+DATA_ENCRYPTION_ACTIVE_KID=k1
+WEBAUTHN_RP_ID=localhost
+WEBAUTHN_ORIGIN=http://localhost:8080
 SMTP_URL=smtp://mailpit:1025
 EMAIL_FROM="gundam-tcg-hub <no-reply@localhost>"
 EOF
@@ -92,7 +96,10 @@ printf 'valkey published ports: %s (empty = none)\n' "$(docker inspect "$("${COM
 
 step "browser tests against the production stack"
 # Catalog + header specs only: the sign-in specs need Mailpit, which production has no use for.
-PLAYWRIGHT_BASE_URL=$base pnpm --filter @gth/web exec playwright test e2e/catalog.spec.ts \
+# Global setup seeds its accounts over the migrator connection (since #16), so it needs one
+# here too — without it this step failed before running a single test.
+DATABASE_URL_MIGRATOR="postgres://app_migrator:${PG_MIG}@127.0.0.1:5433/gth" \
+  PLAYWRIGHT_BASE_URL=$base pnpm --filter @gth/web exec playwright test e2e/catalog.spec.ts \
   --reporter=list 2>&1 | tail -n 8
 
 step "done"

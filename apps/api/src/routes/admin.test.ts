@@ -5,6 +5,7 @@ import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { type ApiConfig, loadConfig } from '../config.js';
+import { TEST_PASSKEY } from '../test/auth-fixtures.js';
 
 const config: ApiConfig = loadConfig({ LOG_LEVEL: 'silent', NODE_ENV: 'test' });
 
@@ -94,6 +95,19 @@ async function ageSessions(userId: string, hours: number): Promise<void> {
   );
 }
 
+/**
+ * Mark `userId`'s sessions as opened with a passkey, or not.
+ *
+ * Standing in for a WebAuthn ceremony, which needs an authenticator this suite does not have.
+ * The ceremony itself, and the server recording `passkey` for it, are proven end to end in
+ * the browser suite; what this file tests is what the console does with that fact.
+ */
+async function setAuthMethod(userId: string, method: 'passkey' | 'magic_link'): Promise<void> {
+  await tdb.db.execute(
+    `update app.sessions set auth_method = '${method}' where user_id = '${userId}'`,
+  );
+}
+
 beforeAll(async () => {
   tdb = await startTestDatabase();
   await seedSample(tdb.db);
@@ -114,6 +128,7 @@ beforeAll(async () => {
     trustedOrigins: ['http://127.0.0.1:4000', 'http://127.0.0.1:3000'],
     production: false,
     trustProxyHeaders: true,
+    passkey: TEST_PASSKEY,
     sendMagicLink: ({ email, url }) => {
       sentLinks.push({ email, url });
       return Promise.resolve();
@@ -154,8 +169,10 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await tdb.db.execute(`delete from app.price_observations`);
-  // Every test starts from a freshly signed-in admin; the stale-session tests age it.
+  // Every test starts from an admin freshly signed in with a passkey; individual tests age
+  // the session or downgrade how it was opened.
   await ageSessions(adminId, 0);
+  await setAuthMethod(adminId, 'passkey');
 });
 
 describe('who may use the console (SR-1.10)', () => {
@@ -172,6 +189,30 @@ describe('who may use the console (SR-1.10)', () => {
     });
     expect(res.statusCode).toBe(403);
     expect(res.json<{ error: string }>().error).toBe('forbidden');
+  });
+
+  it('refuses an admin whose session came from an email link, however recent (SR-1.10)', async () => {
+    await setAuthMethod(adminId, 'magic_link');
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/admin/moderation',
+      headers: { cookie: admin },
+    });
+    // Signed in minutes ago — and still one factor: control of an inbox. The answer is
+    // "use your passkey", not "sign in again", which would loop through the same inbox.
+    expect(res.statusCode).toBe(403);
+    expect(res.json<{ error: string }>().error).toBe('passkey_required');
+  });
+
+  it('treats a session with no recorded method as not a passkey', async () => {
+    await tdb.db.execute(`update app.sessions set auth_method = null where user_id = '${adminId}'`);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/admin/moderation',
+      headers: { cookie: admin },
+    });
+    // Sessions from before this column existed must never be read as the one that grants.
+    expect(res.json<{ error: string }>().error).toBe('passkey_required');
   });
 
   it('refuses an admin whose sign-in is older than twelve hours', async () => {

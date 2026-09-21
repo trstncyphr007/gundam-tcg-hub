@@ -46,6 +46,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <Link href="/account/developer" className="text-sm" style={{ color: 'var(--muted)' }}>
               API
             </Link>
+            <Link href="/account/security" className="text-sm" style={{ color: 'var(--muted)' }}>
+              Security
+            </Link>
             <Link href="/sign-in" className="ml-auto text-sm" style={{ color: 'var(--muted)' }}>
               Sign in
             </Link>

@@ -12,6 +12,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@better-auth/passkey": "1.7.4",
+    "@simplewebauthn/server": "13.3.3",
     "better-auth": "1.7.4"
   },
   "devDependencies": {

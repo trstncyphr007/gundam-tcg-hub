@@ -1,18 +1,19 @@
 import type { Subject } from './authorize.js';
 
 /**
- * Step-up for admin actions (SR-1.10, SR-5.9).
+ * Step-up for admin actions (SR-1.10, SR-5.9, ADR-024, ADR-025).
  *
- * **What this is, precisely:** a requirement that the session was *created* recently — that
- * the person signed in within the window, rather than riding a thirty-day session opened on
- * some other day on some other machine. A stolen, weeks-old session cookie cannot moderate
- * anything; its holder has to prove control of the account again, now.
+ * Two separate requirements, checked in this order and reported separately, because each has
+ * a different fix:
  *
- * **What it is not:** a second factor. SR-1.10 asks for a passkey or TOTP, and this project
- * has neither yet — sign-in is a magic link or Discord, so re-authenticating proves control
- * of the same email or the same Discord account, not of a separate device. That gap is
- * recorded in the ASVS checklist and ADR-024 rather than papered over here. Freshness is the
- * half that could be built honestly today, and it is the half a passkey would sit on top of.
+ *  1. **The session was opened with a passkey** — one that verified the person with a PIN or
+ *     biometric (ADR-025). That is what makes the gate multi-factor: the device, and the
+ *     person holding it. A session from a magic link or Discord proves control of an inbox or
+ *     an account, which is one factor however recent. → `PasskeyRequiredError`
+ *  2. **It was opened recently** — within twelve hours. A passkey session opened last week on
+ *     another machine is still a stolen-cookie risk. → `StepUpRequiredError`
+ *
+ * A passkey proves *who*; freshness proves *now*. Admin actions want both.
  */
 
 /** SR-1.10's window for admin routes: re-authenticated within the last 12 hours. */
@@ -24,6 +25,13 @@ export class StepUpRequiredError extends Error {
     super('this action needs a recent sign-in');
     this.name = 'StepUpRequiredError';
     this.maxAgeMs = maxAgeMs;
+  }
+}
+
+export class PasskeyRequiredError extends Error {
+  constructor() {
+    super('this action needs a session opened with a passkey');
+    this.name = 'PasskeyRequiredError';
   }
 }
 
@@ -54,4 +62,20 @@ export function requireFreshSession(
   now: Date = new Date(),
 ): void {
   if (!isFreshSession(subject, maxAgeMs, now)) throw new StepUpRequiredError(maxAgeMs);
+}
+
+/**
+ * The admin gate: a passkey session, opened within the window.
+ *
+ * The method is checked first. An admin signed in by email ten minutes ago is not asked to
+ * "sign in again" — which would send them round the same email loop forever — but to sign in
+ * *with a passkey*, which is the thing actually missing.
+ */
+export function requireAdminStepUp(
+  subject: Pick<Subject, 'authenticatedAt' | 'authMethod'> | null,
+  maxAgeMs: number = ADMIN_STEP_UP_MAX_AGE_MS,
+  now: Date = new Date(),
+): void {
+  if (subject?.authMethod !== 'passkey') throw new PasskeyRequiredError();
+  requireFreshSession(subject, maxAgeMs, now);
 }

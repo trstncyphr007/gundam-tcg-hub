@@ -73,6 +73,14 @@ services:
       DATABASE_URL_WORKER: ${DATABASE_URL_WORKER:?}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
       TOKEN_PEPPER: ${TOKEN_PEPPER:?}
+      # Without these the API falls back to its development key and refuses to start.
+      DATA_ENCRYPTION_KEYS: ${DATA_ENCRYPTION_KEYS:?}
+      DATA_ENCRYPTION_ACTIVE_KID: ${DATA_ENCRYPTION_ACTIVE_KID:?}
+      # Required, not defaulted: a `localhost` relying party on a real domain would boot and
+      # then refuse every passkey, locking admins out of the console (ADR-025).
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:?}
+      WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN:?}
+      WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Gundam TCG Hub}
       SMTP_URL: ${SMTP_URL:?production refuses to start without SMTP}
       EMAIL_FROM: ${EMAIL_FROM:?}
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}

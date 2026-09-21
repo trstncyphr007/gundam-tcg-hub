@@ -40,3 +40,49 @@ export function createMagicLinkSender(
     });
   };
 }
+
+export interface SecurityNoticeArgs {
+  email: string;
+  event: 'passkey_added' | 'passkey_removed';
+}
+
+function noticeText(event: SecurityNoticeArgs['event']): { subject: string; body: string } {
+  return event === 'passkey_added'
+    ? {
+        subject: 'A passkey was added to your account',
+        body:
+          'A new passkey was just added to your Gundam TCG Hub account.\n\n' +
+          'If that was you, there is nothing to do.\n\n' +
+          'If it was not, someone else can now sign in as you. Sign in, open Account → Security, ' +
+          'remove the passkey you do not recognise, and reply to this email.',
+      }
+    : {
+        subject: 'A passkey was removed from your account',
+        body:
+          'A passkey was just removed from your Gundam TCG Hub account.\n\n' +
+          'If that was you, there is nothing to do. If it was not, sign in and check ' +
+          'Account → Security, and reply to this email.',
+      };
+}
+
+/**
+ * Tells someone the ways into their account just changed (SR-X.5).
+ *
+ * Deliberately no link in the body. A security email with a "click here to fix it" button is
+ * the exact shape of a phishing email, and teaching people to trust that shape is worse than
+ * asking them to go to the site themselves.
+ */
+export function createSecurityNoticeSender(
+  config: ApiConfig,
+  logger: Logger,
+): (args: SecurityNoticeArgs) => Promise<void> {
+  const transport = config.SMTP_URL ? createTransport(config.SMTP_URL) : null;
+  return async ({ email, event }) => {
+    const { subject, body } = noticeText(event);
+    if (!transport) {
+      logger.info({ event }, 'security notice (dev only, no SMTP configured)');
+      return;
+    }
+    await transport.sendMail({ to: email, from: config.EMAIL_FROM, subject, text: body });
+  };
+}
