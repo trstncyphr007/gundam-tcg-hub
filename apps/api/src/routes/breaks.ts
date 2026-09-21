@@ -2,18 +2,24 @@ import { authorize } from '@gth/auth';
 import {
   BreakLimitError,
   BreakStateError,
+  CommitmentError,
   type Database,
+  checkChain,
+  commitBreak,
   createBreak,
+  getCommitment,
   getOverlayState,
   getPublicBreak,
   listBreaks,
   logPull,
+  revealBreak,
   rotateOverlayToken,
   setBreakStatus,
+  setClientSeed,
   writeAuditLog,
 } from '@gth/db';
-import { generateToken, hashToken, toCsv } from '@gth/security';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import { type KeyRing, generateToken, hashToken, toCsv } from '@gth/security';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 /** 32 bytes of CSPRNG, base64url — the overlay token shown once at creation (SR-2.1). */
@@ -69,6 +75,121 @@ function overlayHeaders(reply: FastifyReply): FastifyReply {
 export interface BreakDeps {
   db: Database;
   tokenPepper: string;
+  /**
+   * Commit–reveal needs two things the rest of this file does not: a key ring to encrypt the
+   * server seed, and a pool on the one role permitted to read it back. Both are optional, so
+   * a deployment that has not configured field encryption simply has no fairness routes
+   * rather than half-working ones that store a seed it cannot protect.
+   */
+  keyRing?: KeyRing | undefined;
+  secretsDb?: Database | undefined;
+}
+
+const commitSchema = z.object({ slotCount: z.int().min(2).max(1000) }).strict();
+const clientSeedSchema = z.object({ clientSeed: z.string().trim().min(1).max(200) }).strict();
+
+/**
+ * Commit–reveal (FR-4.2).
+ *
+ * All three are creator-only and session-authenticated. The reveal is the one operation that
+ * touches the encrypted seed, and it runs on a pool whose role may read that column — the
+ * tier serving this request cannot.
+ */
+function registerFairnessRoutes(
+  app: FastifyInstance,
+  db: Database,
+  keyRing: KeyRing,
+  secretsDb: Database,
+): void {
+  const guard = (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): { id: string; userId: string } | null => {
+    if (!request.subject) {
+      void reply.code(401).send({ error: 'unauthenticated' });
+      return null;
+    }
+    authorize(request.subject, 'break:write');
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) {
+      void reply.code(404).send({ error: 'not_found' });
+      return null;
+    }
+    return { id: params.data.id, userId: request.subject.userId };
+  };
+
+  app.post('/v1/breaks/:id/commit', async (request, reply) => {
+    const ctx = guard(request, reply);
+    if (!ctx) return reply;
+
+    const body = commitSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.code(400).send({ error: 'invalid_request', details: issuesOf(body.error) });
+    }
+
+    try {
+      const commitment = await commitBreak(db, ctx.userId, ctx.id, {
+        slotCount: body.data.slotCount,
+        keyRing,
+      });
+      await writeAuditLog(db, {
+        actorId: ctx.userId,
+        action: 'break.committed',
+        targetType: 'break',
+        targetId: ctx.id,
+        // The commitment is public by design; the seed is not written anywhere but the
+        // encrypted column.
+        diff: { commitment: commitment.commitment, slotCount: commitment.slotCount },
+      });
+      return await reply.code(201).header('cache-control', 'no-store').send(commitment);
+    } catch (error) {
+      if (error instanceof CommitmentError) {
+        return reply.code(409).send({ error: 'commit_failed', reason: error.message });
+      }
+      throw error;
+    }
+  });
+
+  app.post('/v1/breaks/:id/client-seed', async (request, reply) => {
+    const ctx = guard(request, reply);
+    if (!ctx) return reply;
+
+    const body = clientSeedSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.code(400).send({ error: 'invalid_request', details: issuesOf(body.error) });
+    }
+
+    try {
+      const commitment = await setClientSeed(db, ctx.userId, ctx.id, body.data.clientSeed);
+      return await reply.header('cache-control', 'no-store').send(commitment);
+    } catch (error) {
+      if (error instanceof CommitmentError) {
+        return reply.code(409).send({ error: 'client_seed_failed', reason: error.message });
+      }
+      throw error;
+    }
+  });
+
+  app.post('/v1/breaks/:id/reveal', async (request, reply) => {
+    const ctx = guard(request, reply);
+    if (!ctx) return reply;
+
+    try {
+      const revealed = await revealBreak(db, secretsDb, ctx.userId, ctx.id, keyRing);
+      await writeAuditLog(db, {
+        actorId: ctx.userId,
+        action: 'break.revealed',
+        targetType: 'break',
+        targetId: ctx.id,
+      });
+      return await reply.header('cache-control', 'no-store').send(revealed);
+    } catch (error) {
+      if (error instanceof CommitmentError) {
+        return reply.code(409).send({ error: 'reveal_failed', reason: error.message });
+      }
+      throw error;
+    }
+  });
 }
 
 /**
@@ -241,7 +362,7 @@ export function registerBreakRoutes(app: FastifyInstance, deps: BreakDeps): void
         }
         throw error;
       }
-      return reply.code(201).header('cache-control', 'no-store').send(pull);
+      return await reply.code(201).header('cache-control', 'no-store').send(pull);
     },
   );
 
@@ -252,8 +373,24 @@ export function registerBreakRoutes(app: FastifyInstance, deps: BreakDeps): void
 
     const view = await getPublicBreak(db, params.data.id);
     if (!view) return reply.code(404).send({ error: 'not_found' });
-    return reply.header('cache-control', 'public, max-age=5').send(view);
+
+    // The evidence travels with the break: the commitment, the seeds once revealed, and our
+    // own reading of the chain. A viewer is not asked to take that reading on trust — the
+    // raw hashed rows are here too, so their browser can reach its own conclusion and say so
+    // if it differs from ours (SR-4.3).
+    const [commitment, chain] = await Promise.all([
+      getCommitment(db, params.data.id),
+      checkChain(db, params.data.id),
+    ]);
+
+    return reply
+      .header('cache-control', 'public, max-age=5')
+      .send({ ...view, verification: { ...view.verification, commitment, chain } });
   });
+
+  if (deps.keyRing && deps.secretsDb) {
+    registerFairnessRoutes(app, deps.db, deps.keyRing, deps.secretsDb);
+  }
 
   /** Export a pull log (FR-2.5). CSV cells are formula-escaped (SR-2.5). */
   app.get('/v1/breaks/:id/export', async (request, reply) => {

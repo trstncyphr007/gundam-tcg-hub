@@ -99,6 +99,36 @@ export interface PublicBreak {
   productName: string | null;
   pulls: PublicPull[];
   totalCents: number;
+  /**
+   * The evidence, not the verdict. `chain` is the server's own reading; `rows` is what it
+   * read, so a browser can reach its own conclusion and disagree out loud.
+   */
+  verification: {
+    rows: {
+      seq: number;
+      cardVariantId: string | null;
+      label: string | null;
+      valueCentsAtPull: number;
+      valueSource: string;
+      pulledAt: string;
+      prevHash: string | null;
+      rowHash: string | null;
+    }[];
+    commitment: {
+      commitment: string;
+      clientSeed: string | null;
+      revealedSeed: string | null;
+      slotCount: number;
+      algorithmVersion: string;
+      committedAt: string;
+      revealedAt: string | null;
+    } | null;
+    chain: {
+      state: 'valid' | 'invalid' | 'unverifiable' | 'empty';
+      brokenAtSeq: number | null;
+      head: string | null;
+    };
+  };
 }
 
 export type CollectionVisibility = 'private' | 'unlisted' | 'public';

@@ -5,6 +5,7 @@ import {
 } from '@gth/alerts';
 import { createAuth } from '@gth/auth';
 import { createDb, getRestockContext } from '@gth/db';
+import { buildKeyRing } from '@gth/security';
 import { createTransport } from 'nodemailer';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
@@ -50,8 +51,14 @@ const app = await buildApp(config, {
   // (migration 0017). Without this the key plugin is not registered at all and every caller
   // is anonymous — noisy, but never silently trusting an unverified key.
   keysDb: worker.db,
-  // Breaks are owned by their creator, so they run on the web role under RLS.
-  breaks: { db: write.db, tokenPepper: config.TOKEN_PEPPER },
+  // Breaks are owned by their creator, so they run on the web role under RLS. The reveal is
+  // the exception: it reads the encrypted seed, which only the worker role may do.
+  breaks: {
+    db: write.db,
+    tokenPepper: config.TOKEN_PEPPER,
+    keyRing: buildKeyRing(config.DATA_ENCRYPTION_KEYS, config.DATA_ENCRYPTION_ACTIVE_KID),
+    secretsDb: worker.db,
+  },
   ingest: {
     workerDb: worker.db,
     tokenPepper: config.TOKEN_PEPPER,

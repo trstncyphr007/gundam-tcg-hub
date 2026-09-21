@@ -19,6 +19,9 @@ PG_READONLY_PASSWORD="$(rand_hex)"
 VALKEY_PASSWORD="$(rand_hex)"
 TOKEN_PEPPER="$(openssl rand -base64 32)"
 BETTER_AUTH_SECRET="$(openssl rand -base64 32)"
+# Encrypts database fields that must stay secret even in a backup -- today, a break's server
+# seed. Keyed by id so keys can rotate without re-encrypting anything in a hurry.
+DATA_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 
 umask 077
 cat > .env <<EOF
@@ -50,6 +53,8 @@ VALKEY_PASSWORD=${VALKEY_PASSWORD}
 VALKEY_URL=redis://:${VALKEY_PASSWORD}@127.0.0.1:6379/0
 
 TOKEN_PEPPER=${TOKEN_PEPPER}
+DATA_ENCRYPTION_KEYS={"k1":"${DATA_ENCRYPTION_KEY}"}
+DATA_ENCRYPTION_ACTIVE_KID=k1
 
 # Auth. Sign-in links are emailed via Mailpit locally: start it with
 #   docker compose --env-file .env -f infra/compose/docker-compose.dev.yml --profile mail up -d
