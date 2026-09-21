@@ -1,14 +1,23 @@
 import { createDb } from '@gth/db';
 import { expect, test } from '@playwright/test';
-import { asNewClient, clearMailbox, fetchLatestMagicLink, signInOnce } from './helpers';
+import {
+  PASSKEY_BASE_URL,
+  asNewClient,
+  forgetPasskeySession,
+  restorePasskey,
+  signIn,
+  signInWithPasskeyOnce,
+} from './helpers';
 
 /**
  * The moderation console end to end (SR-3.5, SR-4.4, SR-1.10).
  *
- * Global setup leaves exactly one reported price and one held sale in the queue on every
- * run, and an admin account. The step-up test runs last in this file because it ages that
- * admin's sessions.
+ * On localhost, because the console needs a passkey session and WebAuthn will not bind a
+ * passkey to an IP address (ADR-025). Global setup leaves exactly one reported price and one
+ * held sale in the queue on every run, and an admin account with no passkey yet.
  */
+test.use({ baseURL: PASSKEY_BASE_URL });
+
 const ADMIN_EMAIL = process.env['E2E_ADMIN_EMAIL'] ?? 'admin@example.test';
 const CREATOR_EMAIL = process.env['E2E_CREATOR_EMAIL'] ?? 'creator@example.test';
 
@@ -29,15 +38,30 @@ async function ageAdminSessions(hours: number): Promise<void> {
 
 test.describe('moderation console', () => {
   test('is closed to an account that is not an admin', async ({ page }) => {
-    await signInOnce(page, CREATOR_EMAIL);
+    // Not `signInOnce`: that cache is shared by every spec, and cookies set here belong to
+    // localhost. A later spec on 127.0.0.1 reusing them would be silently signed out.
+    await signIn(page, CREATOR_EMAIL);
     await page.goto('/admin/moderation');
     await expect(page.getByTestId('admin-forbidden')).toBeVisible();
     // And it describes nothing about what an admin would see.
     await expect(page.getByTestId('reports-section')).toHaveCount(0);
   });
 
+  test('asks an admin signed in by email for their passkey, not another email', async ({
+    page,
+  }) => {
+    await signIn(page, ADMIN_EMAIL);
+    await page.goto('/admin/moderation');
+    // Signed in seconds ago, and still one factor. "Sign in again" would loop through the
+    // same inbox; the page asks for the thing that is actually missing.
+    const prompt = page.getByTestId('step-up-required');
+    await expect(prompt).toHaveAttribute('data-reason', 'passkey_required');
+    await expect(prompt).toContainText('passkey');
+    await expect(page.getByTestId('enroll-link')).toHaveAttribute('href', '/account/security');
+  });
+
   test('shows both queues, each with the evidence a reviewer needs', async ({ page }) => {
-    await signInOnce(page, ADMIN_EMAIL);
+    await signInWithPasskeyOnce(page, ADMIN_EMAIL);
     await page.goto('/admin/moderation');
 
     const held = page.getByTestId('queue-flags').filter({ hasText: '$987.65' });
@@ -57,7 +81,7 @@ test.describe('moderation console', () => {
   });
 
   test('will not decide without a reason', async ({ page }) => {
-    await signInOnce(page, ADMIN_EMAIL);
+    await signInWithPasskeyOnce(page, ADMIN_EMAIL);
     await page.goto('/admin/moderation');
 
     const report = page.getByTestId('queue-reports').filter({ hasText: '$12.34' });
@@ -66,7 +90,7 @@ test.describe('moderation console', () => {
   });
 
   test('approves a report and clears a held sale, each with a reason', async ({ page }) => {
-    await signInOnce(page, ADMIN_EMAIL);
+    await signInWithPasskeyOnce(page, ADMIN_EMAIL);
     await page.goto('/admin/moderation');
 
     const report = page.getByTestId('queue-reports').filter({ hasText: '$12.34' });
@@ -85,24 +109,24 @@ test.describe('moderation console', () => {
     await expect(page.getByTestId('queue-flags').filter({ hasText: '$987.65' })).toHaveCount(0);
   });
 
-  test('asks a stale admin to sign in again, and brings them back', async ({ page }) => {
-    await signInOnce(page, ADMIN_EMAIL);
+  test('asks a stale admin to sign in with their passkey again, and brings them back', async ({
+    page,
+  }) => {
+    await signInWithPasskeyOnce(page, ADMIN_EMAIL);
     await ageAdminSessions(13);
+    forgetPasskeySession(ADMIN_EMAIL);
 
     await page.goto('/admin/moderation');
     // Still signed in — every other page works — but not recently enough for this one.
-    await expect(page.getByTestId('step-up-required')).toBeVisible();
+    await expect(page.getByTestId('step-up-required')).toHaveAttribute('data-reason', 'step_up');
     await page.getByTestId('step-up-link').click();
     await expect(page.getByTestId('step-up-notice')).toBeVisible();
 
-    // The real magic-link journey, so the `next` parameter is exercised end to end.
-    await asNewClient(page);
-    await clearMailbox(page);
-    await page.getByLabel('Email address').fill(ADMIN_EMAIL);
-    await page.getByRole('button', { name: /email me a sign-in link/i }).click();
-    await page.getByText(/check your email/i).waitFor();
+    // A passkey sign-in straight from that page; `next` brings them back to the console.
     const siteOrigin = new URL(page.url()).origin;
-    await page.goto(await fetchLatestMagicLink(page));
+    await asNewClient(page);
+    await restorePasskey(page, ADMIN_EMAIL);
+    await page.getByTestId('passkey-sign-in').click();
 
     // Back on the *site*, not merely at a URL ending in the right path — the API answers that
     // path too, with a 404, and an earlier version of this test was fooled by exactly that.

@@ -113,7 +113,20 @@ APP_BASE_URL=https://<domain>
 SMTP_URL=smtp://<provider>
 DATA_ENCRYPTION_KEYS='{"k1":"<openssl rand -base64 32>"}'
 DATA_ENCRYPTION_ACTIVE_KID=k1
+WEBAUTHN_RP_ID=<domain>
+WEBAUTHN_ORIGIN=https://<domain>
 ```
+
+`WEBAUTHN_RP_ID` is the domain every passkey is bound to (ADR-025). The API refuses to
+start if it is an IP address or if `WEBAUTHN_ORIGIN` is not on it, and compose refuses to
+start without either. **Choose it once.** Changing it later orphans every passkey already
+enrolled, and admins — who can only use the console with a passkey — are locked out until
+they enrol again. Use the bare domain, not `www.`, so a later move to a subdomain still
+works.
+
+Once the site is up, the first admin enrols a passkey at `/account/security` straight
+after a fresh email sign-in, **before anyone else could have used that inbox**. That first
+enrolment is the one step that email alone can do.
 
 `DATA_ENCRYPTION_KEYS` encrypts fields that must stay secret even in a backup: a break's
 server seed, and buyer handles from the live-sale logger. **Losing it makes those fields

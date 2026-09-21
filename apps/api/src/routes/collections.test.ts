@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { type ApiConfig, loadConfig } from '../config.js';
+import { TEST_PASSKEY } from '../test/auth-fixtures.js';
 
 const config: ApiConfig = loadConfig({ LOG_LEVEL: 'silent', NODE_ENV: 'test' });
 
@@ -73,6 +74,7 @@ beforeAll(async () => {
     trustedOrigins: ['http://127.0.0.1:4000', 'http://127.0.0.1:3000'],
     production: false,
     trustProxyHeaders: true,
+    passkey: TEST_PASSKEY,
     sendMagicLink: ({ email, url }) => {
       sentLinks.push({ email, url });
       return Promise.resolve();

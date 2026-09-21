@@ -141,6 +141,8 @@ export type AdminQueueResult =
   | { kind: 'ok'; reports: PendingReport[]; flagged: HeldObservation[] }
   | { kind: 'signed_out' }
   | { kind: 'forbidden' }
+  /** Signed in, but not with a passkey (ADR-025). The fix is a passkey, not another email. */
+  | { kind: 'passkey_required' }
   | { kind: 'step_up' }
   | { kind: 'unavailable' };
 
@@ -474,6 +476,7 @@ export const api = {
       if (response.status === 401) return { kind: 'signed_out' };
       if (response.status === 403) {
         const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        if (body?.error === 'passkey_required') return { kind: 'passkey_required' };
         return body?.error === 'step_up_required' ? { kind: 'step_up' } : { kind: 'forbidden' };
       }
       if (!response.ok) return { kind: 'unavailable' };

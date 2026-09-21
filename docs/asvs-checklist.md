@@ -50,13 +50,13 @@ evidence column is not optional.
 
 ## V6 Authentication
 
-| #   | Control                        | Status   | Evidence                                                                                                                                                                                                                                                                       |
-| --- | ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 6.1 | No passwords stored            | **Met**  | Discord OAuth and magic links only; no password column exists                                                                                                                                                                                                                  |
-| 6.2 | Single-use, expiring links     | **Met**  | 15-minute expiry, single use; replay mints no session (tested)                                                                                                                                                                                                                 |
-| 6.3 | Account enumeration resistance | **Met**  | Identical response whether or not the address has an account                                                                                                                                                                                                                   |
-| 6.4 | Credentials hashed at rest     | **Met**  | API keys and overlay tokens stored as HMAC with a server pepper; constant-time compare. The web role has no SELECT privilege on `key_hash` at all, so the tier serving sessions cannot read the material a forgery would need — proven by a test expecting `permission denied` |
-| 6.5 | MFA for privileged accounts    | **Open** | Passkey/TOTP enrolment not built. The admin console now exists **without** it, behind a 12-hour freshness step-up instead (ADR-024) — see gap 3. Required before the first production deploy, and before Phase 5                                                               |
+| #   | Control                        | Status  | Evidence                                                                                                                                                                                                                                                                                                                                                                |
+| --- | ------------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 6.1 | No passwords stored            | **Met** | Discord OAuth and magic links only; no password column exists                                                                                                                                                                                                                                                                                                           |
+| 6.2 | Single-use, expiring links     | **Met** | 15-minute expiry, single use; replay mints no session (tested)                                                                                                                                                                                                                                                                                                          |
+| 6.3 | Account enumeration resistance | **Met** | Identical response whether or not the address has an account                                                                                                                                                                                                                                                                                                            |
+| 6.4 | Credentials hashed at rest     | **Met** | API keys and overlay tokens stored as HMAC with a server pepper; constant-time compare. The web role has no SELECT privilege on `key_hash` at all, so the tier serving sessions cannot read the material a forgery would need — proven by a test expecting `permission denied`                                                                                          |
+| 6.5 | MFA for privileged accounts    | **Met** | Every admin route requires a session opened **with a user-verified passkey** (a device plus its PIN or biometric) and created within 12 hours (ADR-025). UV is enforced by the server, not assumed: a real signed UV=0 assertion is refused in e2e. Adding a second passkey or removing any needs a passkey session, so an inbox alone cannot swap one in. Gap 3 closed |
 
 ## V7 Session management
 
@@ -142,7 +142,21 @@ What is left is not a platform gap. The ruleset requires a PR but **zero approva
 there is one maintainer (ADR-012), so it enforces process, not review. Tighten it the moment
 a second contributor appears.
 
-### 3. No MFA (V6.5) — **the gate below has now been crossed**
+### 3. ~~No MFA (V6.5)~~ — **CLOSED 2026-09-22**
+
+Passkeys landed (ADR-025). Admin routes now need a passkey session **and** the twelve-hour
+freshness below. The server enforces user verification itself, because the plugin would
+have accepted a key that was only tapped. Changing an account's passkeys needs a passkey
+session, apart from enrolling the very first one.
+
+What remains, stated rather than hidden: the first passkey is enrolled after an email
+sign-in. Whoever controls the inbox _before_ the owner enrols can enrol first. The VPS
+runbook has the first admin enrol immediately after the site comes up. TOTP was not built;
+see ADR-025 for why.
+
+The original entry is kept below as the record of what shipped in the meantime.
+
+#### As it stood on 2026-09-22, before passkeys
 
 This entry originally said MFA "must land before any admin route ships". The moderation
 console (ADR-024) is an admin route, and it ships **without** a second factor. That is stated

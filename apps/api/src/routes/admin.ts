@@ -1,4 +1,4 @@
-import { authorize, requireFreshSession } from '@gth/auth';
+import { authorize, requireAdminStepUp } from '@gth/auth';
 import {
   type Database,
   MAX_REASON_LENGTH,
@@ -15,15 +15,16 @@ import { z } from 'zod';
 /**
  * The admin moderation console's API (SR-3.5, SR-4.4, SR-1.10, SR-5.9).
  *
- * Every route here demands three things, in this order, and fails closed on each:
+ * Every route here demands four things, in this order, and fails closed on each:
  *
- *   1. a session                              → 401
- *   2. the admin role                         → 403 `forbidden`
- *   3. a sign-in within the last twelve hours → 403 `step_up_required`
+ *   1. a session                                 → 401
+ *   2. the admin role                            → 403 `forbidden`
+ *   3. a session opened with a verified passkey  → 403 `passkey_required`
+ *   4. opened within the last twelve hours       → 403 `step_up_required`
  *
- * The third is distinct from the second on purpose. The caller *is* allowed; they are
- * holding a session too old to be trusted with this. The client's fix is "sign in again",
- * not "you cannot do this", and the error says so.
+ * The last two are distinct from the second on purpose. The caller *is* allowed; the session
+ * they hold is not enough for this. The client's fix is "sign in with your passkey", not
+ * "you cannot do this", and the errors say so (ADR-024, ADR-025).
  *
  * Reads use the web pool. Decisions run on the **worker** pool — the only role that may mark
  * a price as counting (migration 0027) — and every one of them is audited with its reason.
@@ -59,14 +60,14 @@ function issuesOf(error: z.ZodError): { field: string; code: string }[] {
   }));
 }
 
-/** The three gates, as one call, so no route can forget the third. */
+/** All four gates, as one call, so no route can forget one. */
 function guard(request: FastifyRequest, reply: FastifyReply): string | null {
   if (!request.subject) {
     void reply.code(401).send({ error: 'unauthenticated' });
     return null;
   }
   authorize(request.subject, 'admin:access');
-  requireFreshSession(request.subject);
+  requireAdminStepUp(request.subject);
   return request.subject.userId;
 }
 

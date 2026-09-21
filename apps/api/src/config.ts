@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import {
   booleanStringSchema,
   logLevelSchema,
@@ -50,12 +51,49 @@ const apiEnvSchema = z.object({
   DISCORD_CLIENT_SECRET: optional(z.string().min(1)),
   SMTP_URL: optional(z.string().startsWith('smtp')),
   EMAIL_FROM: z.string().default('gundam-tcg-hub <no-reply@localhost>'),
+
+  /**
+   * WebAuthn relying party (ADR-025).
+   *
+   * `localhost`, not `127.0.0.1`: WebAuthn forbids an IP address as an RP ID, so in local
+   * development passkeys only work with the site opened at http://localhost:3000. The origin
+   * is the *site* — where the browser runs the ceremony — never the API.
+   */
+  WEBAUTHN_RP_ID: z.string().min(1).default('localhost'),
+  WEBAUTHN_RP_NAME: z.string().min(1).max(64).default('Gundam TCG Hub'),
+  WEBAUTHN_ORIGIN: z.url().default('http://localhost:3000'),
 });
 
 export type ApiConfig = z.infer<typeof apiEnvSchema>;
 
+/**
+ * Is this relying-party configuration one a browser will actually accept?
+ *
+ * Checked at boot because every failure mode here is silent until someone tries to sign in:
+ * an IP address as the RP ID, or an origin on a different domain from the RP ID, and the
+ * browser simply refuses every passkey — including an admin's, which locks them out of the
+ * console with nothing in the logs to say why.
+ */
+export function webAuthnProblem(
+  config: Pick<ApiConfig, 'WEBAUTHN_RP_ID' | 'WEBAUTHN_ORIGIN'>,
+): string | null {
+  const rpID = config.WEBAUTHN_RP_ID.toLowerCase();
+  // Node's own parser rather than a pattern: it knows IPv6 and every IPv4 spelling.
+  if (isIP(rpID) !== 0 || rpID.includes(':')) {
+    return 'WEBAUTHN_RP_ID must be a domain name; WebAuthn does not allow an IP address';
+  }
+  const host = new URL(config.WEBAUTHN_ORIGIN).hostname.toLowerCase();
+  if (host !== rpID && !host.endsWith(`.${rpID}`)) {
+    return `WEBAUTHN_ORIGIN (${host}) must be ${rpID} or a subdomain of it`;
+  }
+  return null;
+}
+
 export function loadConfig(source: Record<string, string | undefined> = process.env): ApiConfig {
   const config = parseEnv(apiEnvSchema, source);
+
+  const webAuthn = webAuthnProblem(config);
+  if (webAuthn) throw new Error(`refusing to start: ${webAuthn}`);
 
   // Refuse to start in production with any of the development defaults. Each of these is a
   // value that is in the repository, and a secret in the repository is not a secret — the
@@ -65,6 +103,11 @@ export function loadConfig(source: Record<string, string | undefined> = process.
       ['TOKEN_PEPPER', config.TOKEN_PEPPER.startsWith('dev-only-insecure')],
       ['BETTER_AUTH_SECRET', config.BETTER_AUTH_SECRET.startsWith('dev-only-insecure')],
       ['DATA_ENCRYPTION_ACTIVE_KID', config.DATA_ENCRYPTION_ACTIVE_KID === 'dev'],
+      // Not the WebAuthn settings, deliberately. CI runs a production build on
+      // http://localhost, and a `localhost` relying party left in place on a real domain fails
+      // *closed* — browsers refuse to use it, so admins are locked out, not let in. That is an
+      // operations failure the runbook covers, not a secret in the repository; the structural
+      // check above is the one that catches a configuration that could never work.
     ].filter(([, isDefault]) => isDefault);
 
     if (insecure.length > 0) {

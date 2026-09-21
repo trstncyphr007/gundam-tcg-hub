@@ -9,7 +9,7 @@ import { buildKeyRing } from '@gth/security';
 import { createTransport } from 'nodemailer';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
-import { createMagicLinkSender } from './mailer.js';
+import { createMagicLinkSender, createSecurityNoticeSender } from './mailer.js';
 
 const config = loadConfig();
 
@@ -21,24 +21,35 @@ const readonly = createDb({ url: config.DATABASE_URL_READONLY, max: config.DB_PO
 const write = createDb({ url: config.DATABASE_URL_WEB, max: config.DB_POOL_MAX });
 const worker = createDb({ url: config.DATABASE_URL_WORKER, max: config.DB_POOL_MAX });
 
+const log = {
+  warn: (obj: Record<string, unknown>, msg: string) => {
+    app.log.warn(obj, msg);
+  },
+  info: (obj: Record<string, unknown>, msg: string) => {
+    app.log.info(obj, msg);
+  },
+};
+
 const auth = createAuth(write.db, {
   baseURL: config.API_BASE_URL,
   secret: config.BETTER_AUTH_SECRET,
-  trustedOrigins: [config.APP_BASE_URL, config.API_BASE_URL],
+  // The WebAuthn origin too: in development the site is opened at http://localhost:3000 for
+  // passkeys (an IP address cannot be an RP ID), which is a different origin from
+  // APP_BASE_URL's 127.0.0.1, and the CSRF origin check has to accept it.
+  trustedOrigins: [...new Set([config.APP_BASE_URL, config.API_BASE_URL, config.WEBAUTHN_ORIGIN])],
+  passkey: {
+    rpID: config.WEBAUTHN_RP_ID,
+    rpName: config.WEBAUTHN_RP_NAME,
+    origin: config.WEBAUTHN_ORIGIN,
+  },
+  sendSecurityNotice: createSecurityNoticeSender(config, log),
   production: config.NODE_ENV === 'production',
   trustProxyHeaders: config.API_TRUST_PROXY,
   discord:
     config.DISCORD_CLIENT_ID && config.DISCORD_CLIENT_SECRET
       ? { clientId: config.DISCORD_CLIENT_ID, clientSecret: config.DISCORD_CLIENT_SECRET }
       : undefined,
-  sendMagicLink: createMagicLinkSender(config, {
-    warn: (obj, msg) => {
-      app.log.warn(obj, msg);
-    },
-    info: (obj, msg) => {
-      app.log.info(obj, msg);
-    },
-  }),
+  sendMagicLink: createMagicLinkSender(config, log),
 });
 
 const mailer = config.SMTP_URL ? createTransport(config.SMTP_URL) : null;

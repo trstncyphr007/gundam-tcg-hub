@@ -1,6 +1,7 @@
 # ADR-024: The admin moderation console, and step-up by freshness
 
-- **Status:** Accepted — with one gap stated below, not closed
+- **Status:** Accepted. The MFA gap stated below was closed by
+  [ADR-025](025-passkeys.md) (2026-09-22): admin routes now also require a passkey session
 - **Date:** 2026-09-22
 - **Plan reference:** SR-1.10, SR-3.5, SR-4.4, SR-5.9, SR-X.13
 

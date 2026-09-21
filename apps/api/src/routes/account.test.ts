@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { type ApiConfig, loadConfig } from '../config.js';
+import { TEST_PASSKEY } from '../test/auth-fixtures.js';
 
 const config: ApiConfig = loadConfig({ LOG_LEVEL: 'silent', NODE_ENV: 'test' });
 
@@ -26,6 +27,7 @@ async function makeApp(): Promise<FastifyInstance> {
     production: false,
     // Mirrors the production setup behind Caddy, and lets each test act as its own client IP.
     trustProxyHeaders: true,
+    passkey: TEST_PASSKEY,
     sendMagicLink: ({ email, url }) => {
       sentLinks.push({ email, url });
       return Promise.resolve();
@@ -261,7 +263,7 @@ describe('profile updates', () => {
 });
 
 describe('role gating (SR-X.6)', () => {
-  it('403s for a non-admin and 200s once promoted', async () => {
+  it('403s for a non-admin, asks a promoted admin for a passkey, and 200s with one', async () => {
     const email = 'promote@example.com';
     const { cookie } = await signIn(email);
 
@@ -272,6 +274,20 @@ describe('role gating (SR-X.6)', () => {
     // Only an operator/admin path can do this; here we simulate it directly in the database.
     await tdb.db.execute(`update app.users set role = 'admin' where email = '${email}'`);
 
+    // The role alone is not enough: this session came from an email link (ADR-025).
+    const promoted = await app.inject({
+      method: 'GET',
+      url: '/v1/admin/ping',
+      headers: { cookie },
+    });
+    expect(promoted.statusCode).toBe(403);
+    expect(promoted.json()).toEqual({ error: 'passkey_required' });
+
+    // Standing in for a passkey sign-in; the ceremony itself is covered in the browser suite.
+    await tdb.db.execute(
+      `update app.sessions set auth_method = 'passkey'
+        where user_id = (select id from app.users where email = '${email}')`,
+    );
     const after = await app.inject({ method: 'GET', url: '/v1/admin/ping', headers: { cookie } });
     expect(after.statusCode).toBe(200);
   });

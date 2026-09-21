@@ -16,6 +16,11 @@ function toRole(value: unknown): Role {
   return typeof value === 'string' && ROLE_VALUES.has(value) ? (value as Role) : 'user';
 }
 
+/** Anything unrecognised becomes null — never a passkey, which is the answer that grants. */
+function toAuthMethod(value: unknown): Subject['authMethod'] {
+  return value === 'passkey' || value === 'magic_link' || value === 'discord' ? value : null;
+}
+
 /**
  * Mounts Better Auth at /api/auth/* and resolves the caller's session for every request.
  * Registered inside its own encapsulation so the raw-body parser cannot leak to JSON routes.
@@ -37,6 +42,8 @@ const authPluginImpl: FastifyPluginAsync<{ auth: Auth }> = async (app, opts) => 
           // every day, but `createdAt` stays at the moment the person actually signed in —
           // which is the only moment step-up cares about (SR-1.10).
           authenticatedAt: new Date(session.session.createdAt),
+          // Written once, server-side, when the session was created (ADR-025).
+          authMethod: toAuthMethod((session.session as { authMethod?: unknown }).authMethod),
         }
       : null;
   });

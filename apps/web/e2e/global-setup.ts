@@ -88,6 +88,14 @@ async function seedModeration(db: ReturnType<typeof createDb>['db']): Promise<vo
      values ('user.role_changed', 'user', 'e2e-admin', '{"to":"admin","via":"e2e-setup"}'::jsonb)`,
   );
 
+  // Passkeys live in a virtual authenticator that exists only for one run, so last run's
+  // server-side credentials would point at private keys nobody holds any more. Every e2e
+  // account starts the run with none, and enrols through the real page (ADR-025).
+  await db.execute(
+    `delete from app.passkeys
+      where user_id in (select id from app.users where email like '%@example.test')`,
+  );
+
   const variants = await db.execute<{ id: string }>(
     `select v.id from app.card_variants v
        join app.cards c on c.id = v.card_id

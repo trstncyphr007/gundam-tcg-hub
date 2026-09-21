@@ -30,6 +30,30 @@ function absoluteCallback(next: string): string {
 export function SignInForm({ next }: { next: string }) {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+
+  /**
+   * Sign in with a passkey (ADR-025).
+   *
+   * No email first: the passkey is discoverable, so the device offers the right credential
+   * itself. On success the session is already set; the page moves on to `next` directly,
+   * because a passkey sign-in has no emailed link to carry a callback.
+   */
+  async function signInWithPasskey(): Promise<void> {
+    setPasskeyError(null);
+    const result = await authClient.signIn.passkey();
+    if (result.error) {
+      // Cancelling the browser prompt is the commonest "error" and not worth alarming anyone.
+      const { code } = result.error as { code?: unknown };
+      setPasskeyError(
+        code === 'USER_VERIFICATION_REQUIRED'
+          ? 'That passkey did not check it was you (PIN, fingerprint or face). Try one that does.'
+          : 'No passkey sign-in happened. You can try again, or use one of the options below.',
+      );
+      return;
+    }
+    window.location.assign(next);
+  }
 
   async function requestLink(event: SyntheticEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -61,6 +85,26 @@ export function SignInForm({ next }: { next: string }) {
 
   return (
     <div className="space-y-4">
+      <button
+        type="button"
+        onClick={() => void signInWithPasskey()}
+        data-testid="passkey-sign-in"
+        className="w-full rounded border px-4 py-2 text-sm font-medium"
+        style={{ borderColor: 'var(--border)' }}
+      >
+        Sign in with a passkey
+      </button>
+      {passkeyError && (
+        <p
+          className="text-sm"
+          role="alert"
+          data-testid="passkey-sign-in-error"
+          style={{ color: 'var(--accent)' }}
+        >
+          {passkeyError}
+        </p>
+      )}
+
       <button
         type="button"
         onClick={() => {
