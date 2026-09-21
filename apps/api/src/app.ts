@@ -16,6 +16,7 @@ import { registerDeveloperRoutes } from './routes/developer.js';
 import { type BreakDeps, registerBreakRoutes } from './routes/breaks.js';
 import { registerCollectionRoutes } from './routes/collections.js';
 import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
+import { type LiveSaleDeps, registerLiveSaleRoutes } from './routes/live-sales.js';
 import { registerProfileRoutes } from './routes/profile.js';
 import { registerWatchRoutes } from './routes/watches.js';
 import { renderDocsPage } from './v1/docs.js';
@@ -33,6 +34,8 @@ export interface AppDeps {
   ingest?: IngestDeps | undefined;
   /** Creator breaks and the OBS overlay (Phase 2). */
   breaks?: BreakDeps | undefined;
+  /** The live-sale logger (Phase 4). Runs on the web role; ingestion is the worker's. */
+  liveSales?: LiveSaleDeps | undefined;
   /**
    * The pool that may read `key_hash`, for verifying presented API keys. This is the worker
    * role: the web role has no SELECT privilege on that column at all (migration 0017).
@@ -262,6 +265,7 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
       production: config.NODE_ENV === 'production',
     });
   }
+  if (deps.liveSales) registerLiveSaleRoutes(app, deps.liveSales);
   if (deps.ingest) registerIngestRoutes(app, deps.ingest);
   if (deps.breaks) registerBreakRoutes(app, deps.breaks);
 

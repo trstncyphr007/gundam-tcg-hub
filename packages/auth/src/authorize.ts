@@ -26,6 +26,8 @@ export type Action =
   | 'break:read'
   | 'break:write'
   | 'profile:write'
+  | 'live_sale:read'
+  | 'live_sale:write'
   | 'admin:access';
 
 const BASE_ACTIONS: readonly Action[] = [
@@ -52,12 +54,29 @@ const BASE_ACTIONS: readonly Action[] = [
  */
 const CREATOR_ACTIONS: readonly Action[] = ['break:read', 'break:write', 'profile:write'];
 
+/**
+ * Logging live sales (FR-4.1).
+ *
+ * Held by sellers **and** creators, because the two overlap in practice: somebody running a
+ * break on stream sells singles between packs, and making them hold two roles to describe
+ * one evening would mean either granting the wrong one or granting both to everybody.
+ *
+ * These entries become price observations at the highest weight the index gives anything, so
+ * the role is the first of three gates: a session cannot write such an observation at all
+ * (migration 0013), the entry passes through the worker first, and an odd price is held for
+ * review before it counts (SR-4.4).
+ */
+const SELLER_ACTIONS: readonly Action[] = ['live_sale:read', 'live_sale:write'];
+
 /** Role → actions granted to every holder of that role, regardless of ownership. */
 const ROLE_GRANTS = new Map<Role, readonly Action[]>([
   ['user', BASE_ACTIONS],
-  ['creator', [...BASE_ACTIONS, ...CREATOR_ACTIONS]],
-  ['seller', BASE_ACTIONS],
-  ['admin', [...BASE_ACTIONS, ...CREATOR_ACTIONS, 'catalog:write', 'admin:access']],
+  ['creator', [...BASE_ACTIONS, ...CREATOR_ACTIONS, ...SELLER_ACTIONS]],
+  ['seller', [...BASE_ACTIONS, ...SELLER_ACTIONS]],
+  [
+    'admin',
+    [...BASE_ACTIONS, ...CREATOR_ACTIONS, ...SELLER_ACTIONS, 'catalog:write', 'admin:access'],
+  ],
 ]);
 
 function grantsFor(role: Role): readonly Action[] {

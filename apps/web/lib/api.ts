@@ -86,6 +86,21 @@ export interface BreakSummary {
   createdAt: string;
 }
 
+export interface LiveSale {
+  id: string;
+  cardVariantId: string | null;
+  label: string;
+  condition: string;
+  priceCents: number;
+  currency: string;
+  soldAt: string;
+  streamRef: string | null;
+  /** Only ever present for the seller who typed it, and only for 90 days (SR-4.5). */
+  buyerHandle: string | null;
+  published: boolean;
+  flagged: boolean;
+}
+
 export interface CreatorProfile {
   id: string;
   handle: string;
@@ -380,6 +395,8 @@ export const api = {
     }
   },
   myProfile: () => getAuthed<{ profile: CreatorProfile | null }>('/v1/me/profile'),
+  /** The seller's own log. Carries buyer handles, so it is never cached anywhere. */
+  liveSales: () => getAuthed<{ items: LiveSale[] }>('/v1/live-sales'),
   breakers: () => getPublic<{ items: BreakerSummary[] }>('/v1/breakers'),
   /**
    * Not cached. The page carries a fairness verdict about a named person, and a cached
