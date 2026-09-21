@@ -135,6 +135,43 @@ export default function MethodologyPage() {
       </section>
 
       <section className="space-y-3">
+        <h2 className="text-lg font-medium">How hit rates are compared to published odds</h2>
+        <p className="text-sm">
+          A{' '}
+          <Link href="/breakers" className="underline">
+            breaker profile
+          </Link>{' '}
+          compares what someone pulled against the odds the publisher printed. That comparison can
+          read as an accusation, so it is deliberately hard to trigger.
+        </p>
+        <ul className="list-disc space-y-2 pl-5 text-sm">
+          <li>
+            The denominator is <strong>packs</strong>, not pulls, because published odds are stated
+            per pack. A break that did not record a pack count is left out entirely.
+          </li>
+          <li>
+            Comparisons are made <strong>per product</strong>. Pooling a 1-in-12 set with a 1-in-24
+            set produces a rate comparable to neither.
+          </li>
+          <li>
+            Nothing is compared below 30 packs, or below five <em>expected</em> hits. At 1-in-72
+            odds that means 360 packs — so most rows will say &ldquo;too few packs&rdquo; for a long
+            time, which is the honest answer rather than a hedge.
+          </li>
+          <li>
+            The interval is a <strong>Wilson score interval</strong>, and it is widened for the
+            number of rarities checked at once. Testing six rarities at 95% gives roughly a one in
+            four chance that one of them looks damning through luck alone — and that is exactly the
+            one that would get screenshotted.
+          </li>
+        </ul>
+        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+          &ldquo;Above&rdquo; or &ldquo;below published&rdquo; is a statement about one sample. It
+          is not a claim about the person, and we do not make one.
+        </p>
+      </section>
+
+      <section className="space-y-3">
         <h2 className="text-lg font-medium">Using this data</h2>
         <p className="text-sm">
           The index is published under{' '}

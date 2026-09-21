@@ -123,6 +123,42 @@ export async function setBreakStatus(
   });
 }
 
+/** A case is 12 boxes of 24. The database enforces the same bound. */
+export const MAX_PACKS_PER_BREAK = 5000;
+
+/**
+ * Record how many packs were opened (FR-4.3).
+ *
+ * Separate from creation because it is usually known at the end, not the start — a creator
+ * opening "whatever fits in the hour" has no number until the hour is over. Editable while
+ * the break runs and after it ends, which is a deliberate asymmetry with the pull log: a
+ * pull is evidence and cannot be rewritten, whereas the pack count is a fact about the
+ * session that the creator is the only source for. Every change is audited by the caller.
+ */
+export async function setPacksOpened(
+  db: Database,
+  creatorId: string,
+  breakId: string,
+  packsOpened: number | null,
+): Promise<Break> {
+  if (packsOpened !== null && (!Number.isInteger(packsOpened) || packsOpened < 1)) {
+    throw new BreakStateError('a pack count must be a whole number of at least 1');
+  }
+  if (packsOpened !== null && packsOpened > MAX_PACKS_PER_BREAK) {
+    throw new BreakLimitError(`pack count above the limit (${String(MAX_PACKS_PER_BREAK)})`);
+  }
+
+  return asUser(db, creatorId, async (tx) => {
+    const [row] = await tx
+      .update(breaks)
+      .set({ packsOpened, updatedAt: new Date() })
+      .where(and(eq(breaks.id, breakId), eq(breaks.creatorId, creatorId)))
+      .returning();
+    if (!row) throw new BreakStateError('break not found');
+    return row;
+  });
+}
+
 /**
  * Replace the overlay token (SR-2.1). The version bump is what makes rotation provable:
  * the old token's hash is gone, so it cannot match again even if someone kept it.

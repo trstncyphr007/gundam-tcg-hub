@@ -45,6 +45,16 @@ export const breaks = app.table(
     }),
     /** What the creator actually paid, which is often not MSRP. */
     costCents: integer('cost_cents'),
+    /**
+     * How many packs were opened (FR-4.3).
+     *
+     * The denominator, and the reason it has to be entered rather than derived: published
+     * odds are stated *per pack*, and a pull log counts cards. Thirty pulls could be thirty
+     * packs or six. Without this number a hit rate cannot be compared to anything, so a
+     * break that does not record it is excluded from the comparison entirely — and the
+     * profile page says how many breaks that was, rather than quietly shrinking the sample.
+     */
+    packsOpened: integer('packs_opened'),
     status: breakStatus('status').notNull().default('draft'),
     /**
      * HMAC of the overlay token (SR-2.1). The token itself is shown once and never
@@ -64,6 +74,12 @@ export const breaks = app.table(
     check('breaks_title_not_blank', sql`length(btrim(${t.title})) > 0`),
     check('breaks_title_length', sql`length(${t.title}) <= 120`),
     check('breaks_cost_non_negative', sql`${t.costCents} is null or ${t.costCents} >= 0`),
+    // A case is 12 boxes of 24; 5000 is far beyond any single session and bounds the
+    // denominator so a typo cannot silently make a hit rate look impossibly low.
+    check(
+      'breaks_packs_opened_range',
+      sql`${t.packsOpened} is null or ${t.packsOpened} between 1 and 5000`,
+    ),
     // A live break has started; an ended one has both timestamps and ends after it starts.
     check(
       'breaks_timestamps_follow_status',

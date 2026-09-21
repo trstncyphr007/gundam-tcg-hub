@@ -37,6 +37,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <Link href="/creator/breaks" className="text-sm" style={{ color: 'var(--muted)' }}>
               Breaks
             </Link>
+            <Link href="/breakers" className="text-sm" style={{ color: 'var(--muted)' }}>
+              Breakers
+            </Link>
             <Link href="/account/developer" className="text-sm" style={{ color: 'var(--muted)' }}>
               API
             </Link>

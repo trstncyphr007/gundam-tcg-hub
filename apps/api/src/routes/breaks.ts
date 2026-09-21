@@ -16,6 +16,7 @@ import {
   rotateOverlayToken,
   setBreakStatus,
   setClientSeed,
+  setPacksOpened,
   writeAuditLog,
 } from '@gth/db';
 import { type KeyRing, generateToken, hashToken, toCsv } from '@gth/security';
@@ -52,6 +53,14 @@ const pullSchema = z
   .refine((v) => Boolean(v.cardVariantId) || Boolean(v.label), {
     message: 'provide a cardVariantId or a label',
   });
+
+/**
+ * Nullable, not optional: clearing a pack count is a real thing a creator may need to do
+ * (they miscounted), and it must be a different request from "leave it alone". Sending
+ * `null` withdraws the break from every odds comparison rather than leaving a wrong
+ * denominator standing.
+ */
+const packsSchema = z.object({ packsOpened: z.int().min(1).max(5000).nullable() }).strict();
 
 const idParamSchema = z.object({ id: z.uuid() }).strict();
 /** base64url of 32 bytes is 43 characters; bound it so a huge path never reaches the DB. */
@@ -290,6 +299,48 @@ export function registerBreakRoutes(app: FastifyInstance, deps: BreakDeps): void
       action: `break.${body.data.status}`,
       targetType: 'break',
       targetId: row.id,
+    });
+    return reply.header('cache-control', 'no-store').send(withoutTokenHash(row));
+  });
+
+  /**
+   * Record how many packs were opened (FR-4.3).
+   *
+   * The denominator for every hit-rate comparison on the creator's profile, which is why it
+   * is a separate, audited route rather than a field on the break form: changing it changes
+   * a published statistic about a named person, and the record of who changed it and when
+   * should exist before anyone asks.
+   */
+  app.post('/v1/breaks/:id/packs', async (request, reply) => {
+    if (!request.subject) return reply.code(401).send({ error: 'unauthenticated' });
+    authorize(request.subject, 'break:write');
+
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.code(400).send({ error: 'invalid_request', details: issuesOf(params.error) });
+    }
+    const body = packsSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.code(400).send({ error: 'invalid_request', details: issuesOf(body.error) });
+    }
+
+    let row;
+    try {
+      row = await setPacksOpened(db, request.subject.userId, params.data.id, body.data.packsOpened);
+    } catch (error) {
+      if (error instanceof BreakLimitError) {
+        return reply.code(409).send({ error: 'pack_count_too_high', reason: error.message });
+      }
+      if (error instanceof BreakStateError) return reply.code(404).send({ error: 'not_found' });
+      throw error;
+    }
+
+    await writeAuditLog(db, {
+      actorId: request.subject.userId,
+      action: 'break.packs_recorded',
+      targetType: 'break',
+      targetId: row.id,
+      diff: { packsOpened: row.packsOpened },
     });
     return reply.header('cache-control', 'no-store').send(withoutTokenHash(row));
   });

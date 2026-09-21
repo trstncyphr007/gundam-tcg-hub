@@ -159,6 +159,106 @@ export const cardPricesSchema = z.object({
   sources: z.array(sourceMixSchema),
 });
 
+// --------------------------------------------------------------------------- //
+// Breaker profiles (FR-4.3)
+// --------------------------------------------------------------------------- //
+
+export const handleParam = z
+  .object({
+    handle: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/u, 'handle must be lowercase and url-safe'),
+  })
+  .strict();
+
+export const publishedOddsSchema = z.object({
+  numerator: z.int().describe('Cards of this rarity per `denominator` packs, as published.'),
+  denominator: z.int(),
+});
+
+export const rarityComparisonSchema = z.object({
+  rarity: z.string(),
+  hits: z.int().describe('Cards of this rarity logged across the counted packs.'),
+  packs: z.int(),
+  observedRate: z.number().nullable(),
+  published: publishedOddsSchema.nullable(),
+  publishedRate: z.number().nullable(),
+  lowRate: z.number().nullable().describe('Wilson lower bound; null when no comparison was made.'),
+  highRate: z.number().nullable(),
+  verdict: z
+    .enum(['unpublished', 'insufficient', 'not_comparable', 'consistent', 'above', 'below'])
+    .describe(
+      'A statement about this sample, not about the breaker. `consistent` is the ordinary ' +
+        'result; `insufficient` means the sample is too small to say anything, which is the ' +
+        'common case and not a criticism. The interval is adjusted for the number of ' +
+        'rarities compared at once.',
+    ),
+});
+
+export const oddsReportSchema = z.object({
+  sealedProductId: z.uuid(),
+  productName: z.string(),
+  breaks: z.int(),
+  packs: z.int().describe('Packs opened across ended breaks of this product that recorded one.'),
+  unidentifiedPulls: z.int().describe('Pulls with no catalogued card, so no rarity to count.'),
+  rarities: z.array(rarityComparisonSchema),
+  sources: z.array(
+    z.object({
+      rarity: z.string(),
+      sourceUrl: z.string().describe('Where the publisher stated these odds.'),
+      publishedAt: z.string().nullable(),
+    }),
+  ),
+});
+
+export const breakerProfileSchema = z.object({
+  handle: z.string(),
+  displayName: z.string().describe('Chosen by the creator. Never an account name or email.'),
+  bio: z.string().nullable(),
+  totals: z.object({
+    breaks: z.int(),
+    endedBreaks: z.int(),
+    pulls: z.int(),
+    totalValueCents: z.int(),
+    packsOpened: z.int(),
+    breaksWithoutPackCount: z
+      .int()
+      .describe('Ended breaks with no pack count, and so outside every odds comparison.'),
+  }),
+  fairness: z.object({
+    committed: z.int(),
+    revealed: z.int(),
+    endedBreaks: z.int(),
+    chainsChecked: z.int().describe('How many pull logs were re-hashed for this response.'),
+    chainsValid: z.int(),
+    chainsBroken: z.int(),
+    chainsUnverifiable: z.int().describe('Logs predating the hash chain: unproven, not passing.'),
+    badge: z.enum(['verified', 'none', 'broken']),
+  }),
+  rarityCounts: z.array(z.object({ rarity: z.string(), pulls: z.int() })),
+  oddsReports: z.array(oddsReportSchema),
+  recentBreaks: z.array(
+    z.object({
+      id: z.uuid(),
+      title: z.string(),
+      productName: z.string().nullable(),
+      status: z.enum(['draft', 'live', 'ended']),
+      packsOpened: z.int().nullable(),
+      pulls: z.int(),
+      totalCents: z.int(),
+      endedAt: z.string().nullable(),
+    }),
+  ),
+});
+
+export const breakerSummarySchema = z.object({
+  handle: z.string(),
+  displayName: z.string(),
+  bio: z.string().nullable(),
+});
+
+export const breakerPageSchema = page(breakerSummarySchema);
+
 export const gamePageSchema = page(gameSchema);
 export const setPageSchema = page(setSchema);
 export const cardPageSchema = page(cardSchema);

@@ -148,6 +148,20 @@
       "when": 1789951273163,
       "tag": "0020_commitment_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789983160135,
+      "tag": "0021_phase4_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789983169267,
+      "tag": "0022_profile_rls",
+      "breakpoints": true
     }
   ]
 }

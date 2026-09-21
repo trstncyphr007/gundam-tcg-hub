@@ -25,6 +25,7 @@ export type Action =
   | 'collection:write'
   | 'break:read'
   | 'break:write'
+  | 'profile:write'
   | 'admin:access';
 
 const BASE_ACTIONS: readonly Action[] = [
@@ -44,8 +45,12 @@ const BASE_ACTIONS: readonly Action[] = [
  * Running a break is a creator privilege (FR-2.2). The public break page and the OBS
  * overlay are read by people with no account at all, so they don't go through here --
  * the overlay is gated by its token and the public page by the break being published.
+ *
+ * A breaker profile (FR-4.3) is the same shape: writing one is a creator privilege, and
+ * reading one needs no permission at all because an unpublished profile is not a row anyone
+ * else can select.
  */
-const CREATOR_ACTIONS: readonly Action[] = ['break:read', 'break:write'];
+const CREATOR_ACTIONS: readonly Action[] = ['break:read', 'break:write', 'profile:write'];
 
 /** Role → actions granted to every holder of that role, regardless of ownership. */
 const ROLE_GRANTS = new Map<Role, readonly Action[]>([

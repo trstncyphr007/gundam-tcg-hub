@@ -25,3 +25,4 @@ New decisions get their own file.
 | 018 | [How the price index is computed](018-price-index-methodology.md)                                               | Accepted                 |
 | 019 | [What a collection is worth, and where its CSV is parsed](019-collection-valuation.md)                          | Accepted                 |
 | 020 | [Generate OpenAPI from zod; publish the index under CC BY 4.0](020-openapi-without-swagger.md)                  | Accepted                 |
+| 021 | [Comparing pull rates to published odds](021-comparing-pull-rates-to-published-odds.md)                         | Accepted                 |
