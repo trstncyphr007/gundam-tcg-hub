@@ -53,7 +53,10 @@ VALKEY_PASSWORD=${VALKEY_PASSWORD}
 VALKEY_URL=redis://:${VALKEY_PASSWORD}@127.0.0.1:6379/0
 
 TOKEN_PEPPER=${TOKEN_PEPPER}
-DATA_ENCRYPTION_KEYS={"k1":"${DATA_ENCRYPTION_KEY}"}
+# Single-quoted: this value is JSON, and some consumers of this file are shells. Unquoted,
+# `set -a; . ./.env` strips the double quotes and hands the application `{k1:...}`, which is
+# not JSON and fails at boot. Node's --env-file and dotenv both understand the quotes.
+DATA_ENCRYPTION_KEYS='{"k1":"${DATA_ENCRYPTION_KEY}"}'
 DATA_ENCRYPTION_ACTIVE_KID=k1
 
 # Auth. Sign-in links are emailed via Mailpit locally: start it with

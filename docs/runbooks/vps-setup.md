@@ -111,7 +111,7 @@ ACME_EMAIL=<you@domain>
 API_BASE_URL=https://<domain>
 APP_BASE_URL=https://<domain>
 SMTP_URL=smtp://<provider>
-DATA_ENCRYPTION_KEYS={"k1":"<openssl rand -base64 32>"}
+DATA_ENCRYPTION_KEYS='{"k1":"<openssl rand -base64 32>"}'
 DATA_ENCRYPTION_ACTIVE_KID=k1
 ```
 
