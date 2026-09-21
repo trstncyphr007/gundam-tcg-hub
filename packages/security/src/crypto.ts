@@ -20,6 +20,15 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 const FORMAT = 'v1';
 const IV_BYTES = 12; // 96 bits, the size GCM is defined for
 const KEY_BYTES = 32;
+/**
+ * The full 128-bit tag, pinned on both sides.
+ *
+ * Node will happily verify a *shorter* tag if handed one, and a short tag is far easier to
+ * forge — so the length is declared when the cipher is created and the supplied tag is
+ * measured before it is used. An attacker does not get to choose how much authentication we
+ * do. (Caught by Semgrep, rule `NbGG1`, which was right.)
+ */
+const TAG_BYTES = 16;
 
 export class DecryptionError extends Error {
   constructor(message: string) {
@@ -80,7 +89,7 @@ export function encryptField(ring: KeyRing, plaintext: string): string {
   if (!key) throw new Error('active key missing from the key ring');
 
   const iv = randomBytes(IV_BYTES);
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: TAG_BYTES });
   const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
 
@@ -111,8 +120,16 @@ export function decryptField(ring: KeyRing, encoded: string): string {
   if (!key) throw new DecryptionError('could not decrypt');
 
   try {
-    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(String(ivPart), 'base64url'));
-    decipher.setAuthTag(Buffer.from(String(tagPart), 'base64url'));
+    const iv = Buffer.from(String(ivPart), 'base64url');
+    const tag = Buffer.from(String(tagPart), 'base64url');
+    // Measured, not assumed. A short tag is a weak tag, and the length arrives from the
+    // same untrusted string as everything else here.
+    if (iv.length !== IV_BYTES || tag.length !== TAG_BYTES) {
+      throw new DecryptionError('could not decrypt');
+    }
+
+    const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: TAG_BYTES });
+    decipher.setAuthTag(tag);
     return Buffer.concat([
       decipher.update(Buffer.from(String(dataPart), 'base64url')),
       decipher.final(),

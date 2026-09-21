@@ -39,6 +39,22 @@ describe('field encryption (SR-1.6, SR-4.2)', () => {
     expect(() => decryptField(ring, parts.join(':'))).toThrow(DecryptionError);
   });
 
+  it('refuses a truncated authentication tag', () => {
+    // Node will verify a shorter tag if you let it, and a short tag is far easier to forge.
+    // The length is pinned when the cipher is created and checked before it is used, so an
+    // attacker does not get to choose how much authentication happens.
+    const parts = encryptField(ring, 'the real seed').split(':');
+    const tag = Buffer.from(String(parts[3]), 'base64url');
+    parts[3] = tag.subarray(0, 8).toString('base64url');
+    expect(() => decryptField(ring, parts.join(':'))).toThrow(DecryptionError);
+  });
+
+  it('refuses an initialisation vector of the wrong length', () => {
+    const parts = encryptField(ring, 'the real seed').split(':');
+    parts[2] = Buffer.alloc(8).toString('base64url');
+    expect(() => decryptField(ring, parts.join(':'))).toThrow(DecryptionError);
+  });
+
   it('refuses a swapped authentication tag', () => {
     const a = encryptField(ring, 'seed one').split(':');
     const b = encryptField(ring, 'seed two').split(':');
