@@ -1,3 +1,4 @@
+import { GENESIS_HASH, hashPull } from '@gth/core';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { breakPulls, breaks } from '../schema/breaks.js';
@@ -231,6 +232,27 @@ export async function logPull(
       }
     }
 
+    // Link this pull to the one before it (SR-4.1). Inside the same transaction as the
+    // insert, so two rapid pulls cannot both chain from the same tip and produce a fork.
+    const [tip] = await tx
+      .select({ seq: breakPulls.seq, rowHash: breakPulls.rowHash })
+      .from(breakPulls)
+      .where(eq(breakPulls.breakId, breakId))
+      .orderBy(sql`${breakPulls.seq} desc`)
+      .limit(1);
+
+    const seq = (tip?.seq ?? 0) + 1;
+    const prevHash = tip?.rowHash ?? GENESIS_HASH;
+    const pulledAt = new Date();
+    const rowHash = await hashPull(prevHash, {
+      seq,
+      cardVariantId: input.cardVariantId ?? null,
+      label: input.label ?? null,
+      valueCentsAtPull,
+      valueSource,
+      pulledAt: pulledAt.toISOString(),
+    });
+
     const [row] = await tx
       .insert(breakPulls)
       .values({
@@ -239,7 +261,10 @@ export async function logPull(
         label: input.label,
         valueCentsAtPull,
         valueSource,
-        seq: sql`(select coalesce(max(p.seq), 0) + 1 from app.break_pulls p where p.break_id = ${breakId})`,
+        seq,
+        pulledAt,
+        prevHash,
+        rowHash,
       })
       .returning();
     if (!row) throw new Error('pull insert failed');
