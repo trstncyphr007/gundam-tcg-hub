@@ -3,3 +3,8 @@ dist
 coverage
 .turbo
 reports
+
+# ansible-lint owns the style of the playbook's YAML, and it disagrees with prettier about
+# indentation. Two formatters rewriting the same files is a loop: prettier reformats it, the
+# lint fails, someone fixes it, prettier reformats it back. One owner per file.
+infra/vps/ansible

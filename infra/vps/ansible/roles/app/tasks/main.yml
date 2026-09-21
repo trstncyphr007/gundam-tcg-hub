@@ -33,11 +33,10 @@
     label: '{{ item.0 }}/{{ item.1.name }}'
   vars:
     app_shipped_files:
-      - {
-          name: docker-compose.prod.yml,
-          src: '{{ repo_root }}/infra/compose/docker-compose.prod.yml',
-        }
-      - { name: Caddyfile, src: '{{ repo_root }}/infra/caddy/Caddyfile' }
+      - name: docker-compose.prod.yml
+        src: "{{ repo_root }}/infra/compose/docker-compose.prod.yml"
+      - name: Caddyfile
+        src: "{{ repo_root }}/infra/caddy/Caddyfile"
 
 - name: Install the deploy script
   # Root-owned and not writable by the deploy account, which can only *run* it. Otherwise
