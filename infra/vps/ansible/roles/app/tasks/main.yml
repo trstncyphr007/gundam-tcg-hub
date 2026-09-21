@@ -1,0 +1,113 @@
+---
+- name: Create the application directories
+  ansible.builtin.file:
+    path: '{{ item }}'
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - '{{ app_root }}'
+    - '{{ app_root }}/staging'
+    - '{{ app_root }}/production'
+
+- name: Create the age key directory
+  # The private key is copied here by hand, once, from the password manager. Ansible never
+  # carries it: a secret that passes through a CI log is not a secret.
+  ansible.builtin.file:
+    path: /root/.config/sops/age
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Ship the compose file and proxy config to each environment
+  ansible.builtin.copy:
+    src: '{{ item.1.src }}'
+    dest: '{{ app_root }}/{{ item.0 }}/{{ item.1.name }}'
+    owner: root
+    group: root
+    mode: '0644'
+  loop: "{{ ['production', 'staging'] | product(app_shipped_files) | list }}"
+  loop_control:
+    label: '{{ item.0 }}/{{ item.1.name }}'
+  vars:
+    app_shipped_files:
+      - name: docker-compose.prod.yml
+        src: "{{ repo_root }}/infra/compose/docker-compose.prod.yml"
+      - name: Caddyfile
+        src: "{{ repo_root }}/infra/caddy/Caddyfile"
+
+- name: Install the deploy script
+  # Root-owned and not writable by the deploy account, which can only *run* it. Otherwise
+  # "CI may run one command as root" would mean "CI may run anything as root, eventually".
+  ansible.builtin.copy:
+    src: '{{ repo_root }}/infra/vps/deploy.sh'
+    dest: '{{ app_root }}/deploy.sh'
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Check for cosign
+  ansible.builtin.stat:
+    path: /usr/local/bin/cosign
+  register: app_cosign
+
+- name: Fetch the cosign release checksums
+  ansible.builtin.get_url:
+    url: 'https://github.com/sigstore/cosign/releases/download/{{ cosign_version }}/cosign_checksums.txt'
+    dest: /tmp/cosign_checksums.txt
+    mode: '0644'
+  when: not app_cosign.stat.exists
+
+- name: Read the expected cosign checksum
+  ansible.builtin.command:
+    cmd: awk '/ cosign-linux-amd64$/ {print $1}' /tmp/cosign_checksums.txt
+  register: app_cosign_sum
+  changed_when: false
+  when: not app_cosign.stat.exists
+
+- name: Install cosign, verified against its published checksum
+  # This binary decides whether an image is allowed to run. Downloading it unverified would
+  # undo the entire signing chain it exists to enforce.
+  ansible.builtin.get_url:
+    url: 'https://github.com/sigstore/cosign/releases/download/{{ cosign_version }}/cosign-linux-amd64'
+    dest: /usr/local/bin/cosign
+    mode: '0755'
+    owner: root
+    group: root
+    checksum: 'sha256:{{ app_cosign_sum.stdout }}'
+  when: not app_cosign.stat.exists
+
+- name: Check for sops
+  ansible.builtin.stat:
+    path: /usr/local/bin/sops
+  register: app_sops
+
+- name: Fetch the sops release checksums
+  # Not from apt: sops is not in Ubuntu's archive. The runbook used to say `apt install
+  # sops`, which would have failed on a real host at exactly the wrong moment.
+  ansible.builtin.get_url:
+    url: 'https://github.com/getsops/sops/releases/download/{{ sops_version }}/sops-{{ sops_version }}.checksums.txt'
+    dest: /tmp/sops_checksums.txt
+    mode: '0644'
+  when: not app_sops.stat.exists
+
+- name: Read the expected sops checksum
+  ansible.builtin.command:
+    cmd: awk '/ sops-{{ sops_version }}.linux.amd64$/ {print $1}' /tmp/sops_checksums.txt
+  register: app_sops_sum
+  changed_when: false
+  when: not app_sops.stat.exists
+
+- name: Install sops, verified against its published checksum
+  # This binary decrypts the production secrets. Same reasoning as cosign: an unverified
+  # download here would undo everything the encryption is for.
+  ansible.builtin.get_url:
+    url: 'https://github.com/getsops/sops/releases/download/{{ sops_version }}/sops-{{ sops_version }}.linux.amd64'
+    dest: /usr/local/bin/sops
+    mode: '0755'
+    owner: root
+    group: root
+    checksum: 'sha256:{{ app_sops_sum.stdout }}'
+  when: not app_sops.stat.exists

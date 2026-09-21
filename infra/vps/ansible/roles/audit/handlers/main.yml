@@ -1,0 +1,9 @@
+---
+- name: Restart auditd
+  # `service`, not `systemd_service`: auditd refuses to be restarted by systemd directly on
+  # Ubuntu, and the init script knows the dance.
+  ansible.builtin.service:
+    name: auditd
+    state: restarted
+    use: service
+  when: not gth_container_smoke

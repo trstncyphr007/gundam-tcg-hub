@@ -1,0 +1,9 @@
+---
+- name: Restart ssh
+  # `reloaded`, not `restarted`: a reload re-reads the config without dropping the connection
+  # Ansible is currently using. Getting this wrong is how a hardening run locks you out
+  # halfway through.
+  ansible.builtin.systemd_service:
+    name: ssh
+    state: reloaded
+  when: not gth_container_smoke

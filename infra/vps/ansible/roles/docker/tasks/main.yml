@@ -1,0 +1,74 @@
+---
+- name: Create the apt keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Add Docker's apt key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Add Docker's apt repository
+  # deb822 rather than the one-line format: `apt_repository` is deprecated and goes away in
+  # ansible-core 2.25, and this host is meant to still build in two years.
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: [deb]
+    uris: https://download.docker.com/linux/ubuntu
+    suites: "{{ ansible_facts['distribution_release'] }}"
+    components: [stable]
+    architectures: "{{ ansible_facts['architecture'] | replace('x86_64', 'amd64') }}"
+    signed_by: /etc/apt/keyrings/docker.asc
+    enabled: true
+    state: present
+
+- name: Install Docker Engine and the compose plugin
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+- name: Configure the Docker daemon
+  # userns-remap is the important line: a process that escapes a container lands as an
+  # unprivileged user on the host rather than as root. The rest bounds the damage a
+  # misbehaving container can do to the disk and to its neighbours.
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    mode: '0644'
+    owner: root
+    group: root
+    content: |
+      {
+        "userns-remap": "default",
+        "no-new-privileges": true,
+        "live-restore": true,
+        "icc": false,
+        "log-driver": "local",
+        "log-opts": { "max-size": "10m", "max-file": "5" }
+      }
+  notify: Restart docker
+
+- name: Let the deploy account talk to Docker
+  ansible.builtin.user:
+    name: '{{ deploy_user }}'
+    groups: docker
+    append: true
+
+- name: Enable Docker
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+  when: not gth_container_smoke

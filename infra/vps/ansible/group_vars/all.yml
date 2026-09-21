@@ -1,0 +1,37 @@
+---
+# Non-secret defaults. Anything secret lives in SOPS (infra/secrets), never here.
+
+# True only for the container smoke run (`make -C infra/vps/ansible smoke`), which exercises
+# package, file and template tasks without systemd or a writable /proc/sys. It must never be
+# true against a real host: the tasks it skips are controls, not conveniences.
+gth_container_smoke: false
+
+# Where this checkout is, so roles can ship files that live outside their own directory.
+# Ansible only searches role-relative paths otherwise, and `../../..` from inside a role
+# resolves somewhere surprising.
+repo_root: '{{ playbook_dir }}/../../..'
+
+# The account CI deploys as. It may run exactly one command as root: the deploy script.
+deploy_user: deploy
+app_root: /srv/gth
+
+# Pinned, and checked against the published checksum when installed. An unpinned download on
+# the box that verifies image signatures would be a strange place to start trusting latest.
+cosign_version: v3.1.3
+# sops is not in Ubuntu's archive, so it is installed from its release the same way.
+sops_version: v3.13.3
+
+# Ports open to the internet. Everything else reaches the host over Tailscale.
+public_tcp_ports: [80, 443]
+public_udp_ports: [443] # HTTP/3
+
+# Backups (plan §21). The repository and credentials come from /etc/gth/restic.env, which is
+# created by hand once and never committed -- see docs/runbooks/backups.md.
+backup_hour: '03:00'
+restic_keep_daily: 7
+restic_keep_weekly: 4
+restic_keep_monthly: 12
+
+# Unattended upgrades reboot at this time when a patched kernel needs it. Chosen to be after
+# the backup window, so a reboot cannot interrupt a dump.
+unattended_reboot_time: '04:00'

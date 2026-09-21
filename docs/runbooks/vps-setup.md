@@ -3,6 +3,11 @@
 Plan reference: §15. Follow this once, when the VPS is bought. Everything before this point
 runs locally, so nothing here is urgent.
 
+Host configuration is **Ansible**, not a list of commands to paste
+(`infra/vps/ansible/`). That matters for one reason: rebuilding this host after a failure
+should be a command, not an afternoon of following a document (threat T17). It is also
+reviewable, lintable and re-runnable — a second run reports no changes.
+
 ## Status
 
 | Step                                                    | State                                                                   |
@@ -10,124 +15,95 @@ runs locally, so nothing here is urgent.
 | Production compose stack, Caddy config, hardened images | ✅ built and **verified locally** (`bash scripts/verify-prod-stack.sh`) |
 | Release pipeline (build, scan, SBOM, sign, push)        | ✅ written; runs on merge to `main`                                     |
 | Deploy workflow + server-side deploy script             | ✅ written; **not yet exercised** (needs a server)                      |
+| Host hardening playbook                                 | ✅ written; lint + syntax clean, **container-smoked**, not host-tested  |
 | VPS provisioned and hardened                            | ⬜ waiting on the VPS                                                   |
 | Domain, TLS, backups                                    | ⬜ waiting on the domain                                                |
+
+**What "container-smoked" means.** `infra/vps/ansible/smoke.sh` runs the playbook twice
+against a throwaway Ubuntu 24.04 container and fails if the second run changes anything. That
+exercises the package, file, template and download tasks — and it is how four real bugs were
+found before any server existed. It does **not** exercise systemd, sysctl, ufw or Tailscale,
+because a container has none of them. Those remain unproven until step 4.
 
 ## 1. Buy the VPS
 
 Hostinger → KVM plan, **≥2 vCPU / 8 GB RAM / 100 GB NVMe**, US region, **Ubuntu 24.04 LTS**,
 no control panel. Add your SSH public key during setup.
 
-## 2. Base hardening (as root, once)
+## 2. Make yourself reachable (by hand, as root, once)
+
+The playbook cannot bootstrap the account it connects as, and it will refuse to close port 22
+until Tailscale is up — so these three things happen first.
 
 ```bash
-apt update && apt -y full-upgrade
-apt -y install unattended-upgrades needrestart chrony curl ca-certificates
+apt update && apt -y install curl
 
-# A non-root user for deploys
+# The account Ansible and CI connect as.
 adduser --disabled-password --gecos "" deploy
 usermod -aG sudo deploy
 install -d -m 700 /home/deploy/.ssh
 cp /root/.ssh/authorized_keys /home/deploy/.ssh/
 chown -R deploy:deploy /home/deploy/.ssh
 
-# SSH: keys only, no root
-sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/;
-        s/^#\?PasswordAuthentication.*/PasswordAuthentication no/;
-        s/^#\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication no/' /etc/ssh/sshd_config
-echo 'AllowUsers deploy' >> /etc/ssh/sshd_config
-systemctl restart ssh
-```
-
-## 3. Tailscale, then close SSH to the internet
-
-```bash
+# Tailscale, before the firewall closes public SSH.
 curl -fsSL https://tailscale.com/install.sh | sh
 tailscale up --ssh --advertise-tags=tag:vps
 ```
 
-Then in the Tailscale admin console: create an **OAuth client** (scope `auth_keys`, tag
-`tag:ci`) for the deploy workflow, and an ACL allowing only your devices and `tag:ci` to reach
+**Confirm you can reach the host over Tailscale from another terminal before continuing.**
+The firewall role asserts `tailscale0` exists precisely because "I'll set that up afterwards"
+has exactly one outcome.
+
+In the Tailscale admin console: create an **OAuth client** (scope `auth_keys`, tag `tag:ci`)
+for the deploy workflow, and an ACL allowing only your devices and `tag:ci` to reach
 `tag:vps:22`.
 
-```bash
-apt -y install ufw
-ufw default deny incoming && ufw default allow outgoing
-ufw allow 80/tcp && ufw allow 443/tcp && ufw allow 443/udp
-ufw allow in on tailscale0
-ufw --force enable
-# Verify from another machine: only 80/443 answer.
-```
-
-## 4. Docker, with user namespaces
+## 3. Run the playbook (from your workstation)
 
 ```bash
-curl -fsSL https://get.docker.com | sh
-cat > /etc/docker/daemon.json <<'JSON'
-{
-  "userns-remap": "default",
-  "no-new-privileges": true,
-  "live-restore": true,
-  "icc": false,
-  "log-driver": "local",
-  "log-opts": { "max-size": "10m", "max-file": "5" }
-}
-JSON
-systemctl restart docker
-usermod -aG docker deploy
+cd infra/vps/ansible
+cp inventory.example.ini inventory.ini    # then edit: the Tailscale hostname
+pipx install ansible-core ansible-lint
+ansible-galaxy collection install -r requirements.yml
+
+ansible-playbook site.yml --check --diff   # dry run, always, first
+ansible-playbook site.yml --diff
+ansible-playbook site.yml --diff           # again: it must report zero changes
 ```
 
-## 5. CrowdSec and an audit baseline
+What it does, in order — `base` (packages, UTC, unattended security upgrades, chrony),
+`users` (the deploy account and a sudo rule for exactly one script), `kernel` (sysctl
+hardening), `ssh` (keys only, modern algorithms, no root), `firewall` (deny inbound except
+80/443 and Tailscale), `docker` (engine with `userns-remap`), `crowdsec`, `audit` (auditd
+rules on the files that decide who may do what, plus Lynis), `app` (directory layout, compose
+and Caddy files, checksum-verified cosign and sops), `backups` (restic, nightly timer,
+failure alert).
+
+## 4. Prove the parts a container could not
 
 ```bash
-curl -s https://install.crowdsec.net | sh && apt -y install crowdsec
-apt -y install crowdsec-firewall-bouncer-iptables
-cscli collections install crowdsecurity/sshd crowdsecurity/base-http-scenarios
-systemctl reload crowdsec
+# From another machine: only 80 and 443 should answer.
+nmap -Pn <public-ip>
 
-apt -y install lynis && lynis audit system --quick | tail -n 20
-# Record the hardening index in this file; target >= 75.
+# On the host:
+sshd -T | grep -E 'permitrootlogin|passwordauthentication|allowusers'
+sysctl kernel.kptr_restrict fs.protected_regular
+ufw status verbose
+systemctl is-enabled gth-backup.timer
+lynis audit system --quick | tail -n 20    # record the index below; target ≥ 75
 ```
 
-## 6. Application layout
+| Date | Lynis hardening index | `nmap` result | By  |
+| ---- | --------------------- | ------------- | --- |
+|      |                       |               |     |
 
-```bash
-install -d -m 0755 /srv/gth /srv/gth/production /srv/gth/staging
-install -d -m 0700 /root/.config/sops/age
-# Copy the age private key from your password manager to
-#   /root/.config/sops/age/keys.txt   (chmod 0400)
+## 5. Secrets
 
-# From your workstation:
-scp infra/compose/docker-compose.prod.yml deploy@<host>:/srv/gth/production/
-scp infra/caddy/Caddyfile               deploy@<host>:/srv/gth/production/
-scp infra/vps/deploy.sh                 deploy@<host>:/tmp/
-ssh deploy@<host> 'sudo install -m 0750 -o root -g root /tmp/deploy.sh /srv/gth/deploy.sh'
-```
+The playbook creates `/root/.config/sops/age/` but never puts a key in it — a secret that
+passes through CI is not a secret. Copy the age private key there yourself (mode `0400`).
 
-Install cosign and sops on the server (the deploy script needs both):
-
-```bash
-curl -fsSL -o /usr/local/bin/cosign \
-  https://github.com/sigstore/cosign/releases/download/v3.1.3/cosign-linux-amd64
-curl -fsSL -o /tmp/cosign_checksums.txt \
-  https://github.com/sigstore/cosign/releases/download/v3.1.3/cosign_checksums.txt
-grep ' cosign-linux-amd64$' /tmp/cosign_checksums.txt | \
-  sed 's|cosign-linux-amd64|/usr/local/bin/cosign|' | sha256sum -c -
-chmod +x /usr/local/bin/cosign
-```
-
-Allow the deploy user to run only that one script as root:
-
-```bash
-echo 'deploy ALL=(root) NOPASSWD: /srv/gth/deploy.sh' > /etc/sudoers.d/40-gth-deploy
-chmod 0440 /etc/sudoers.d/40-gth-deploy
-visudo -cf /etc/sudoers.d/40-gth-deploy
-```
-
-## 7. Secrets
-
-On your workstation, create `infra/secrets/production.sops.env` (SOPS + age, encrypted to your
-age key **and** the server's), containing the variables from `.env.example` plus:
+On your workstation, create `infra/secrets/production.sops.env` (encrypted to your age key
+**and** the server's), containing the variables from `.env.example` plus:
 
 ```
 SITE_ADDRESS=<domain>
@@ -140,7 +116,10 @@ SMTP_URL=smtp://<provider>
 Copy the encrypted file to `/srv/gth/production/secrets.sops.env`. It is safe in git and safe
 on disk; only the age key decrypts it, into tmpfs, at deploy time.
 
-## 8. GitHub secrets for the deploy workflow
+Backups need `/etc/gth/restic.env` as well — see `docs/runbooks/backups.md`. The playbook
+warns rather than fails when it is missing, so a fresh host still converges.
+
+## 6. GitHub secrets for the deploy workflow
 
 | Name                                     | Value                                    |
 | ---------------------------------------- | ---------------------------------------- |
@@ -149,19 +128,19 @@ on disk; only the age key decrypts it, into tmpfs, at deploy time.
 | `DEPLOY_HOST`                            | The VPS's Tailscale hostname             |
 | `BASE_URL` (variable, not secret)        | `https://<domain>`                       |
 
-## 9. First deploy
+## 7. First deploy
 
 1. Merge to `main` → the **release** workflow builds, scans, signs and pushes images, and
    prints the digests in its summary.
 2. Run the **deploy** workflow, pasting those digests, environment `staging` first.
 3. Check the smoke test passed, then repeat with `production`.
 
-The server verifies the signatures again before anything starts, so an image that this
-repository did not build and sign cannot be deployed even by someone with SSH access.
+The server verifies the signatures again before anything starts, so an image this repository
+did not build and sign cannot be deployed even by someone with SSH access.
 
-## 10. After the first deploy
+## 8. After the first deploy
 
 - [ ] Point the domain at the VPS via Cloudflare (proxied, SSL mode **Full (strict)**).
 - [ ] Restrict inbound 80/443 to Cloudflare IP ranges, or switch to a Cloudflare Tunnel.
-- [ ] Set up backups (`docs/runbooks/backups.md`) and run a restore drill.
-- [ ] Record the Lynis score and `nmap` output in this file.
+- [ ] Run a restore drill (`docs/runbooks/backups.md`) and record the time.
+- [ ] Record the Lynis score and `nmap` output in the table above.

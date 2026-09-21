@@ -1,0 +1,13 @@
+---
+# Production profile: the strict one. This playbook configures the host that holds the
+# database, so "it probably works" is not the bar.
+profile: production
+
+exclude_paths:
+  - inventory.ini
+
+skip_list:
+  # The vendor's repository script (roles/crowdsec) is genuinely a one-off shell task,
+  # guarded by a stat so it cannot run twice. Hand-maintaining their apt key instead would
+  # rot the first time they rotate it.
+  - command-instead-of-shell

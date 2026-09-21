@@ -1,0 +1,61 @@
+---
+# Deny inbound by default; allow the web and whatever arrives over Tailscale.
+#
+# **Read this before running the role.** SSH is not allowed through on the public interface.
+# That is deliberate (plan §15.2, ADR-009) and it is also how you lock yourself out if
+# Tailscale is not already working. The check below refuses to continue unless the tailscale0
+# interface exists, because "I will set Tailscale up afterwards" has exactly one outcome.
+
+- name: Install ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+- name: Require Tailscale to be up before closing public SSH
+  ansible.builtin.assert:
+    that: "'tailscale0' in ansible_facts['interfaces']"
+    fail_msg: >-
+      tailscale0 is not present. Bring Tailscale up first (`tailscale up --ssh
+      --advertise-tags=tag:vps`) and confirm you can reach this host over it in another
+      terminal. Closing port 22 now would lock you out.
+  when: not gth_container_smoke
+
+- name: Default deny inbound, allow outbound
+  community.general.ufw:
+    direction: '{{ item.direction }}'
+    policy: '{{ item.policy }}'
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+  when: not gth_container_smoke
+
+- name: Allow the public web ports
+  community.general.ufw:
+    rule: allow
+    port: '{{ item }}'
+    proto: tcp
+  loop: '{{ public_tcp_ports }}'
+  when: not gth_container_smoke
+
+- name: Allow HTTP/3
+  community.general.ufw:
+    rule: allow
+    port: '{{ item }}'
+    proto: udp
+  loop: '{{ public_udp_ports }}'
+  when: not gth_container_smoke
+
+- name: Allow everything arriving over Tailscale
+  # Administration lives here: SSH, and anything else we ever need to reach directly. The
+  # tailnet ACL is the real access control; ufw just declines to second-guess it.
+  community.general.ufw:
+    rule: allow
+    interface: tailscale0
+    direction: in
+  when: not gth_container_smoke
+
+- name: Enable ufw
+  community.general.ufw:
+    state: enabled
+    logging: 'on'
+  when: not gth_container_smoke

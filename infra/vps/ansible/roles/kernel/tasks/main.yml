@@ -1,0 +1,33 @@
+---
+- name: Apply kernel hardening sysctls
+  # Plan §15.2. Each of these closes something an attacker with a foothold would reach for:
+  # kernel addresses to defeat ASLR, dmesg to read them another way, redirects to reroute
+  # traffic, and the protected_* family to stop the classic symlink/hardlink races in
+  # world-writable directories.
+  ansible.posix.sysctl:
+    name: '{{ item.name }}'
+    value: '{{ item.value }}'
+    sysctl_file: /etc/sysctl.d/60-gth-hardening.conf
+    sysctl_set: true
+    reload: true
+  loop:
+    - { name: kernel.kptr_restrict, value: '2' }
+    - { name: kernel.dmesg_restrict, value: '1' }
+    - { name: kernel.unprivileged_bpf_disabled, value: '1' }
+    - { name: net.ipv4.conf.all.rp_filter, value: '1' }
+    - { name: net.ipv4.conf.default.rp_filter, value: '1' }
+    - { name: net.ipv4.conf.all.accept_redirects, value: '0' }
+    - { name: net.ipv4.conf.all.send_redirects, value: '0' }
+    - { name: net.ipv4.conf.default.accept_redirects, value: '0' }
+    - { name: net.ipv4.conf.default.send_redirects, value: '0' }
+    - { name: net.ipv6.conf.all.accept_redirects, value: '0' }
+    - { name: net.ipv4.conf.all.accept_source_route, value: '0' }
+    - { name: net.ipv4.tcp_syncookies, value: '1' }
+    - { name: fs.protected_symlinks, value: '1' }
+    - { name: fs.protected_hardlinks, value: '1' }
+    - { name: fs.protected_fifos, value: '2' }
+    - { name: fs.protected_regular, value: '2' }
+  # Skipped only in the container smoke run, where /proc/sys is read-only. On a real host a
+  # failure here is a failure: a sysctl that silently did not apply is a control that exists
+  # in the repository and not on the machine.
+  when: not gth_container_smoke

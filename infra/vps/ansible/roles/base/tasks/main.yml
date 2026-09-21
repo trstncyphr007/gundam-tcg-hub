@@ -1,0 +1,73 @@
+---
+- name: Set the timezone to UTC
+  # Every timestamp in this system is UTC. A host in local time makes correlating a log line
+  # with a database row an exercise in arithmetic, usually during an incident.
+  #
+  # Skipped in the container smoke run: the module needs `hwclock`, and a container has no
+  # hardware clock to set.
+  community.general.timezone:
+    name: Etc/UTC
+  when: not gth_container_smoke
+
+- name: Install the baseline packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - chrony # clock drift breaks TLS and makes log correlation a guess
+      - curl
+      - gnupg
+      - needrestart # says which services still run old libraries after an upgrade
+      - unattended-upgrades
+      - restic
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Apply all pending upgrades
+  ansible.builtin.apt:
+    upgrade: full
+    update_cache: true
+  register: base_upgrade
+  # A full upgrade on a first run can take minutes; on later runs it is a no-op.
+  changed_when: base_upgrade.changed
+
+- name: Remove packages nothing depends on any more
+  ansible.builtin.apt:
+    autoremove: true
+
+- name: Configure unattended security upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/52-gth-unattended
+    mode: '0644'
+    owner: root
+    group: root
+    content: |
+      // Managed by Ansible (infra/vps/ansible/roles/base). Security updates only: a
+      // surprise feature upgrade at 04:00 is its own kind of outage.
+      Unattended-Upgrade::Allowed-Origins {
+          "${distro_id}:${distro_codename}-security";
+          "${distro_id}ESMApps:${distro_codename}-apps-security";
+          "${distro_id}ESM:${distro_codename}-infra-security";
+      };
+      Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+      // Reboot only when a patch actually requires it, and only after the backup window.
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-WithUsers "false";
+      Unattended-Upgrade::Automatic-Reboot-Time "{{ unattended_reboot_time }}";
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+- name: Enable the unattended-upgrades timer
+  ansible.builtin.systemd_service:
+    name: unattended-upgrades
+    enabled: true
+    state: started
+  when: not gth_container_smoke
+
+- name: Enable time synchronisation
+  ansible.builtin.systemd_service:
+    name: chrony
+    enabled: true
+    state: started
+  when: not gth_container_smoke
