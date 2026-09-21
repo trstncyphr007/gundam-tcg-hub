@@ -381,6 +381,8 @@ export interface FlaggedObservation {
   flaggedAt: Date;
   /** What it was measured against, so a reviewer can see why it was held. */
   medianCents: number | null;
+  /** The VOD link the seller gave, if any — the fastest way to tell a typo from a real sale. */
+  evidenceRef: string | null;
 }
 
 /** The review queue: recorded, approved, and deliberately not counting yet (SR-4.4). */
@@ -399,9 +401,10 @@ export async function listFlaggedObservations(
     observed_at: string | Date;
     flagged_at: string | Date;
     median_cents: number | null;
+    evidence_ref: string | null;
   }>(sql`
     select o.id, o.card_variant_id, c.name as card_name, o.source, o.condition,
-           o.price_cents, o.currency, o.observed_at, o.flagged_at,
+           o.price_cents, o.currency, o.observed_at, o.flagged_at, o.evidence_ref,
            (select d.median_cents from app.price_index_daily d
              where d.card_variant_id = o.card_variant_id
                and d.condition = o.condition
@@ -427,6 +430,7 @@ export async function listFlaggedObservations(
     observedAt: toDate(r.observed_at),
     flaggedAt: toDate(r.flagged_at),
     medianCents: r.median_cents,
+    evidenceRef: r.evidence_ref,
   }));
 }
 

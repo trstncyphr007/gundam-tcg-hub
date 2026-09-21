@@ -4,7 +4,7 @@ import etag from '@fastify/etag';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import type { Auth } from '@gth/auth';
-import { ForbiddenError } from '@gth/auth';
+import { ForbiddenError, StepUpRequiredError } from '@gth/auth';
 import { type Database, pingDatabase } from '@gth/db';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import type { ApiConfig } from './config.js';
@@ -12,6 +12,7 @@ import { ApiKeyError, apiKeyPlugin } from './plugins/api-key.js';
 import { authPlugin } from './plugins/auth.js';
 import { QuotaStore, quotaPlugin } from './plugins/quota.js';
 import { registerAccountRoutes } from './routes/account.js';
+import { registerAdminRoutes } from './routes/admin.js';
 import { registerDeveloperRoutes } from './routes/developer.js';
 import { type BreakDeps, registerBreakRoutes } from './routes/breaks.js';
 import { registerCollectionRoutes } from './routes/collections.js';
@@ -41,6 +42,12 @@ export interface AppDeps {
    * role: the web role has no SELECT privilege on that column at all (migration 0017).
    */
   keysDb?: Database | undefined;
+  /**
+   * The pool moderation decisions run on — the worker role, the only one that may change
+   * whether a price counts (migration 0027). Without it the admin console is not mounted at
+   * all, rather than mounted and quietly unable to decide anything.
+   */
+  moderationDb?: Database | undefined;
 }
 
 /** Never log credentials or session material (SR-X.20). */
@@ -188,6 +195,14 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
       request.log.warn({ action: error.action, userId: request.subject?.userId }, 'forbidden');
       return reply.code(403).send({ error: 'forbidden' });
     }
+    // Distinct from `forbidden` on purpose: this caller is allowed, just not with a session
+    // this old. The client needs to know that the fix is "sign in again", not "give up".
+    if (error instanceof StepUpRequiredError) {
+      return reply
+        .code(403)
+        .header('cache-control', 'no-store')
+        .send({ error: 'step_up_required', maxAgeSeconds: Math.floor(error.maxAgeMs / 1000) });
+    }
     // A rejected key is the caller's problem, not ours, and must never log the key itself.
     if (error instanceof ApiKeyError) {
       return reply.code(error.status).send({ error: error.message });
@@ -260,6 +275,9 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     registerWatchRoutes(app, deps.writeDb);
     registerCollectionRoutes(app, deps.writeDb);
     registerProfileRoutes(app, deps.writeDb);
+    if (deps.moderationDb) {
+      registerAdminRoutes(app, { db: deps.writeDb, workerDb: deps.moderationDb });
+    }
     registerDeveloperRoutes(app, deps.writeDb, {
       tokenPepper: config.TOKEN_PEPPER,
       production: config.NODE_ENV === 'production',

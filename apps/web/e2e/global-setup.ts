@@ -22,6 +22,8 @@ const CREATOR_EMAIL = process.env['E2E_CREATOR_EMAIL'] ?? 'creator@example.test'
  * that has to be deleted to accommodate it would be the wrong thing to delete.
  */
 const BREAKER_EMAIL = process.env['E2E_BREAKER_EMAIL'] ?? 'breaker@example.test';
+/** The moderation console's account. Admin is operator-granted, like creator. */
+const ADMIN_EMAIL = process.env['E2E_ADMIN_EMAIL'] ?? 'admin@example.test';
 const MAILPIT = process.env['MAILPIT_URL'] ?? 'http://127.0.0.1:8025';
 
 export default async function globalSetup(): Promise<void> {
@@ -59,7 +61,53 @@ export default async function globalSetup(): Promise<void> {
         await tx.execute(`delete from app.creator_profiles where user_id = '${userId}'`);
       });
     }
+
+    await seedModeration(db);
   } finally {
     await close();
   }
+}
+
+/**
+ * An admin, and one item in each moderation queue.
+ *
+ * The admin is written directly for the same reason the creator is: the role cannot be
+ * granted through the app (SR-X.9). The queue items are replaced on every run — marked by an
+ * evidence host only this setup uses — so the console suite always starts with exactly one
+ * report and one held sale, whatever the last run decided.
+ */
+async function seedModeration(db: ReturnType<typeof createDb>['db']): Promise<void> {
+  const escaped = ADMIN_EMAIL.replaceAll("'", "''");
+  await db.execute(
+    `insert into app.users (id, name, email, email_verified, role)
+     values ('e2e-admin', 'E2E admin', '${escaped}', true, 'admin')
+     on conflict (email) do update set role = 'admin', updated_at = now()`,
+  );
+  await db.execute(
+    `insert into app.audit_log (action, target_type, target_id, diff)
+     values ('user.role_changed', 'user', 'e2e-admin', '{"to":"admin","via":"e2e-setup"}'::jsonb)`,
+  );
+
+  const variants = await db.execute<{ id: string }>(
+    `select v.id from app.card_variants v
+       join app.cards c on c.id = v.card_id
+      where v.finish = 'normal' order by c.number limit 1`,
+  );
+  const variantId = String(variants[0]?.id);
+
+  await db.execute(
+    `delete from app.price_observations where evidence_ref like 'https://e2e.invalid/%'`,
+  );
+  await db.execute(
+    `insert into app.price_observations
+       (card_variant_id, source, condition, price_cents, reporter_id, evidence_ref)
+     values ('${variantId}', 'user_report', 'nm', 1234, 'e2e-creator',
+             'https://e2e.invalid/receipt')`,
+  );
+  await db.execute(
+    `insert into app.price_observations
+       (card_variant_id, source, condition, price_cents, approved_at, flagged_at, evidence_ref)
+     values ('${variantId}', 'live_sale', 'nm', 98765, now(), now(),
+             'https://e2e.invalid/vod?t=90')`,
+  );
 }

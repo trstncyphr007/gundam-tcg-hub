@@ -14,8 +14,12 @@ export async function fetchLatestMagicLink(page: Page): Promise<string> {
     const id = body.messages?.[0]?.ID;
     if (id) {
       const message = await page.request.get(`${MAILPIT}/api/v1/message/${id}`);
-      const text = await message.text();
-      const match = /https?:\/\/[^\s"\\]+\/api\/auth\/magic-link\/verify\?[^\s"\\]+/.exec(text);
+      // The decoded `Text` field, not the raw response. Mailpit's JSON escapes `&` as
+      // `&`, and a regex over the raw body stopped at that backslash — cutting every
+      // link off after its token and silently dropping `callbackURL`. Nothing noticed until
+      // a test needed the redirect itself: the step-up round trip.
+      const { Text: text = '' } = (await message.json()) as { Text?: string };
+      const match = /https?:\/\/\S+\/api\/auth\/magic-link\/verify\?\S+/.exec(text);
       if (match) {
         // The link points at the API origin; use the web origin so the proxy sets the cookie.
         return match[0].replace('127.0.0.1:4000', '127.0.0.1:3000');
