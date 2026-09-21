@@ -162,6 +162,20 @@
       "when": 1789983169267,
       "tag": "0022_profile_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789991812754,
+      "tag": "0023_phase4_live_sales",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789991813624,
+      "tag": "0024_live_sale_rls",
+      "breakpoints": true
     }
   ]
 }

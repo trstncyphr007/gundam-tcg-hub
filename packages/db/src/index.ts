@@ -13,5 +13,6 @@ export * from './queries/collections.js';
 export * from './queries/api-keys.js';
 export * from './queries/fairness.js';
 export * from './queries/profiles.js';
+export * from './queries/live-sales.js';
 export * from './seed/sample.js';
 export * from './seed/prices.js';

@@ -20,7 +20,8 @@
     "api-key": "tsx --env-file-if-exists=../../.env src/cli/api-key.ts",
     "role": "tsx --env-file-if-exists=../../.env src/cli/role.ts",
     "price-rollup": "tsx --env-file-if-exists=../../.env src/cli/price-rollup.ts",
-    "seed-prices": "tsx --env-file-if-exists=../../.env src/cli/seed-prices.ts"
+    "seed-prices": "tsx --env-file-if-exists=../../.env src/cli/seed-prices.ts",
+    "retention": "tsx --env-file-if-exists=../../.env src/cli/retention.ts"
   },
   "dependencies": {
     "@gth/core": "workspace:*",

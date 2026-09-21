@@ -115,16 +115,22 @@ DATA_ENCRYPTION_KEYS='{"k1":"<openssl rand -base64 32>"}'
 DATA_ENCRYPTION_ACTIVE_KID=k1
 ```
 
-`DATA_ENCRYPTION_KEYS` encrypts fields that must stay secret even in a backup — today a
-break's server seed. **Losing it makes those fields unrecoverable**, so it belongs in the
-password manager alongside the age key. The API refuses to start in production while it, the
-token pepper or the auth secret still hold their development defaults.
+`DATA_ENCRYPTION_KEYS` encrypts fields that must stay secret even in a backup: a break's
+server seed, and buyer handles from the live-sale logger. **Losing it makes those fields
+unrecoverable**, so it belongs in the password manager alongside the age key. For the buyer
+handles that is the intended property rather than a risk — they are somebody else's name and
+are erased after 90 days anyway — but a lost key also means no break committed before the
+loss can ever be revealed. The API refuses to start in production while it, the token pepper
+or the auth secret still hold their development defaults.
 
 Copy the encrypted file to `/srv/gth/production/secrets.sops.env`. It is safe in git and safe
 on disk; only the age key decrypts it, into tmpfs, at deploy time.
 
 Backups need `/etc/gth/restic.env` as well — see `docs/runbooks/backups.md`. The playbook
 warns rather than fails when it is missing, so a fresh host still converges.
+
+Two nightly jobs also have to be scheduled — see `docs/runbooks/scheduled-jobs.md`. One of
+them deletes personal data on a clock, so it is not optional.
 
 ## 6. GitHub secrets for the deploy workflow
 

@@ -59,6 +59,13 @@ const app = await buildApp(config, {
     keyRing: buildKeyRing(config.DATA_ENCRYPTION_KEYS, config.DATA_ENCRYPTION_ACTIVE_KID),
     secretsDb: worker.db,
   },
+  // Live sales are the seller's own rows, so they run on the web role under RLS. Turning
+  // them into price observations is deliberately not done here: the web role cannot write a
+  // first-party observation at all (migration 0013), and the worker does it on a schedule.
+  liveSales: {
+    db: write.db,
+    keyRing: buildKeyRing(config.DATA_ENCRYPTION_KEYS, config.DATA_ENCRYPTION_ACTIVE_KID),
+  },
   ingest: {
     workerDb: worker.db,
     tokenPepper: config.TOKEN_PEPPER,

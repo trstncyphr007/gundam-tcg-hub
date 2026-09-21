@@ -45,6 +45,23 @@ describe('can', () => {
       expect(can(subject(role), 'catalog:write')).toBe(false);
     }
   });
+
+  it('keeps running a break separate from selling on one', () => {
+    // A creator does both: they sell singles between packs. A seller does not get the
+    // overlay, the pull log or a public breaker profile along with it.
+    expect(can(subject('creator'), 'live_sale:write')).toBe(true);
+    expect(can(subject('seller'), 'live_sale:write')).toBe(true);
+    expect(can(subject('seller'), 'break:write')).toBe(false);
+    expect(can(subject('seller'), 'profile:write')).toBe(false);
+  });
+
+  it('does not let an ordinary account log live sales', () => {
+    // These entries are weighted as heavily as anything in the index, so the role is the
+    // first of the gates around them (SR-4.4, threat T7).
+    expect(can(subject('user'), 'live_sale:write')).toBe(false);
+    expect(can(subject('user'), 'live_sale:read')).toBe(false);
+    expect(can(null, 'live_sale:write')).toBe(false);
+  });
 });
 
 describe('authorize', () => {

@@ -1,6 +1,7 @@
 import { parseEnv } from '@gth/core';
 import { z } from 'zod';
 import { createDb } from '../client.js';
+import { ingestLiveSales } from '../queries/live-sales.js';
 import { ingestBreakPulls, rollUpDay } from '../queries/pricing.js';
 
 /**
@@ -38,6 +39,16 @@ try {
   // the rollup would otherwise wait a whole day to count.
   const ingested = await ingestBreakPulls(db);
   console.log(`ingested ${String(ingested)} new observation(s) from break pulls`);
+
+  // Live sales, for the same reason and with one extra step: each is measured against the
+  // published spread first, and one sitting far outside is recorded but held back until a
+  // person has looked (SR-4.4). Flagged is not rejected.
+  const live = await ingestLiveSales(db);
+  console.log(
+    `ingested ${String(live.ingested)} from live sales ` +
+      `(${String(live.flagged)} flagged for review, ` +
+      `${String(live.unpriceable)} name no catalogued card)`,
+  );
 
   const targets: Date[] = explicitDay
     ? [new Date(`${explicitDay}T00:00:00Z`)]

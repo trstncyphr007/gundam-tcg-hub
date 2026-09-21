@@ -124,6 +124,31 @@ export default function MethodologyPage() {
           outside the current spread are flagged for review before they count. The sources we weight
           most heavily cannot be submitted at all — they come from our own logs.
         </p>
+        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+          That last point is a database privilege, not a policy we intend to follow. A signed-in
+          session can file a report and nothing else; a break pull or a live sale becomes an
+          observation only by passing through a job that no web request can reach.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Prices from live streams</h2>
+        <p className="text-sm">
+          A card sold on a live stream leaves no listing and no sold-price page. Nobody records
+          those sales, which is why we do — sellers log each one as it happens, and it counts for as
+          much as a pull we watched come out of a pack.
+        </p>
+        <p className="text-sm">
+          Each entry is measured against the current spread for that card before it counts. One that
+          sits more than three interquartile ranges outside is <strong>held</strong>: recorded,
+          visible to the seller, and kept out of the published number until a person has looked. A
+          $900 sale of a $12 card is either a typo or the most interesting thing that happened all
+          week, and only a person can tell which.
+        </p>
+        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+          Nothing is held when we have no recent published price for that card: you cannot call a
+          price an outlier with nothing to be outside of.
+        </p>
       </section>
 
       <section className="space-y-3">

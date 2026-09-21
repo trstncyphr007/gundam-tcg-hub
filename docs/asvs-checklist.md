@@ -77,12 +77,12 @@ evidence column is not optional.
 
 ## V11 Cryptography
 
-| #    | Control                  | Status      | Evidence                                                                                                                              |
-| ---- | ------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| 11.1 | Approved primitives only | **Met**     | Node `crypto` only: HMAC-SHA256, `randomBytes`. No custom crypto                                                                      |
-| 11.2 | Adequate entropy         | **Met**     | 32 bytes CSPRNG for overlay tokens and API secrets                                                                                    |
-| 11.3 | Constant-time comparison | **Met**     | `timingSafeEqual`; length checked first                                                                                               |
-| 11.4 | Key rotation possible    | **Partial** | Token rotation is built and proven. **Gap:** `DATA_ENCRYPTION_KEYS` versioning is designed but unused — no encrypted field exists yet |
+| #    | Control                  | Status      | Evidence                                                                                                                                                                                                                                                                          |
+| ---- | ------------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 11.1 | Approved primitives only | **Met**     | Node `crypto` only: HMAC-SHA256, `randomBytes`. No custom crypto                                                                                                                                                                                                                  |
+| 11.2 | Adequate entropy         | **Met**     | 32 bytes CSPRNG for overlay tokens and API secrets                                                                                                                                                                                                                                |
+| 11.3 | Constant-time comparison | **Met**     | `timingSafeEqual`; length checked first                                                                                                                                                                                                                                           |
+| 11.4 | Key rotation possible    | **Partial** | Token rotation is built and proven. `DATA_ENCRYPTION_KEYS` carries a key id in every ciphertext (`v1:<kid>:…`) and now protects two fields in use: break server seeds and live-sale buyer handles. **Gap:** no re-encryption job, so rotation adds a key rather than retiring one |
 
 ## V14 Data protection
 
