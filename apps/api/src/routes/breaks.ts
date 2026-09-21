@@ -1,22 +1,27 @@
 import { authorize } from '@gth/auth';
+import { parseDurationToSeconds } from '@gth/core';
 import {
   BreakLimitError,
   BreakStateError,
   CommitmentError,
   type Database,
   checkChain,
+  clearPullEvidence,
   commitBreak,
   createBreak,
   getCommitment,
   getOverlayState,
   getPublicBreak,
   listBreaks,
+  listPullsForCreator,
   logPull,
   revealBreak,
   rotateOverlayToken,
   setBreakStatus,
+  setBreakVodUrl,
   setClientSeed,
   setPacksOpened,
+  setPullEvidence,
   writeAuditLog,
 } from '@gth/db';
 import { type KeyRing, generateToken, hashToken, toCsv } from '@gth/security';
@@ -62,7 +67,28 @@ const pullSchema = z
  */
 const packsSchema = z.object({ packsOpened: z.int().min(1).max(5000).nullable() }).strict();
 
+/** Null clears the link, which is different from leaving it alone. */
+const vodSchema = z.object({ vodUrl: z.url().startsWith('https://').max(500).nullable() }).strict();
+
+/**
+ * A timestamp given either way: as seconds, or as the `1:02:03` a person types while
+ * watching the VOD back. Exactly one, so a request that disagrees with itself is rejected
+ * rather than silently resolved in favour of whichever the code checks first.
+ */
+const evidenceSchema = z
+  .object({
+    offsetSeconds: z.int().min(0).max(86_400).optional(),
+    at: z.string().trim().min(1).max(20).optional(),
+    /** Only for a break split across more than one VOD. */
+    vodUrl: z.url().startsWith('https://').max(500).nullish(),
+  })
+  .strict()
+  .refine((v) => (v.offsetSeconds === undefined) !== (v.at === undefined), {
+    message: 'give either offsetSeconds or at, not both',
+  });
+
 const idParamSchema = z.object({ id: z.uuid() }).strict();
+const pullParamSchema = z.object({ pullId: z.uuid() }).strict();
 /** base64url of 32 bytes is 43 characters; bound it so a huge path never reaches the DB. */
 const tokenParamSchema = z.object({ token: z.string().min(20).max(200) }).strict();
 
@@ -343,6 +369,108 @@ export function registerBreakRoutes(app: FastifyInstance, deps: BreakDeps): void
       diff: { packsOpened: row.packsOpened },
     });
     return reply.header('cache-control', 'no-store').send(withoutTokenHash(row));
+  });
+
+  /** Where the break can be watched (FR-4.4). One link per break; pulls carry offsets. */
+  app.post('/v1/breaks/:id/vod', async (request, reply) => {
+    if (!request.subject) return reply.code(401).send({ error: 'unauthenticated' });
+    authorize(request.subject, 'break:write');
+
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.code(400).send({ error: 'invalid_request', details: issuesOf(params.error) });
+    }
+    const body = vodSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.code(400).send({ error: 'invalid_request', details: issuesOf(body.error) });
+    }
+
+    let row;
+    try {
+      row = await setBreakVodUrl(db, request.subject.userId, params.data.id, body.data.vodUrl);
+    } catch (error) {
+      if (error instanceof BreakStateError) return reply.code(404).send({ error: 'not_found' });
+      throw error;
+    }
+
+    await writeAuditLog(db, {
+      actorId: request.subject.userId,
+      action: 'break.vod_set',
+      targetType: 'break',
+      targetId: row.id,
+      diff: { vodUrl: row.vodUrl },
+    });
+    return reply.header('cache-control', 'no-store').send(withoutTokenHash(row));
+  });
+
+  /**
+   * The creator's own pull list, with ids and any timestamps already recorded.
+   *
+   * Separate from the public view, which carries no ids: a public page hands out no handle
+   * to anything writable.
+   */
+  app.get('/v1/breaks/:id/pulls', async (request, reply) => {
+    if (!request.subject) return reply.code(401).send({ error: 'unauthenticated' });
+    authorize(request.subject, 'break:read');
+
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) return reply.code(404).send({ error: 'not_found' });
+
+    const items = await listPullsForCreator(db, request.subject.userId, params.data.id);
+    return reply.header('cache-control', 'no-store').send({ items });
+  });
+
+  /**
+   * Timestamp a pull (FR-4.4).
+   *
+   * `PUT`, because a creator working down a log after the stream sets each one once and
+   * sometimes corrects it. Writes `pull_evidence`, never `break_pulls` — that table has
+   * UPDATE revoked, and a timestamp added days later could not have gone there anyway.
+   */
+  app.put('/v1/pulls/:pullId/evidence', async (request, reply) => {
+    if (!request.subject) return reply.code(401).send({ error: 'unauthenticated' });
+    authorize(request.subject, 'break:write');
+
+    const params = pullParamSchema.safeParse(request.params);
+    if (!params.success) return reply.code(404).send({ error: 'not_found' });
+    const body = evidenceSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.code(400).send({ error: 'invalid_request', details: issuesOf(body.error) });
+    }
+
+    // `at` is what a person types while watching the VOD back — "1:02:03". The parser is the
+    // same one that reads a timestamp out of a pasted link, so both paths agree.
+    const { at } = body.data;
+    const offsetSeconds =
+      body.data.offsetSeconds ?? (at === undefined ? null : parseDurationToSeconds(at));
+    if (offsetSeconds === null) {
+      return reply.code(400).send({ error: 'invalid_request', reason: 'that is not a timestamp' });
+    }
+
+    let row;
+    try {
+      row = await setPullEvidence(db, request.subject.userId, params.data.pullId, {
+        offsetSeconds,
+        vodUrl: body.data.vodUrl,
+      });
+    } catch (error) {
+      // "Not found" and "not yours" are the same answer (SR-X.6).
+      if (error instanceof BreakStateError) return reply.code(404).send({ error: 'not_found' });
+      throw error;
+    }
+    return reply.header('cache-control', 'no-store').send(row);
+  });
+
+  app.delete('/v1/pulls/:pullId/evidence', async (request, reply) => {
+    if (!request.subject) return reply.code(401).send({ error: 'unauthenticated' });
+    authorize(request.subject, 'break:write');
+
+    const params = pullParamSchema.safeParse(request.params);
+    if (!params.success) return reply.code(404).send({ error: 'not_found' });
+
+    const removed = await clearPullEvidence(db, request.subject.userId, params.data.pullId);
+    if (!removed) return reply.code(404).send({ error: 'not_found' });
+    return reply.code(204).header('cache-control', 'no-store').send();
   });
 
   app.post('/v1/breaks/:id/overlay-token', async (request, reply) => {

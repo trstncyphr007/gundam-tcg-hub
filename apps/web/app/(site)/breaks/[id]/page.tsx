@@ -1,3 +1,4 @@
+import { formatVodOffset } from '@gth/core/vod';
 import { notFound } from 'next/navigation';
 import { api } from '@/lib/api';
 import { BreakVerifier } from './verifier';
@@ -73,11 +74,28 @@ export default async function PublicBreakPage({
           {view.pulls.map((pull) => (
             <li
               key={pull.seq}
-              className="flex gap-3 rounded border px-3 py-2 text-sm"
+              className="flex items-center gap-3 rounded border px-3 py-2 text-sm"
               style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
             >
               <span style={{ color: 'var(--muted)' }}>#{pull.seq}</span>
               <span className="min-w-0 flex-1">{pull.label}</span>
+              {/* Straight to the moment (FR-4.4). `noopener` because it leaves our origin,
+                  and `nofollow` because a creator's VOD link is not an endorsement. */}
+              {pull.vodUrl !== null && (
+                <a
+                  href={pull.vodUrl}
+                  target="_blank"
+                  rel="nofollow noopener external"
+                  data-testid="pull-vod-link"
+                  className="underline"
+                  style={{ color: 'var(--muted)' }}
+                  title="Watch this pull"
+                >
+                  {pull.vodOffsetSeconds === null
+                    ? 'watch'
+                    : formatVodOffset(pull.vodOffsetSeconds)}
+                </a>
+              )}
               <span>{dollars(pull.valueCentsAtPull)}</span>
             </li>
           ))}
@@ -86,6 +104,14 @@ export default async function PublicBreakPage({
 
       <p className="text-xs" style={{ color: 'var(--muted)' }}>
         Values are what the creator recorded at the moment of the pull.
+        {view.pulls.some((p) => p.vodUrl !== null) && (
+          <>
+            {' '}
+            Timestamps point into the creator&rsquo;s VOD and are <strong>not</strong> covered by
+            the hashes below — the log is proven, a timestamp is the creator telling you where to
+            look.
+          </>
+        )}
       </p>
 
       <BreakVerifier

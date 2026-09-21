@@ -82,6 +82,8 @@ export interface BreakSummary {
   costCents: number | null;
   /** The denominator for every hit-rate comparison on the creator's profile (FR-4.3). */
   packsOpened: number | null;
+  /** Where the break can be watched. Pulls carry offsets into it (FR-4.4). */
+  vodUrl: string | null;
   overlayTokenVersion: number;
   createdAt: string;
 }
@@ -176,6 +178,22 @@ export interface PublicPull {
   label: string;
   valueCentsAtPull: number;
   pulledAt: string;
+  /**
+   * A deep link to the moment (FR-4.4), already carrying the offset. Outside the hash
+   * chain — the pull is proven, the timestamp is the creator saying where to look.
+   */
+  vodUrl: string | null;
+  vodOffsetSeconds: number | null;
+}
+
+export interface CreatorPull {
+  id: string;
+  seq: number;
+  label: string;
+  valueCentsAtPull: number;
+  pulledAt: string;
+  offsetSeconds: number | null;
+  vodUrl: string | null;
 }
 
 export interface PublicBreak {
@@ -320,6 +338,9 @@ export const api = {
       limit: number;
     }>('/v1/watches'),
   breaks: () => getAuthed<{ items: BreakSummary[] }>('/v1/breaks'),
+  /** The creator's own pull list, with ids. The public view deliberately has none. */
+  creatorPulls: (breakId: string) =>
+    getAuthed<{ items: CreatorPull[] }>(`/v1/breaks/${breakId}/pulls`),
   collections: () => getAuthed<{ items: CollectionSummary[]; limit: number }>('/v1/collections'),
   /**
    * Viewer-aware: forwards the session cookie when there is one, and works without it for a
