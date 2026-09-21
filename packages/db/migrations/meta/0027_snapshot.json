@@ -91,14 +91,10 @@
         "card_variants_card_id_cards_id_fk": {
           "name": "card_variants_card_id_cards_id_fk",
           "tableFrom": "card_variants",
-          "columnsFrom": [
-            "card_id"
-          ],
+          "columnsFrom": ["card_id"],
           "tableTo": "cards",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -219,14 +215,10 @@
         "cards_set_id_sets_id_fk": {
           "name": "cards_set_id_sets_id_fk",
           "tableFrom": "cards",
-          "columnsFrom": [
-            "set_id"
-          ],
+          "columnsFrom": ["set_id"],
           "tableTo": "sets",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "restrict"
         }
@@ -281,9 +273,7 @@
       "uniqueConstraints": {
         "games_slug_unique": {
           "name": "games_slug_unique",
-          "columns": [
-            "slug"
-          ],
+          "columns": ["slug"],
           "nullsNotDistinct": false
         }
       },
@@ -368,28 +358,20 @@
         "retailer_products_retailer_id_retailers_id_fk": {
           "name": "retailer_products_retailer_id_retailers_id_fk",
           "tableFrom": "retailer_products",
-          "columnsFrom": [
-            "retailer_id"
-          ],
+          "columnsFrom": ["retailer_id"],
           "tableTo": "retailers",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "retailer_products_sealed_product_id_sealed_products_id_fk": {
           "name": "retailer_products_sealed_product_id_sealed_products_id_fk",
           "tableFrom": "retailer_products",
-          "columnsFrom": [
-            "sealed_product_id"
-          ],
+          "columnsFrom": ["sealed_product_id"],
           "tableTo": "sealed_products",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -482,9 +464,7 @@
       "uniqueConstraints": {
         "retailers_domain_unique": {
           "name": "retailers_domain_unique",
-          "columns": [
-            "domain"
-          ],
+          "columns": ["domain"],
           "nullsNotDistinct": false
         }
       },
@@ -612,28 +592,20 @@
         "sealed_products_game_id_games_id_fk": {
           "name": "sealed_products_game_id_games_id_fk",
           "tableFrom": "sealed_products",
-          "columnsFrom": [
-            "game_id"
-          ],
+          "columnsFrom": ["game_id"],
           "tableTo": "games",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "restrict"
         },
         "sealed_products_set_id_sets_id_fk": {
           "name": "sealed_products_set_id_sets_id_fk",
           "tableFrom": "sealed_products",
-          "columnsFrom": [
-            "set_id"
-          ],
+          "columnsFrom": ["set_id"],
           "tableTo": "sets",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -730,14 +702,10 @@
         "sets_game_id_games_id_fk": {
           "name": "sets_game_id_games_id_fk",
           "tableFrom": "sets",
-          "columnsFrom": [
-            "game_id"
-          ],
+          "columnsFrom": ["game_id"],
           "tableTo": "games",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "restrict"
         }
@@ -825,14 +793,10 @@
         "stock_snapshots_retailer_product_id_retailer_products_id_fk": {
           "name": "stock_snapshots_retailer_product_id_retailer_products_id_fk",
           "tableFrom": "stock_snapshots",
-          "columnsFrom": [
-            "retailer_product_id"
-          ],
+          "columnsFrom": ["retailer_product_id"],
           "tableTo": "retailer_products",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1079,14 +1043,10 @@
         "accounts_user_id_users_id_fk": {
           "name": "accounts_user_id_users_id_fk",
           "tableFrom": "accounts",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1203,14 +1163,10 @@
         "sessions_user_id_users_id_fk": {
           "name": "sessions_user_id_users_id_fk",
           "tableFrom": "sessions",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1507,42 +1463,30 @@
         "watch_subscriptions_user_id_users_id_fk": {
           "name": "watch_subscriptions_user_id_users_id_fk",
           "tableFrom": "watch_subscriptions",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "watch_subscriptions_sealed_product_id_sealed_products_id_fk": {
           "name": "watch_subscriptions_sealed_product_id_sealed_products_id_fk",
           "tableFrom": "watch_subscriptions",
-          "columnsFrom": [
-            "sealed_product_id"
-          ],
+          "columnsFrom": ["sealed_product_id"],
           "tableTo": "sealed_products",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "watch_subscriptions_retailer_product_id_retailer_products_id_fk": {
           "name": "watch_subscriptions_retailer_product_id_retailer_products_id_fk",
           "tableFrom": "watch_subscriptions",
-          "columnsFrom": [
-            "retailer_product_id"
-          ],
+          "columnsFrom": ["retailer_product_id"],
           "tableTo": "retailer_products",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1675,28 +1619,20 @@
         "alert_deliveries_event_id_restock_events_id_fk": {
           "name": "alert_deliveries_event_id_restock_events_id_fk",
           "tableFrom": "alert_deliveries",
-          "columnsFrom": [
-            "event_id"
-          ],
+          "columnsFrom": ["event_id"],
           "tableTo": "restock_events",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "alert_deliveries_subscription_id_watch_subscriptions_id_fk": {
           "name": "alert_deliveries_subscription_id_watch_subscriptions_id_fk",
           "tableFrom": "alert_deliveries",
-          "columnsFrom": [
-            "subscription_id"
-          ],
+          "columnsFrom": ["subscription_id"],
           "tableTo": "watch_subscriptions",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1818,14 +1754,10 @@
         "api_keys_owner_id_users_id_fk": {
           "name": "api_keys_owner_id_users_id_fk",
           "tableFrom": "api_keys",
-          "columnsFrom": [
-            "owner_id"
-          ],
+          "columnsFrom": ["owner_id"],
           "tableTo": "users",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1939,28 +1871,20 @@
         "restock_events_retailer_product_id_retailer_products_id_fk": {
           "name": "restock_events_retailer_product_id_retailer_products_id_fk",
           "tableFrom": "restock_events",
-          "columnsFrom": [
-            "retailer_product_id"
-          ],
+          "columnsFrom": ["retailer_product_id"],
           "tableTo": "retailer_products",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "restock_events_snapshot_id_stock_snapshots_id_fk": {
           "name": "restock_events_snapshot_id_stock_snapshots_id_fk",
           "tableFrom": "restock_events",
-          "columnsFrom": [
-            "snapshot_id"
-          ],
+          "columnsFrom": ["snapshot_id"],
           "tableTo": "stock_snapshots",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2059,14 +1983,10 @@
         "break_commitments_break_id_breaks_id_fk": {
           "name": "break_commitments_break_id_breaks_id_fk",
           "tableFrom": "break_commitments",
-          "columnsFrom": [
-            "break_id"
-          ],
+          "columnsFrom": ["break_id"],
           "tableTo": "breaks",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2212,28 +2132,20 @@
         "break_pulls_break_id_breaks_id_fk": {
           "name": "break_pulls_break_id_breaks_id_fk",
           "tableFrom": "break_pulls",
-          "columnsFrom": [
-            "break_id"
-          ],
+          "columnsFrom": ["break_id"],
           "tableTo": "breaks",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "break_pulls_card_variant_id_card_variants_id_fk": {
           "name": "break_pulls_card_variant_id_card_variants_id_fk",
           "tableFrom": "break_pulls",
-          "columnsFrom": [
-            "card_variant_id"
-          ],
+          "columnsFrom": ["card_variant_id"],
           "tableTo": "card_variants",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -2392,28 +2304,20 @@
         "breaks_creator_id_users_id_fk": {
           "name": "breaks_creator_id_users_id_fk",
           "tableFrom": "breaks",
-          "columnsFrom": [
-            "creator_id"
-          ],
+          "columnsFrom": ["creator_id"],
           "tableTo": "users",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "breaks_sealed_product_id_sealed_products_id_fk": {
           "name": "breaks_sealed_product_id_sealed_products_id_fk",
           "tableFrom": "breaks",
-          "columnsFrom": [
-            "sealed_product_id"
-          ],
+          "columnsFrom": ["sealed_product_id"],
           "tableTo": "sealed_products",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -2514,14 +2418,10 @@
         "pull_evidence_break_pull_id_break_pulls_id_fk": {
           "name": "pull_evidence_break_pull_id_break_pulls_id_fk",
           "tableFrom": "pull_evidence",
-          "columnsFrom": [
-            "break_pull_id"
-          ],
+          "columnsFrom": ["break_pull_id"],
           "tableTo": "break_pulls",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2530,9 +2430,7 @@
       "uniqueConstraints": {
         "pull_evidence_break_pull_id_unique": {
           "name": "pull_evidence_break_pull_id_unique",
-          "columns": [
-            "break_pull_id"
-          ],
+          "columns": ["break_pull_id"],
           "nullsNotDistinct": false
         }
       },
@@ -2690,14 +2588,10 @@
         "price_index_daily_card_variant_id_card_variants_id_fk": {
           "name": "price_index_daily_card_variant_id_card_variants_id_fk",
           "tableFrom": "price_index_daily",
-          "columnsFrom": [
-            "card_variant_id"
-          ],
+          "columnsFrom": ["card_variant_id"],
           "tableTo": "card_variants",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2889,42 +2783,30 @@
         "price_observations_card_variant_id_card_variants_id_fk": {
           "name": "price_observations_card_variant_id_card_variants_id_fk",
           "tableFrom": "price_observations",
-          "columnsFrom": [
-            "card_variant_id"
-          ],
+          "columnsFrom": ["card_variant_id"],
           "tableTo": "card_variants",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "price_observations_reporter_id_users_id_fk": {
           "name": "price_observations_reporter_id_users_id_fk",
           "tableFrom": "price_observations",
-          "columnsFrom": [
-            "reporter_id"
-          ],
+          "columnsFrom": ["reporter_id"],
           "tableTo": "users",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         },
         "price_observations_break_pull_id_break_pulls_id_fk": {
           "name": "price_observations_break_pull_id_break_pulls_id_fk",
           "tableFrom": "price_observations",
-          "columnsFrom": [
-            "break_pull_id"
-          ],
+          "columnsFrom": ["break_pull_id"],
           "tableTo": "break_pulls",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -3082,28 +2964,20 @@
         "collection_items_collection_id_collections_id_fk": {
           "name": "collection_items_collection_id_collections_id_fk",
           "tableFrom": "collection_items",
-          "columnsFrom": [
-            "collection_id"
-          ],
+          "columnsFrom": ["collection_id"],
           "tableTo": "collections",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "collection_items_card_variant_id_card_variants_id_fk": {
           "name": "collection_items_card_variant_id_card_variants_id_fk",
           "tableFrom": "collection_items",
-          "columnsFrom": [
-            "card_variant_id"
-          ],
+          "columnsFrom": ["card_variant_id"],
           "tableTo": "card_variants",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -3218,14 +3092,10 @@
         "collections_owner_id_users_id_fk": {
           "name": "collections_owner_id_users_id_fk",
           "tableFrom": "collections",
-          "columnsFrom": [
-            "owner_id"
-          ],
+          "columnsFrom": ["owner_id"],
           "tableTo": "users",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -3338,14 +3208,10 @@
         "creator_profiles_user_id_users_id_fk": {
           "name": "creator_profiles_user_id_users_id_fk",
           "tableFrom": "creator_profiles",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -3473,14 +3339,10 @@
         "pack_odds_sealed_product_id_sealed_products_id_fk": {
           "name": "pack_odds_sealed_product_id_sealed_products_id_fk",
           "tableFrom": "pack_odds",
-          "columnsFrom": [
-            "sealed_product_id"
-          ],
+          "columnsFrom": ["sealed_product_id"],
           "tableTo": "sealed_products",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -3660,42 +3522,30 @@
         "live_sales_seller_id_users_id_fk": {
           "name": "live_sales_seller_id_users_id_fk",
           "tableFrom": "live_sales",
-          "columnsFrom": [
-            "seller_id"
-          ],
+          "columnsFrom": ["seller_id"],
           "tableTo": "users",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "live_sales_card_variant_id_card_variants_id_fk": {
           "name": "live_sales_card_variant_id_card_variants_id_fk",
           "tableFrom": "live_sales",
-          "columnsFrom": [
-            "card_variant_id"
-          ],
+          "columnsFrom": ["card_variant_id"],
           "tableTo": "card_variants",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         },
         "live_sales_price_observation_id_price_observations_id_fk": {
           "name": "live_sales_price_observation_id_price_observations_id_fk",
           "tableFrom": "live_sales",
-          "columnsFrom": [
-            "price_observation_id"
-          ],
+          "columnsFrom": ["price_observation_id"],
           "tableTo": "price_observations",
           "schemaTo": "app",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -3704,9 +3554,7 @@
       "uniqueConstraints": {
         "live_sales_price_observation_id_unique": {
           "name": "live_sales_price_observation_id_unique",
-          "columns": [
-            "price_observation_id"
-          ],
+          "columns": ["price_observation_id"],
           "nullsNotDistinct": false
         }
       },
@@ -3748,134 +3596,72 @@
     "app.card_finish": {
       "name": "card_finish",
       "schema": "app",
-      "values": [
-        "normal",
-        "parallel",
-        "alt_art",
-        "promo"
-      ]
+      "values": ["normal", "parallel", "alt_art", "promo"]
     },
     "app.card_language": {
       "name": "card_language",
       "schema": "app",
-      "values": [
-        "en",
-        "ja"
-      ]
+      "values": ["en", "ja"]
     },
     "app.sealed_kind": {
       "name": "sealed_kind",
       "schema": "app",
-      "values": [
-        "booster_box",
-        "booster_pack",
-        "starter_deck",
-        "case",
-        "bundle",
-        "accessory"
-      ]
+      "values": ["booster_box", "booster_pack", "starter_deck", "case", "bundle", "accessory"]
     },
     "app.user_role": {
       "name": "user_role",
       "schema": "app",
-      "values": [
-        "user",
-        "creator",
-        "seller",
-        "admin"
-      ]
+      "values": ["user", "creator", "seller", "admin"]
     },
     "app.alert_channel": {
       "name": "alert_channel",
       "schema": "app",
-      "values": [
-        "email",
-        "discord_dm",
-        "discord_webhook",
-        "web_push"
-      ]
+      "values": ["email", "discord_dm", "discord_webhook", "web_push"]
     },
     "app.api_key_scope": {
       "name": "api_key_scope",
       "schema": "app",
-      "values": [
-        "ingest:write",
-        "catalog:read",
-        "prices:read"
-      ]
+      "values": ["ingest:write", "catalog:read", "prices:read"]
     },
     "app.api_key_tier": {
       "name": "api_key_tier",
       "schema": "app",
-      "values": [
-        "free"
-      ]
+      "values": ["free"]
     },
     "app.delivery_status": {
       "name": "delivery_status",
       "schema": "app",
-      "values": [
-        "pending",
-        "sent",
-        "failed",
-        "skipped"
-      ]
+      "values": ["pending", "sent", "failed", "skipped"]
     },
     "app.break_status": {
       "name": "break_status",
       "schema": "app",
-      "values": [
-        "draft",
-        "live",
-        "ended"
-      ]
+      "values": ["draft", "live", "ended"]
     },
     "app.pull_value_source": {
       "name": "pull_value_source",
       "schema": "app",
-      "values": [
-        "manual",
-        "index"
-      ]
+      "values": ["manual", "index"]
     },
     "app.card_condition": {
       "name": "card_condition",
       "schema": "app",
-      "values": [
-        "nm",
-        "lp",
-        "mp",
-        "hp",
-        "dmg"
-      ]
+      "values": ["nm", "lp", "mp", "hp", "dmg"]
     },
     "app.price_sale_type": {
       "name": "price_sale_type",
       "schema": "app",
-      "values": [
-        "sold",
-        "listed"
-      ]
+      "values": ["sold", "listed"]
     },
     "app.price_source": {
       "name": "price_source",
       "schema": "app",
-      "values": [
-        "break_pull",
-        "live_sale",
-        "user_report",
-        "ebay_api",
-        "walmart_api"
-      ]
+      "values": ["break_pull", "live_sale", "user_report", "ebay_api", "walmart_api"]
     },
     "app.collection_visibility": {
       "name": "collection_visibility",
       "schema": "app",
-      "values": [
-        "private",
-        "unlisted",
-        "public"
-      ]
+      "values": ["private", "unlisted", "public"]
     }
   },
   "schemas": {
