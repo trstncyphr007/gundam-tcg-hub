@@ -286,6 +286,24 @@ export interface PublicPull {
   pulledAt: Date;
 }
 
+/**
+ * Exactly the values that were hashed, for a viewer to re-derive the chain themselves.
+ *
+ * Deliberately separate from `PublicPull`, which is for display: that one's `label` is the
+ * resolved card name, and hashing a display string would mean the proof depended on how we
+ * happened to render it. These are the raw columns, in the form the chain committed to.
+ */
+export interface VerifiablePull {
+  seq: number;
+  cardVariantId: string | null;
+  label: string | null;
+  valueCentsAtPull: number;
+  valueSource: string;
+  pulledAt: string;
+  prevHash: string | null;
+  rowHash: string | null;
+}
+
 export interface PublicBreak {
   id: string;
   title: string;
@@ -296,6 +314,8 @@ export interface PublicBreak {
   endedAt: Date | null;
   pulls: PublicPull[];
   totalCents: number;
+  /** The evidence. Everything needed to check this break without trusting our answer. */
+  verification: { rows: VerifiablePull[] };
 }
 
 /**
@@ -321,12 +341,39 @@ export async function getPublicBreak(db: Database, breakId: string): Promise<Pub
     .limit(1);
   if (!row || row.status === 'draft') return null;
 
-  const pulls = await listPulls(db, breakId);
+  const [pulls, rows] = await Promise.all([
+    listPulls(db, breakId),
+    listVerifiablePulls(db, breakId),
+  ]);
   return {
     ...row,
     pulls,
     totalCents: pulls.reduce((sum, p) => sum + p.valueCentsAtPull, 0),
+    verification: { rows },
   };
+}
+
+/** The raw, hashed form of each pull, in order. */
+export async function listVerifiablePulls(
+  db: Database,
+  breakId: string,
+): Promise<VerifiablePull[]> {
+  const rows = await db
+    .select({
+      seq: breakPulls.seq,
+      cardVariantId: breakPulls.cardVariantId,
+      label: breakPulls.label,
+      valueCentsAtPull: breakPulls.valueCentsAtPull,
+      valueSource: breakPulls.valueSource,
+      pulledAt: breakPulls.pulledAt,
+      prevHash: breakPulls.prevHash,
+      rowHash: breakPulls.rowHash,
+    })
+    .from(breakPulls)
+    .where(eq(breakPulls.breakId, breakId))
+    .orderBy(asc(breakPulls.seq));
+
+  return rows.map((r) => ({ ...r, pulledAt: r.pulledAt.toISOString() }));
 }
 
 /** Pulls in order, with the card name resolved, or the creator's free-text label. */

@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { api } from '@/lib/api';
+import { BreakVerifier } from './verifier';
 
 function dollars(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -86,6 +87,13 @@ export default async function PublicBreakPage({
       <p className="text-xs" style={{ color: 'var(--muted)' }}>
         Values are what the creator recorded at the moment of the pull.
       </p>
+
+      <BreakVerifier
+        breakId={view.id}
+        commitment={view.verification.commitment}
+        chain={view.verification.chain}
+        rows={view.verification.rows}
+      />
     </div>
   );
 }

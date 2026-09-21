@@ -111,7 +111,14 @@ ACME_EMAIL=<you@domain>
 API_BASE_URL=https://<domain>
 APP_BASE_URL=https://<domain>
 SMTP_URL=smtp://<provider>
+DATA_ENCRYPTION_KEYS='{"k1":"<openssl rand -base64 32>"}'
+DATA_ENCRYPTION_ACTIVE_KID=k1
 ```
+
+`DATA_ENCRYPTION_KEYS` encrypts fields that must stay secret even in a backup — today a
+break's server seed. **Losing it makes those fields unrecoverable**, so it belongs in the
+password manager alongside the age key. The API refuses to start in production while it, the
+token pepper or the auth secret still hold their development defaults.
 
 Copy the encrypted file to `/srv/gth/production/secrets.sops.env`. It is safe in git and safe
 on disk; only the age key decrypts it, into tmpfs, at deploy time.

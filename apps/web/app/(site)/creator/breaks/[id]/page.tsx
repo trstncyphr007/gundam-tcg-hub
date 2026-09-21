@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { api } from '@/lib/api';
+import { FairnessPanel } from './fairness-panel';
 import { PullLogger } from './pull-logger';
 
 export const metadata = { title: 'Run break · Gundam TCG Hub' };
@@ -54,6 +55,12 @@ export default async function RunBreakPage({
         initialStatus={entry.status}
         costCents={entry.costCents}
         tokenVersion={entry.overlayTokenVersion}
+      />
+
+      <FairnessPanel
+        breakId={entry.id}
+        status={entry.status}
+        initial={(await api.publicBreak(entry.id))?.verification.commitment ?? null}
       />
     </div>
   );
