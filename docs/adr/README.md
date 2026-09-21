@@ -27,3 +27,4 @@ New decisions get their own file.
 | 020 | [Generate OpenAPI from zod; publish the index under CC BY 4.0](020-openapi-without-swagger.md)                  | Accepted                 |
 | 021 | [Comparing pull rates to published odds](021-comparing-pull-rates-to-published-odds.md)                         | Accepted                 |
 | 022 | [Live sales, and what happens to a buyer's name](022-live-sales-and-buyer-handles.md)                           | Accepted                 |
+| 023 | [VOD timestamps live outside the hash chain](023-vod-timestamps-outside-the-chain.md)                           | Accepted                 |

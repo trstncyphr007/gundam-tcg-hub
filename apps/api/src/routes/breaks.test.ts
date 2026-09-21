@@ -23,7 +23,7 @@ const PLAIN_USER = 'break-plain-user';
  * a session would supply it. Authorization itself is still exercised for real.
  */
 async function call(
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   url: string,
   opts: { user?: { userId: string; role: 'user' | 'creator' | 'admin' }; payload?: object } = {},
 ): Promise<LightMyRequestResponse> {
@@ -286,5 +286,158 @@ describe('the public page and export (FR-2.5, SR-2.5)', () => {
 describe('overlay connection cap (SR-2.4)', () => {
   it('is a small number, and is enforced per token', () => {
     expect(MAX_OVERLAY_CONNECTIONS).toBeLessThanOrEqual(5);
+  });
+});
+
+describe('VOD timestamps (FR-4.4)', () => {
+  /** An ended break with one pull, and the pull's id. */
+  async function breakWithPull(): Promise<{ breakId: string; pullId: string }> {
+    const { id } = await makeBreak();
+    await call('POST', `/v1/breaks/${id}/status`, { user: creator, payload: { status: 'live' } });
+    await call('POST', `/v1/breaks/${id}/pulls`, {
+      user: creator,
+      payload: { label: 'Timestamped card', valueCentsAtPull: 100 },
+    });
+    await call('POST', `/v1/breaks/${id}/status`, { user: creator, payload: { status: 'ended' } });
+
+    const pulls = await call('GET', `/v1/breaks/${id}/pulls`, { user: creator });
+    expect(pulls.statusCode, pulls.body).toBe(200);
+    return { breakId: id, pullId: pulls.json<{ items: { id: string }[] }>().items[0]?.id ?? '' };
+  }
+
+  it('requires a session on every route', async () => {
+    const uuid = '00000000-0000-0000-0000-000000000000';
+    for (const [method, url] of [
+      ['GET', `/v1/breaks/${uuid}/pulls`],
+      ['POST', `/v1/breaks/${uuid}/vod`],
+      ['PUT', `/v1/pulls/${uuid}/evidence`],
+      ['DELETE', `/v1/pulls/${uuid}/evidence`],
+    ] as const) {
+      expect((await call(method, url)).statusCode, `${method} ${url}`).toBe(401);
+    }
+  });
+
+  it('accepts a timestamp as seconds or as a clock reading', async () => {
+    const { breakId, pullId } = await breakWithPull();
+    await call('POST', `/v1/breaks/${breakId}/vod`, {
+      user: creator,
+      payload: { vodUrl: 'https://www.youtube.com/watch?v=abc' },
+    });
+
+    const seconds = await call('PUT', `/v1/pulls/${pullId}/evidence`, {
+      user: creator,
+      payload: { offsetSeconds: 3723 },
+    });
+    expect(seconds.statusCode, seconds.body).toBe(200);
+
+    // What a person types while watching the VOD back. Same parser as the one that reads a
+    // timestamp out of a pasted link, so both paths agree.
+    const clock = await call('PUT', `/v1/pulls/${pullId}/evidence`, {
+      user: creator,
+      payload: { at: '1:02:03' },
+    });
+    expect(clock.json<{ offsetSeconds: number }>().offsetSeconds).toBe(3723);
+
+    const view = await call('GET', `/v1/breaks/${breakId}/public`);
+    expect(view.json<{ pulls: { vodUrl: string }[] }>().pulls[0]?.vodUrl).toBe(
+      'https://www.youtube.com/watch?v=abc&t=3723',
+    );
+  });
+
+  it('refuses a request that gives both forms, rather than picking one', async () => {
+    const { pullId } = await breakWithPull();
+    const res = await call('PUT', `/v1/pulls/${pullId}/evidence`, {
+      user: creator,
+      payload: { offsetSeconds: 10, at: '5:00' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('refuses a timestamp it cannot read', async () => {
+    const { pullId } = await breakWithPull();
+    const res = await call('PUT', `/v1/pulls/${pullId}/evidence`, {
+      user: creator,
+      // Short enough to pass the length bound and reach the parser, which is the branch
+      // this is about.
+      payload: { at: 'the end' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toContain('not a timestamp');
+  });
+
+  it('refuses a VOD link that is not https', async () => {
+    const { breakId } = await breakWithPull();
+    const res = await call('POST', `/v1/breaks/${breakId}/vod`, {
+      user: creator,
+      payload: { vodUrl: 'http://www.youtube.com/watch?v=abc' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('answers 404 for another creator’s pull, the same as for one that does not exist', async () => {
+    const { pullId } = await breakWithPull();
+    const theirs = await call('PUT', `/v1/pulls/${pullId}/evidence`, {
+      user: otherCreator,
+      payload: { offsetSeconds: 10 },
+    });
+    const missing = await call('PUT', '/v1/pulls/00000000-0000-0000-0000-000000000000/evidence', {
+      user: otherCreator,
+      payload: { offsetSeconds: 10 },
+    });
+    // A row policy refusal must not arrive as a 500, and must not confirm the id exists.
+    expect(theirs.statusCode, theirs.body).toBe(404);
+    expect(missing.statusCode).toBe(404);
+  });
+
+  it('clears a timestamp', async () => {
+    const { breakId, pullId } = await breakWithPull();
+    await call('POST', `/v1/breaks/${breakId}/vod`, {
+      user: creator,
+      payload: { vodUrl: 'https://www.youtube.com/watch?v=abc' },
+    });
+    await call('PUT', `/v1/pulls/${pullId}/evidence`, {
+      user: creator,
+      payload: { offsetSeconds: 10 },
+    });
+
+    expect(
+      (await call('DELETE', `/v1/pulls/${pullId}/evidence`, { user: creator })).statusCode,
+    ).toBe(204);
+    expect(
+      (await call('DELETE', `/v1/pulls/${pullId}/evidence`, { user: creator })).statusCode,
+    ).toBe(404);
+
+    const view = await call('GET', `/v1/breaks/${breakId}/public`);
+    expect(view.json<{ pulls: { vodUrl: string | null }[] }>().pulls[0]?.vodUrl).toBeNull();
+  });
+
+  it('keeps the timestamp out of the rows a viewer re-hashes', async () => {
+    const { breakId, pullId } = await breakWithPull();
+    await call('POST', `/v1/breaks/${breakId}/vod`, {
+      user: creator,
+      payload: { vodUrl: 'https://www.youtube.com/watch?v=abc' },
+    });
+    await call('PUT', `/v1/pulls/${pullId}/evidence`, {
+      user: creator,
+      payload: { offsetSeconds: 10 },
+    });
+
+    const view = await call('GET', `/v1/breaks/${breakId}/public`);
+    const body = view.json<{
+      pulls: { vodUrl: string | null }[];
+      verification: { rows: unknown[]; chain: { state: string } };
+    }>();
+    // Displayed but not hashed. A browser hashing something the server never did would
+    // disagree with us for the wrong reason.
+    expect(body.pulls[0]?.vodUrl).not.toBeNull();
+    expect(JSON.stringify(body.verification.rows)).not.toContain('youtube');
+    expect(body.verification.chain.state).toBe('valid');
+  });
+
+  it('does not hand the public page an id it could write to', async () => {
+    const { breakId } = await breakWithPull();
+    const view = await call('GET', `/v1/breaks/${breakId}/public`);
+    // The creator's list carries pull ids; the public view does not, on purpose.
+    expect(view.json<{ pulls: Record<string, unknown>[] }>().pulls[0]).not.toHaveProperty('id');
   });
 });

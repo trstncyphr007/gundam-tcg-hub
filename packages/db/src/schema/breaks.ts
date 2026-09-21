@@ -55,6 +55,14 @@ export const breaks = app.table(
      * profile page says how many breaks that was, rather than quietly shrinking the sample.
      */
     packsOpened: integer('packs_opened'),
+    /**
+     * Where the break can be watched (FR-4.4).
+     *
+     * One VOD per break is the normal case, so the link lives here and each pull carries only
+     * an offset into it. The alternative — a full URL per pull — would mean pasting the same
+     * link forty times, which is how forty chances to paste the wrong one get created.
+     */
+    vodUrl: text('vod_url'),
     status: breakStatus('status').notNull().default('draft'),
     /**
      * HMAC of the overlay token (SR-2.1). The token itself is shown once and never
@@ -80,6 +88,7 @@ export const breaks = app.table(
       'breaks_packs_opened_range',
       sql`${t.packsOpened} is null or ${t.packsOpened} between 1 and 5000`,
     ),
+    check('breaks_vod_url_https', sql`${t.vodUrl} is null or ${t.vodUrl} like 'https://%'`),
     // A live break has started; an ended one has both timestamps and ends after it starts.
     check(
       'breaks_timestamps_follow_status',
@@ -142,6 +151,46 @@ export const breakPulls = app.table(
       'break_pulls_identified',
       sql`${t.cardVariantId} is not null or length(btrim(coalesce(${t.label}, ''))) > 0`,
     ),
+  ],
+);
+
+/**
+ * Where in the VOD a pull happened (FR-4.4).
+ *
+ * **Deliberately not a column on `break_pulls`,** for two reasons that point the same way.
+ *
+ * The practical one: that table has UPDATE revoked from every application role (migration
+ * 0011), because a pull log that can be edited is not a log. A timestamp is added *after* the
+ * stream, when the VOD exists, so it could never be written there.
+ *
+ * The honest one: the hash chain commits to six fields, and a VOD link is not among them.
+ * Adding one would invalidate every chain ever written, and pretending the link is covered by
+ * the proof would be worse than not having it — so it lives outside, is editable, and the
+ * public page says plainly which parts a viewer can verify and which they are taking on
+ * trust. A wrong timestamp points at the wrong moment; a wrong value in the log would be a
+ * different kind of claim, and only one of those is worth making permanent.
+ */
+export const pullEvidence = app.table(
+  'pull_evidence',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    breakPullId: uuid('break_pull_id')
+      .notNull()
+      .unique()
+      .references(() => breakPulls.id, { onDelete: 'cascade' }),
+    /** Seconds into the VOD. The link itself usually comes from the break. */
+    offsetSeconds: integer('offset_seconds').notNull(),
+    /** An override, for a break split across more than one VOD. Null means "use the break's". */
+    vodUrl: text('vod_url'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('pull_evidence_pull_key').on(t.breakPullId),
+    check('pull_evidence_offset_range', sql`${t.offsetSeconds} between 0 and 86400`),
+    check('pull_evidence_vod_url_https', sql`${t.vodUrl} is null or ${t.vodUrl} like 'https://%'`),
   ],
 );
 

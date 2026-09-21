@@ -1,7 +1,13 @@
-import { GENESIS_HASH, hashPull } from '@gth/core';
+import {
+  GENESIS_HASH,
+  MAX_VOD_OFFSET_SECONDS,
+  hashPull,
+  isUsableVodUrl,
+  withVodOffset,
+} from '@gth/core';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
-import { breakPulls, breaks } from '../schema/breaks.js';
+import { breakPulls, breaks, pullEvidence } from '../schema/breaks.js';
 import { cardVariants, cards, sealedProducts } from '../schema/catalog.js';
 import { asUser } from './watches.js';
 
@@ -320,6 +326,15 @@ export interface PublicPull {
    */
   valueSource: 'manual' | 'index';
   pulledAt: Date;
+  /**
+   * A deep link to the moment this was pulled (FR-4.4), or null.
+   *
+   * Built here rather than in the page, so the API and the site point at the same second.
+   * Note what it is not: the hash chain commits to six fields and this is not among them, so
+   * a viewer can prove the pull and merely has to trust the link. The public page says so.
+   */
+  vodUrl: string | null;
+  vodOffsetSeconds: number | null;
 }
 
 /**
@@ -423,10 +438,17 @@ export async function listPulls(db: Database, breakId: string): Promise<PublicPu
       pulledAt: breakPulls.pulledAt,
       cardName: cards.name,
       finish: cardVariants.finish,
+      offsetSeconds: pullEvidence.offsetSeconds,
+      // The per-pull override first, the break's own link second. One VOD per break is the
+      // normal case; a long break split across two is not rare enough to ignore.
+      evidenceUrl: pullEvidence.vodUrl,
+      breakVodUrl: breaks.vodUrl,
     })
     .from(breakPulls)
+    .innerJoin(breaks, eq(breaks.id, breakPulls.breakId))
     .leftJoin(cardVariants, eq(cardVariants.id, breakPulls.cardVariantId))
     .leftJoin(cards, eq(cards.id, cardVariants.cardId))
+    .leftJoin(pullEvidence, eq(pullEvidence.breakPullId, breakPulls.id))
     .where(eq(breakPulls.breakId, breakId))
     .orderBy(asc(breakPulls.seq));
 
@@ -438,7 +460,204 @@ export async function listPulls(db: Database, breakId: string): Promise<PublicPu
     valueCentsAtPull: r.valueCentsAtPull,
     valueSource: r.valueSource,
     pulledAt: r.pulledAt,
+    ...vodLinkFor(r.evidenceUrl ?? r.breakVodUrl, r.offsetSeconds),
   }));
+}
+
+/**
+ * Resolve a pull's deep link, or nothing at all.
+ *
+ * Returns nulls rather than throwing on a URL `withVodOffset` refuses. The CHECK constraint
+ * already requires https, so this should not happen — but a break page failing to render
+ * because one timestamp is malformed would be a far worse outcome than that timestamp simply
+ * not appearing.
+ */
+function vodLinkFor(
+  baseUrl: string | null,
+  offsetSeconds: number | null,
+): { vodUrl: string | null; vodOffsetSeconds: number | null } {
+  if (baseUrl === null || offsetSeconds === null) {
+    return { vodUrl: null, vodOffsetSeconds: null };
+  }
+  try {
+    return { vodUrl: withVodOffset(baseUrl, offsetSeconds), vodOffsetSeconds: offsetSeconds };
+  } catch {
+    return { vodUrl: null, vodOffsetSeconds: null };
+  }
+}
+
+export interface PullEvidenceInput {
+  offsetSeconds: number;
+  /** Only for a break split across more than one VOD. Null uses the break's link. */
+  vodUrl?: string | null | undefined;
+}
+
+/**
+ * Record where in the VOD a pull happened (FR-4.4).
+ *
+ * An upsert: a creator timestamping a log works down it and sometimes corrects one. Note that
+ * this writes a different table from the pull — `break_pulls` has UPDATE revoked, and a
+ * timestamp added days later could never have gone there.
+ */
+export async function setPullEvidence(
+  db: Database,
+  creatorId: string,
+  breakPullId: string,
+  input: PullEvidenceInput,
+): Promise<{ breakPullId: string; offsetSeconds: number; vodUrl: string | null }> {
+  if (!Number.isInteger(input.offsetSeconds) || input.offsetSeconds < 0) {
+    throw new BreakStateError('an offset must be a whole number of seconds');
+  }
+  if (input.offsetSeconds > MAX_VOD_OFFSET_SECONDS) {
+    throw new BreakStateError(`an offset cannot exceed ${String(MAX_VOD_OFFSET_SECONDS)} seconds`);
+  }
+  const override = input.vodUrl ?? null;
+  if (override !== null && !isUsableVodUrl(override)) {
+    throw new BreakStateError('a VOD link must be https');
+  }
+
+  return asUser(db, creatorId, async (tx) => {
+    let row;
+    try {
+      [row] = await tx
+        .insert(pullEvidence)
+        .values({ breakPullId, offsetSeconds: input.offsetSeconds, vodUrl: override })
+        .onConflictDoUpdate({
+          target: pullEvidence.breakPullId,
+          set: { offsetSeconds: input.offsetSeconds, vodUrl: override, updatedAt: new Date() },
+        })
+        .returning({
+          breakPullId: pullEvidence.breakPullId,
+          offsetSeconds: pullEvidence.offsetSeconds,
+          vodUrl: pullEvidence.vodUrl,
+        });
+    } catch (error) {
+      // A pull that is not the caller's fails the policy's WITH CHECK, which Postgres
+      // reports as an error rather than as zero rows. Left raw it would be a 500; it is an
+      // ordinary "not yours", and "not yours" and "no such pull" must be the same answer
+      // so that no id is ever confirmed (SR-X.6).
+      if (isRowSecurityViolation(error)) throw new BreakStateError('pull not found');
+      throw error;
+    }
+    // An UPDATE the policy's USING clause excludes returns no row instead of throwing, so
+    // both shapes of refusal end in the same place.
+    if (!row) throw new BreakStateError('pull not found');
+    return row;
+  });
+}
+
+/**
+ * Did the database refuse this because of a row policy?
+ *
+ * Walks the `cause` chain: Drizzle wraps the driver's error, and `42501` lives on the
+ * original. Checked by code rather than by message, which is a contract with Postgres rather
+ * than with a string.
+ */
+function isRowSecurityViolation(error: unknown): boolean {
+  for (let current: unknown = error; current != null;) {
+    const fields = current as { code?: unknown; cause?: unknown };
+    if (fields.code === '42501') return true;
+    current = fields.cause;
+  }
+  return false;
+}
+
+/** Remove a timestamp: how a creator says "that one was wrong and I have no right one". */
+export async function clearPullEvidence(
+  db: Database,
+  creatorId: string,
+  breakPullId: string,
+): Promise<boolean> {
+  return asUser(db, creatorId, async (tx) => {
+    const rows = await tx
+      .delete(pullEvidence)
+      .where(eq(pullEvidence.breakPullId, breakPullId))
+      .returning({ id: pullEvidence.id });
+    return rows.length > 0;
+  });
+}
+
+/**
+ * Set the VOD the break's timestamps are offsets into (FR-4.4).
+ *
+ * On the break rather than on each pull, so a creator pastes the link once. Forty chances to
+ * paste the wrong link is forty chances taken.
+ */
+export async function setBreakVodUrl(
+  db: Database,
+  creatorId: string,
+  breakId: string,
+  vodUrl: string | null,
+): Promise<Break> {
+  if (vodUrl !== null && !isUsableVodUrl(vodUrl)) {
+    throw new BreakStateError('a VOD link must be https');
+  }
+
+  return asUser(db, creatorId, async (tx) => {
+    const [row] = await tx
+      .update(breaks)
+      .set({ vodUrl, updatedAt: new Date() })
+      .where(and(eq(breaks.id, breakId), eq(breaks.creatorId, creatorId)))
+      .returning();
+    if (!row) throw new BreakStateError('break not found');
+    return row;
+  });
+}
+
+export interface CreatorPull {
+  id: string;
+  seq: number;
+  label: string;
+  valueCentsAtPull: number;
+  pulledAt: Date;
+  offsetSeconds: number | null;
+  vodUrl: string | null;
+}
+
+/**
+ * The creator's own pull list, with ids.
+ *
+ * Separate from `listPulls` because timestamping needs the pull's id and the public view
+ * deliberately does not carry one: a public page hands out no handle to anything writable.
+ */
+export async function listPullsForCreator(
+  db: Database,
+  creatorId: string,
+  breakId: string,
+): Promise<CreatorPull[]> {
+  return asUser(db, creatorId, async (tx) => {
+    const rows = await tx
+      .select({
+        id: breakPulls.id,
+        seq: breakPulls.seq,
+        label: breakPulls.label,
+        valueCentsAtPull: breakPulls.valueCentsAtPull,
+        pulledAt: breakPulls.pulledAt,
+        cardName: cards.name,
+        finish: cardVariants.finish,
+        offsetSeconds: pullEvidence.offsetSeconds,
+        evidenceUrl: pullEvidence.vodUrl,
+      })
+      .from(breakPulls)
+      .innerJoin(breaks, eq(breaks.id, breakPulls.breakId))
+      .leftJoin(cardVariants, eq(cardVariants.id, breakPulls.cardVariantId))
+      .leftJoin(cards, eq(cards.id, cardVariants.cardId))
+      .leftJoin(pullEvidence, eq(pullEvidence.breakPullId, breakPulls.id))
+      .where(and(eq(breakPulls.breakId, breakId), eq(breaks.creatorId, creatorId)))
+      .orderBy(asc(breakPulls.seq));
+
+    return rows.map((r) => ({
+      id: r.id,
+      seq: r.seq,
+      label: r.cardName
+        ? `${r.cardName}${r.finish === 'normal' ? '' : ` (${String(r.finish)})`}`
+        : (r.label ?? 'Unknown card'),
+      valueCentsAtPull: r.valueCentsAtPull,
+      pulledAt: r.pulledAt,
+      offsetSeconds: r.offsetSeconds,
+      vodUrl: r.evidenceUrl,
+    }));
+  });
 }
 
 /**

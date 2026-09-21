@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import { FairnessPanel } from './fairness-panel';
 import { PackCount } from './pack-count';
 import { PullLogger } from './pull-logger';
+import { VodPanel } from './vod-panel';
 
 export const metadata = { title: 'Run break · Gundam TCG Hub' };
 
@@ -59,6 +60,16 @@ export default async function RunBreakPage({
       />
 
       <PackCount breakId={entry.id} initial={entry.packsOpened} />
+
+      {/* Timestamping happens after the stream, when the VOD exists — so the panel only
+          appears once there is a finished log to walk down. */}
+      {entry.status === 'ended' && (
+        <VodPanel
+          breakId={entry.id}
+          initialVodUrl={entry.vodUrl}
+          initialPulls={(await api.creatorPulls(entry.id))?.items ?? []}
+        />
+      )}
 
       <FairnessPanel
         breakId={entry.id}
