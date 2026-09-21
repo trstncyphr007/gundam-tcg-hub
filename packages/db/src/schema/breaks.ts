@@ -102,6 +102,14 @@ export const breakPulls = app.table(
      * was: a number a person typed. Only those are evidence (see `pullValueSource`).
      */
     valueSource: pullValueSource('value_source').notNull().default('manual'),
+    /**
+     * Hash chain (SR-4.1). Each row commits to every row before it, so a value edited later
+     * breaks every hash from that point on and the public page can say *which pull* was
+     * changed. Rows written before the chain existed have nulls and are reported as
+     * unverifiable rather than as valid — an absent proof is not a passing one.
+     */
+    prevHash: text('prev_hash'),
+    rowHash: text('row_hash'),
     /** Position in the break, assigned server-side. */
     seq: integer('seq').notNull(),
     pulledAt: timestamp('pulled_at', { withTimezone: true }).notNull().defaultNow(),
@@ -110,11 +118,67 @@ export const breakPulls = app.table(
     index('break_pulls_break_idx').on(t.breakId, t.seq),
     uniqueIndex('break_pulls_break_seq_key').on(t.breakId, t.seq),
     check('break_pulls_seq_positive', sql`${t.seq} >= 1`),
+    // Both or neither: half a chain link is not a state worth being able to represent.
+    check('break_pulls_chain_complete', sql`(${t.prevHash} is null) = (${t.rowHash} is null)`),
     check('break_pulls_value_non_negative', sql`${t.valueCentsAtPull} >= 0`),
     // Something must identify the card, or the row says nothing.
     check(
       'break_pulls_identified',
       sql`${t.cardVariantId} is not null or length(btrim(coalesce(${t.label}, ''))) > 0`,
+    ),
+  ],
+);
+
+/**
+ * Commit–reveal for a randomised break (FR-4.2).
+ *
+ * One row per break, written *before* it starts. The commitment is published immediately;
+ * the seed itself is encrypted at rest (SR-4.2) and only decrypted into `revealed_seed` when
+ * the break ends. Until then nobody — including a database backup, including us — can
+ * predict the assignment.
+ *
+ * The client seed is the audience's contribution: a value they watch being chosen, so the
+ * result cannot be something we picked alone. Typically a future block hash or a number the
+ * creator types on stream.
+ */
+export const breakCommitments = app.table(
+  'break_commitments',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    breakId: uuid('break_id')
+      .notNull()
+      .references(() => breaks.id, { onDelete: 'cascade' }),
+    /** `sha256(serverSeed)`, published before the break. */
+    commitment: text('commitment').notNull(),
+    /** AES-256-GCM, keyed from DATA_ENCRYPTION_KEYS. Never returned by any route. */
+    serverSeedEncrypted: text('server_seed_encrypted').notNull(),
+    /** The audience's contribution. Null until they give one. */
+    clientSeed: text('client_seed'),
+    /** Plaintext, and only ever after the break has ended. Null is the normal state. */
+    revealedSeed: text('revealed_seed'),
+    /** How many slots the shuffle assigns. Fixed at commit time. */
+    slotCount: integer('slot_count').notNull(),
+    /** Pinned per break, so an old result stays verifiable when the algorithm moves on. */
+    algorithmVersion: text('algorithm_version').notNull(),
+    committedAt: timestamp('committed_at', { withTimezone: true }).notNull().defaultNow(),
+    revealedAt: timestamp('revealed_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('break_commitments_break_key').on(t.breakId),
+    check('break_commitments_slot_count', sql`${t.slotCount} between 2 and 1000`),
+    check('break_commitments_commitment_hex', sql`${t.commitment} ~ '^[0-9a-f]{64}$'`),
+    // A revealed seed and its timestamp arrive together or not at all.
+    check(
+      'break_commitments_reveal_complete',
+      sql`(${t.revealedSeed} is null) = (${t.revealedAt} is null)`,
+    ),
+    // You cannot reveal before the audience has contributed: a seed revealed while the
+    // client seed is still open would let the client seed be chosen to suit the outcome.
+    check(
+      'break_commitments_client_seed_first',
+      sql`${t.revealedSeed} is null or ${t.clientSeed} is not null`,
     ),
   ],
 );

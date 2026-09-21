@@ -134,6 +134,20 @@
       "when": 1789945592802,
       "tag": "0018_break_pull_value_source",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789951273162,
+      "tag": "0019_phase4_commit_reveal",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789951273163,
+      "tag": "0020_commitment_rls",
+      "breakpoints": true
     }
   ]
 }
