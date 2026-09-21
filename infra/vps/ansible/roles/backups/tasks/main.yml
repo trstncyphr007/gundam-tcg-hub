@@ -1,0 +1,136 @@
+---
+# Nightly encrypted off-site backups (plan §21). RPO ≤ 24h, RTO ≤ 4h.
+#
+# The credentials file is created by hand once (docs/runbooks/backups.md) because it holds
+# the repository password and object-store keys. Ansible creates everything around it.
+
+- name: Create the credentials directory
+  ansible.builtin.file:
+    path: /etc/gth
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Check for the restic credentials
+  ansible.builtin.stat:
+    path: /etc/gth/restic.env
+  register: backups_env
+
+- name: Warn when restic is not configured yet
+  # A warning rather than a failure: the rest of this role is still worth installing on a
+  # fresh host, and the timer below simply will not fire usefully until the file exists.
+  ansible.builtin.debug:
+    msg: >-
+      /etc/gth/restic.env is missing, so backups will not run. Create it from
+      docs/runbooks/backups.md before trusting this host with data.
+  when: not backups_env.stat.exists
+
+- name: Install the backup script
+  ansible.builtin.copy:
+    dest: /usr/local/bin/gth-backup.sh
+    owner: root
+    group: root
+    mode: '0750'
+    content: |
+      #!/usr/bin/env bash
+      # Managed by Ansible (infra/vps/ansible/roles/backups).
+      set -euo pipefail
+
+      set -a
+      # shellcheck disable=SC1091
+      . /etc/gth/restic.env
+      set +a
+
+      STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+      DUMP="/var/backups/gth-${STAMP}.dump"
+      install -d -m 0700 /var/backups
+      # Whatever happens, the plaintext dump does not outlive this script.
+      trap 'rm -f "$DUMP"' EXIT
+
+      docker exec "gth-production-postgres-1" \
+        pg_dump -Fc -U "$PG_SUPERUSER" gth > "$DUMP"
+
+      restic backup --tag postgres --host gth-production "$DUMP"
+      restic forget --tag postgres \
+        --keep-daily {{ restic_keep_daily }} \
+        --keep-weekly {{ restic_keep_weekly }} \
+        --keep-monthly {{ restic_keep_monthly }}
+
+      # Read a slice of the data back every night. A repository that only ever gets written
+      # to is a repository nobody has proved is readable.
+      restic check --read-data-subset=5%
+
+- name: Install the backup service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/gth-backup.service
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by Ansible (infra/vps/ansible/roles/backups).
+      [Unit]
+      Description=Nightly encrypted off-site backup
+      After=docker.service
+      Requires=docker.service
+      OnFailure=gth-backup-failed.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/gth-backup.sh
+      Nice=10
+      IOSchedulingClass=idle
+  notify: Reload systemd
+
+- name: Install the failure alert unit
+  # A backup that fails silently is worse than no backup, because it is believed. This posts
+  # to the ops webhook the moment a run fails (SR-X.22).
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/gth-backup-failed.service
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by Ansible (infra/vps/ansible/roles/backups).
+      [Unit]
+      Description=Report a failed backup
+
+      [Service]
+      Type=oneshot
+      # The webhook lives in the same root-only file as the restic credentials.
+      EnvironmentFile=-/etc/gth/restic.env
+      ExecStart=/bin/bash -c '\
+        test -n "$DISCORD_OPS_WEBHOOK_URL" || exit 0; \
+        curl -fsS -X POST -H "content-type: application/json" \
+          -d "{\\"content\\": \\"gth backup FAILED on $(hostname) at $(date -u +%%FT%%TZ)\\"}" \
+          "$DISCORD_OPS_WEBHOOK_URL" >/dev/null'
+  notify: Reload systemd
+
+- name: Install the backup timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/gth-backup.timer
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by Ansible (infra/vps/ansible/roles/backups).
+      [Unit]
+      Description=Nightly encrypted off-site backup
+
+      [Timer]
+      OnCalendar=*-*-* {{ backup_hour }}:00 UTC
+      # Catch up after downtime rather than skipping a night in silence.
+      Persistent=true
+      RandomizedDelaySec=300
+
+      [Install]
+      WantedBy=timers.target
+  notify: Reload systemd
+
+- name: Enable the backup timer
+  ansible.builtin.systemd_service:
+    name: gth-backup.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not gth_container_smoke

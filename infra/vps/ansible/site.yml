@@ -1,0 +1,51 @@
+---
+# Host hardening and application layout for the VPS (plan §15.2).
+#
+# Idempotent and re-runnable: this is the file that makes a rebuild after a host failure a
+# command rather than an afternoon of following a document (threat T17). Run it as often as
+# you like; a second run should report no changes.
+#
+#   ansible-galaxy collection install -r requirements.yml
+#   ansible-playbook site.yml --check --diff     # dry run first, always
+#   ansible-playbook site.yml --diff
+#
+# Order matters. `ssh` and `firewall` can lock you out, so Tailscale is up and verified
+# before either runs -- see the note in roles/firewall.
+- name: Harden the VPS and lay out the application
+  hosts: vps
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Refuse to run against anything but Ubuntu 24.04
+      # Not pedantry: the roles below assume apt, ufw, systemd and Ubuntu's package names.
+      # Failing here is far kinder than half-configuring a host that is nearly right.
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['distribution_version'] is version('24.04', '>=')
+        fail_msg: >-
+          This playbook targets Ubuntu 24.04 LTS; found
+          {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}.
+
+  roles:
+    - role: base
+      tags: [base]
+    - role: users
+      tags: [users]
+    - role: kernel
+      tags: [kernel]
+    - role: ssh
+      tags: [ssh]
+    - role: firewall
+      tags: [firewall]
+    - role: docker
+      tags: [docker]
+    - role: crowdsec
+      tags: [crowdsec]
+    - role: audit
+      tags: [audit]
+    - role: app
+      tags: [app]
+    - role: backups
+      tags: [backups]

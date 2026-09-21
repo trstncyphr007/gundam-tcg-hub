@@ -1,0 +1,46 @@
+---
+# CrowdSec reads the logs and bans what is obviously hostile (plan §15.2). It is the layer
+# that deals with the internet's background noise so the application does not have to.
+
+- name: Check whether CrowdSec's repository is configured
+  ansible.builtin.stat:
+    path: /etc/apt/sources.list.d/crowdsec_crowdsec.list
+  register: crowdsec_repo
+
+- name: Add CrowdSec's repository
+  # Piping a vendor script to a shell, once, guarded by the stat above so it never runs
+  # twice. Not lovely; the alternative is hand-maintaining their key and repository lines,
+  # which rots. The script is fetched over TLS from the vendor and does nothing else.
+  ansible.builtin.shell:
+    cmd: set -o pipefail && curl -fsSL https://install.crowdsec.net | bash
+    executable: /bin/bash
+  when: not crowdsec_repo.stat.exists
+  changed_when: true
+
+- name: Install CrowdSec and the firewall bouncer
+  ansible.builtin.apt:
+    name:
+      - crowdsec
+      - crowdsec-firewall-bouncer-iptables
+    state: present
+    update_cache: true
+
+- name: Install the collections that match what this host runs
+  ansible.builtin.command:
+    cmd: cscli collections install {{ item }}
+    creates: '/etc/crowdsec/collections/{{ item | basename }}.yaml'
+  loop:
+    - crowdsecurity/sshd
+    - crowdsecurity/base-http-scenarios
+    - crowdsecurity/linux
+  notify: Reload crowdsec
+
+- name: Enable CrowdSec
+  ansible.builtin.systemd_service:
+    name: '{{ item }}'
+    enabled: true
+    state: started
+  loop:
+    - crowdsec
+    - crowdsec-firewall-bouncer
+  when: not gth_container_smoke

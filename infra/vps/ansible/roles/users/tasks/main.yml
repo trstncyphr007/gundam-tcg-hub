@@ -1,0 +1,36 @@
+---
+- name: Create the deploy account
+  # No password: it authenticates by key and escalates to exactly one command. There is
+  # nothing to brute force and nothing to phish.
+  ansible.builtin.user:
+    name: '{{ deploy_user }}'
+    shell: /bin/bash
+    create_home: true
+    password: '!'
+    state: present
+
+- name: Create the deploy account's .ssh directory
+  ansible.builtin.file:
+    path: '/home/{{ deploy_user }}/.ssh'
+    state: directory
+    owner: '{{ deploy_user }}'
+    group: '{{ deploy_user }}'
+    mode: '0700'
+
+- name: Allow the deploy account to run the deploy script, and nothing else
+  # The narrowest useful sudo rule. CI can ship a release; it cannot read a secret, install a
+  # package, or open a shell. If the deploy host is compromised, that is the blast radius.
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/40-gth-deploy
+    mode: '0440'
+    owner: root
+    group: root
+    content: |
+      # Managed by Ansible (infra/vps/ansible/roles/users).
+      {{ deploy_user }} ALL=(root) NOPASSWD: {{ app_root }}/deploy.sh
+    validate: visudo -cf %s
+
+- name: Ensure root cannot be logged into directly
+  ansible.builtin.user:
+    name: root
+    password_lock: true

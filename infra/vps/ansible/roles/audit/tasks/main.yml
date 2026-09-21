@@ -1,0 +1,54 @@
+---
+- name: Install auditd and Lynis
+  ansible.builtin.apt:
+    name:
+      - auditd
+      - audispd-plugins
+      - lynis
+    state: present
+
+- name: Install audit rules
+  # Watches the files that decide who may do what. If one of them changes and nobody on the
+  # team changed it, that is the sentence you want a log line for (plan §15.2, SR-X.21).
+  ansible.builtin.copy:
+    dest: /etc/audit/rules.d/50-gth.rules
+    mode: '0640'
+    owner: root
+    group: root
+    content: |
+      # Managed by Ansible (infra/vps/ansible/roles/audit).
+      -D
+      -b 8192
+      -f 1
+
+      # Identity and authorisation
+      -w /etc/passwd -p wa -k identity
+      -w /etc/shadow -p wa -k identity
+      -w /etc/group -p wa -k identity
+      -w /etc/sudoers -p wa -k privilege
+      -w /etc/sudoers.d/ -p wa -k privilege
+
+      # The doors into the box
+      -w /etc/ssh/sshd_config -p wa -k sshd
+      -w /etc/ssh/sshd_config.d/ -p wa -k sshd
+
+      # Everything the application runs as
+      -w /etc/docker/daemon.json -p wa -k docker
+      -w /usr/bin/dockerd -p x -k docker
+      -w {{ app_root }}/deploy.sh -p wax -k deploy
+
+      # Backups: a quiet change here is only noticed when a restore is needed
+      -w /etc/gth/restic.env -p wa -k backup
+      -w /usr/local/bin/gth-backup.sh -p wax -k backup
+
+      # Make the rules themselves immutable until reboot. Anything that wants to stop being
+      # audited now has to reboot the host to do it, which is itself conspicuous.
+      -e 2
+  notify: Restart auditd
+
+- name: Enable auditd
+  ansible.builtin.systemd_service:
+    name: auditd
+    enabled: true
+    state: started
+  when: not gth_container_smoke

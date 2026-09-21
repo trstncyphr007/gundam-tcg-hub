@@ -1,0 +1,6 @@
+---
+- name: Restart docker
+  ansible.builtin.systemd_service:
+    name: docker
+    state: restarted
+  when: not gth_container_smoke
