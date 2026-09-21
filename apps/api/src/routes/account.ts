@@ -1,4 +1,4 @@
-import { authorize } from '@gth/auth';
+import { authorize, requireFreshSession } from '@gth/auth';
 import { type Database, getSelfProfile, updateDisplayName, writeAuditLog } from '@gth/db';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -56,10 +56,13 @@ export function registerAccountRoutes(app: FastifyInstance, db: Database): void 
     return reply.header('cache-control', 'no-store').send(updated);
   });
 
-  // Example of a role-gated surface; the admin UI lands on top of this in Phase 1.
+  // A cheap way for the admin UI to ask "may I be here right now?" before rendering. Held to
+  // the same step-up rule as every other admin route (SR-1.10), or it would answer "yes" to a
+  // session the real routes then refuse.
   app.get('/v1/admin/ping', async (request, reply) => {
     if (!request.subject) return reply.code(401).send({ error: 'unauthenticated' });
     authorize(request.subject, 'admin:access');
+    requireFreshSession(request.subject);
     return reply.header('cache-control', 'no-store').send({ status: 'ok', role: 'admin' });
   });
 }

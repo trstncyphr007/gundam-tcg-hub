@@ -51,6 +51,9 @@ const app = await buildApp(config, {
   // (migration 0017). Without this the key plugin is not registered at all and every caller
   // is anonymous — noisy, but never silently trusting an unverified key.
   keysDb: worker.db,
+  // Moderation decisions run on the worker role too: the web role may look at the review
+  // queue and can never mark a price as counting (migration 0027).
+  moderationDb: worker.db,
   // Breaks are owned by their creator, so they run on the web role under RLS. The reveal is
   // the exception: it reads the encrypted seed, which only the worker role may do.
   breaks: {

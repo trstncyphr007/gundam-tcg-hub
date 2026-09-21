@@ -30,7 +30,14 @@ const authPluginImpl: FastifyPluginAsync<{ auth: Auth }> = async (app, opts) => 
       headers: fromNodeHeaders(request.raw.headers),
     });
     request.subject = session
-      ? { userId: session.user.id, role: toRole((session.user as { role?: unknown }).role) }
+      ? {
+          userId: session.user.id,
+          role: toRole((session.user as { role?: unknown }).role),
+          // The session's creation, not its last refresh: `updateAge` moves `expiresAt` along
+          // every day, but `createdAt` stays at the moment the person actually signed in —
+          // which is the only moment step-up cares about (SR-1.10).
+          authenticatedAt: new Date(session.session.createdAt),
+        }
       : null;
   });
 

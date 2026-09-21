@@ -8,6 +8,12 @@ export type Role = (typeof ROLES)[number];
 export interface Subject {
   userId: string;
   role: Role;
+  /**
+   * When this session was created — i.e. when the person last actually signed in, as opposed
+   * to when the session was last refreshed. Absent for callers with no sign-in at all, and
+   * absent means "not fresh" to `requireFreshSession`, never "just now".
+   */
+  authenticatedAt?: Date | undefined;
 }
 
 export interface OwnedResource {

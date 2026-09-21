@@ -56,7 +56,7 @@ evidence column is not optional.
 | 6.2 | Single-use, expiring links     | **Met**  | 15-minute expiry, single use; replay mints no session (tested)                                                                                                                                                                                                                 |
 | 6.3 | Account enumeration resistance | **Met**  | Identical response whether or not the address has an account                                                                                                                                                                                                                   |
 | 6.4 | Credentials hashed at rest     | **Met**  | API keys and overlay tokens stored as HMAC with a server pepper; constant-time compare. The web role has no SELECT privilege on `key_hash` at all, so the tier serving sessions cannot read the material a forgery would need — proven by a test expecting `permission denied` |
-| 6.5 | MFA for privileged accounts    | **Open** | Passkey/TOTP enrolment not built. Required before any admin UI ships, and before Phase 5                                                                                                                                                                                       |
+| 6.5 | MFA for privileged accounts    | **Open** | Passkey/TOTP enrolment not built. The admin console now exists **without** it, behind a 12-hour freshness step-up instead (ADR-024) — see gap 3. Required before the first production deploy, and before Phase 5                                                               |
 
 ## V7 Session management
 
@@ -142,10 +142,22 @@ What is left is not a platform gap. The ruleset requires a PR but **zero approva
 there is one maintainer (ADR-012), so it enforces process, not review. Tighten it the moment
 a second contributor appears.
 
-### 3. No MFA (V6.5)
+### 3. No MFA (V6.5) — **the gate below has now been crossed**
 
-No admin UI exists yet, so there is nothing privileged to protect. **Must land before any
-admin route ships, and before Phase 5.**
+This entry originally said MFA "must land before any admin route ships". The moderation
+console (ADR-024) is an admin route, and it ships **without** a second factor. That is stated
+here rather than the gate being quietly reworded.
+
+What it has instead is **step-up by freshness**: every admin route refuses a session that
+was not signed into within the last twelve hours (SR-1.10's window), and says so with a
+distinct `step_up_required` error. A stolen, weeks-old session cookie cannot moderate. That
+is real, and it is not MFA — re-authenticating proves control of the same email or Discord
+account, not of a separate device.
+
+The exposure is bounded for now by circumstance, not design: nothing is deployed, and no
+production admin account exists. **Passkeys (preferred) or TOTP must land before the first
+production deploy, and before Phase 5.** The freshness check stays when they do — a passkey
+proves _who_, freshness proves _now_, and admin actions want both.
 
 ### 4. ~~OpenSSF Scorecard not run~~ — **CLOSED 2026-09-20**
 

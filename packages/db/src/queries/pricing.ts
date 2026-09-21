@@ -131,6 +131,10 @@ export async function moderateObservation(
        set approved_at = ${decision === 'approve' ? sql`now()` : sql`null`},
            rejected_at = ${decision === 'reject' ? sql`now()` : sql`null`}
      where id = ${observationId}
+       -- Reports only. A first-party observation is approved on arrival and held, when it
+       -- is held, by its flag — so "approve this report" must never be a way to wave a
+       -- flagged live sale into the index without clearing the flag.
+       and source = 'user_report'
        and approved_at is null
        and rejected_at is null
     returning id

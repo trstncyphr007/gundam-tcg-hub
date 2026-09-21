@@ -28,3 +28,4 @@ New decisions get their own file.
 | 021 | [Comparing pull rates to published odds](021-comparing-pull-rates-to-published-odds.md)                         | Accepted                 |
 | 022 | [Live sales, and what happens to a buyer's name](022-live-sales-and-buyer-handles.md)                           | Accepted                 |
 | 023 | [VOD timestamps live outside the hash chain](023-vod-timestamps-outside-the-chain.md)                           | Accepted                 |
+| 024 | [The admin moderation console, and step-up by freshness](024-admin-moderation-console.md)                       | Accepted, MFA gap open   |

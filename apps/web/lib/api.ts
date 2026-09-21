@@ -103,6 +103,47 @@ export interface LiveSale {
   flagged: boolean;
 }
 
+export interface PendingReport {
+  id: string;
+  cardVariantId: string;
+  cardName: string | null;
+  condition: string;
+  priceCents: number;
+  currency: string;
+  saleType: string;
+  observedAt: string;
+  reportedAt: string;
+  evidenceRef: string | null;
+  medianCents: number | null;
+  /** How many this reporter has waiting. Who they are is deliberately not here. */
+  reporterPending: number;
+}
+
+export interface HeldObservation {
+  id: string;
+  cardVariantId: string;
+  cardName: string | null;
+  source: string;
+  condition: string;
+  priceCents: number;
+  currency: string;
+  observedAt: string;
+  flaggedAt: string;
+  medianCents: number | null;
+  evidenceRef: string | null;
+}
+
+/**
+ * The answers the console can get, kept distinct because each needs a different page: a
+ * sign-in link, a flat refusal, a "sign in again" prompt, or the queue itself.
+ */
+export type AdminQueueResult =
+  | { kind: 'ok'; reports: PendingReport[]; flagged: HeldObservation[] }
+  | { kind: 'signed_out' }
+  | { kind: 'forbidden' }
+  | { kind: 'step_up' }
+  | { kind: 'unavailable' };
+
 export interface CreatorProfile {
   id: string;
   handle: string;
@@ -416,6 +457,35 @@ export const api = {
     }
   },
   myProfile: () => getAuthed<{ profile: CreatorProfile | null }>('/v1/me/profile'),
+  /**
+   * The moderation queue, with the reason for any refusal preserved.
+   *
+   * Not built on `getAuthed`, which collapses every failure to null — here the difference
+   * between "not an admin" and "sign in again" is the whole user experience.
+   */
+  adminQueue: async (): Promise<AdminQueueResult> => {
+    const cookie = (await headers()).get('cookie');
+    if (!cookie) return { kind: 'signed_out' };
+    try {
+      const response = await fetch(`${INTERNAL_API}/v1/admin/moderation`, {
+        headers: { accept: 'application/json', cookie, ...(await forwardedFor()) },
+        cache: 'no-store',
+      });
+      if (response.status === 401) return { kind: 'signed_out' };
+      if (response.status === 403) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        return body?.error === 'step_up_required' ? { kind: 'step_up' } : { kind: 'forbidden' };
+      }
+      if (!response.ok) return { kind: 'unavailable' };
+      const queue = (await response.json()) as {
+        reports: PendingReport[];
+        flagged: HeldObservation[];
+      };
+      return { kind: 'ok', ...queue };
+    } catch {
+      return { kind: 'unavailable' };
+    }
+  },
   /** The seller's own log. Carries buyer handles, so it is never cached anywhere. */
   liveSales: () => getAuthed<{ items: LiveSale[] }>('/v1/live-sales'),
   breakers: () => getPublic<{ items: BreakerSummary[] }>('/v1/breakers'),

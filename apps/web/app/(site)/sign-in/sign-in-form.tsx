@@ -6,14 +6,38 @@ import { authClient } from '@/lib/auth-client';
 type Status =
   { kind: 'idle' } | { kind: 'sending' } | { kind: 'sent' } | { kind: 'error'; message: string };
 
-export function SignInForm() {
+/**
+ * Where the auth server should send someone once they are signed in.
+ *
+ * Absolute, on this site's own origin. A *relative* callback is resolved by the auth server
+ * against **its** base URL — the API's origin — so wherever the API and the site are on
+ * different origins (local dev today; `api.<domain>` in the plan's Caddyfile), `/admin` lands
+ * on the API and answers with its 404. The default `/account/watches` had the same flaw since
+ * Phase 1; a test helper that mangled the emailed link hid it until the step-up round trip
+ * needed the redirect to actually work.
+ *
+ * `next` has already been through `safeNextPath` on the server, so this only ever joins our
+ * own origin to a path on it.
+ */
+function absoluteCallback(next: string): string {
+  return new URL(next, window.location.origin).href;
+}
+
+/**
+ * `next` arrives already validated by the page (`safeNextPath`), so it is a path on this
+ * origin or the default — never a URL someone put in a link.
+ */
+export function SignInForm({ next }: { next: string }) {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
 
   async function requestLink(event: SyntheticEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setStatus({ kind: 'sending' });
-    const { error } = await authClient.signIn.magicLink({ email, callbackURL: '/account/watches' });
+    const { error } = await authClient.signIn.magicLink({
+      email,
+      callbackURL: absoluteCallback(next),
+    });
     // Deliberately identical response whether or not the address has an account:
     // anything else would confirm who is registered (SR-X.4).
     setStatus(
@@ -40,7 +64,10 @@ export function SignInForm() {
       <button
         type="button"
         onClick={() => {
-          void authClient.signIn.social({ provider: 'discord', callbackURL: '/account/watches' });
+          void authClient.signIn.social({
+            provider: 'discord',
+            callbackURL: absoluteCallback(next),
+          });
         }}
         className="w-full rounded px-4 py-2 text-sm font-medium"
         style={{ background: '#5865f2' }}
