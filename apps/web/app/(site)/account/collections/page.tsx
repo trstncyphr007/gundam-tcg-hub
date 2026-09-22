@@ -17,13 +17,10 @@ export default async function CollectionsPage() {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight">My collections</h1>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          You need to sign in to keep a collection.
-        </p>
+        <p className="text-sm text-muted">You need to sign in to keep a collection.</p>
         <Link
           href="/sign-in"
-          className="inline-block rounded px-4 py-2 text-sm font-medium"
-          style={{ background: 'var(--accent)' }}
+          className="inline-block rounded px-4 py-2 text-sm font-medium bg-accent"
         >
           Sign in
         </Link>
@@ -37,7 +34,7 @@ export default async function CollectionsPage() {
     <div className="space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">My collections</h1>
-        <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 text-sm text-muted">
           What you own, what it cost, and what the index says it is worth.
           {collections
             ? ` ${String(collections.items.length)} of ${String(collections.limit)}.`
@@ -48,7 +45,7 @@ export default async function CollectionsPage() {
       <NewCollectionForm />
 
       {!collections || collections.items.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           No collections yet. Make one above — it stays private unless you decide otherwise.
         </p>
       ) : (
@@ -56,8 +53,7 @@ export default async function CollectionsPage() {
           {collections.items.map((collection) => (
             <li
               key={collection.id}
-              className="flex items-center gap-4 rounded border p-4"
-              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+              className="flex items-center gap-4 rounded border p-4 bg-surface border-line"
             >
               <div className="min-w-0">
                 <Link
@@ -66,9 +62,7 @@ export default async function CollectionsPage() {
                 >
                   {collection.name}
                 </Link>
-                <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
-                  {VISIBILITY_LABEL[collection.visibility]}
-                </p>
+                <p className="mt-1 text-xs text-muted">{VISIBILITY_LABEL[collection.visibility]}</p>
               </div>
               {collection.visibility !== 'private' && (
                 <Link href={`/collections/${collection.id}`} className="ml-auto text-sm underline">

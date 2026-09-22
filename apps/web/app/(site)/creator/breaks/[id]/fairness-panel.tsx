@@ -90,13 +90,12 @@ export function FairnessPanel({
 
   return (
     <section
-      className="space-y-4 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      className="space-y-4 rounded border p-4 bg-surface border-line"
       data-testid="fairness-panel"
     >
       <div>
         <h2 className="font-medium">Verifiable randomisation</h2>
-        <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 text-xs text-muted">
           Commit before you open anything, read the commitment out on stream, take a seed from chat,
           then reveal at the end. Viewers can check the result themselves.
         </p>
@@ -104,8 +103,8 @@ export function FairnessPanel({
 
       {!commitment && status === 'draft' && (
         <form onSubmit={(e) => void commit(e)} className="flex flex-wrap items-end gap-3">
-          <label className="text-sm" style={{ width: '9rem' }}>
-            <span style={{ color: 'var(--muted)' }}>Slots</span>
+          <label className="text-sm w-36">
+            <span className="text-muted">Slots</span>
             <input
               type="number"
               min="2"
@@ -115,16 +114,14 @@ export function FairnessPanel({
                 setSlots(e.target.value);
               }}
               data-testid="slot-count"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
             />
           </label>
           <button
             type="submit"
             disabled={busy}
             data-testid="commit-break"
-            className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-            style={{ background: 'var(--accent)' }}
+            className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
           >
             Commit
           </button>
@@ -132,7 +129,7 @@ export function FairnessPanel({
       )}
 
       {!commitment && status !== 'draft' && (
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           This break has already started, so it is too late to commit. A commitment made afterwards
           would prove nothing about what already happened.
         </p>
@@ -141,7 +138,7 @@ export function FairnessPanel({
       {commitment && (
         <>
           <div className="text-xs">
-            <p style={{ color: 'var(--muted)' }}>Read this out before you open anything:</p>
+            <p className="text-muted">Read this out before you open anything:</p>
             <p className="mt-1 break-all font-mono" data-testid="commitment-value">
               {commitment.commitment}
             </p>
@@ -149,8 +146,8 @@ export function FairnessPanel({
 
           {commitment.clientSeed === null ? (
             <form onSubmit={(e) => void submitSeed(e)} className="flex flex-wrap items-end gap-3">
-              <label className="flex-1 text-sm" style={{ minWidth: '14rem' }}>
-                <span style={{ color: 'var(--muted)' }}>Audience seed</span>
+              <label className="flex-1 text-sm min-w-56">
+                <span className="text-muted">Audience seed</span>
                 <input
                   required
                   maxLength={200}
@@ -160,23 +157,21 @@ export function FairnessPanel({
                   }}
                   placeholder="A number from chat, or a future block hash"
                   data-testid="client-seed"
-                  className="mt-1 w-full rounded border px-3 py-2"
-                  style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                  className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
                 />
               </label>
               <button
                 type="submit"
                 disabled={busy}
                 data-testid="set-client-seed"
-                className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-                style={{ background: 'var(--accent)' }}
+                className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
               >
                 Lock it in
               </button>
             </form>
           ) : (
             <p className="text-xs">
-              <span style={{ color: 'var(--muted)' }}>Audience seed: </span>
+              <span className="text-muted">Audience seed: </span>
               <span className="font-mono" data-testid="locked-seed">
                 {commitment.clientSeed}
               </span>
@@ -194,20 +189,19 @@ export function FairnessPanel({
                   ? 'End the break first — revealing early makes the remaining slots predictable'
                   : undefined
               }
-              className="rounded border px-4 py-2 text-sm font-medium disabled:opacity-50"
-              style={{ borderColor: 'var(--border)' }}
+              className="rounded border px-4 py-2 text-sm font-medium disabled:opacity-50 border-line"
             >
               Reveal the seed
             </button>
           ) : (
             <div className="space-y-1 text-xs">
               <p>
-                <span style={{ color: 'var(--muted)' }}>Revealed seed: </span>
+                <span className="text-muted">Revealed seed: </span>
                 <span className="break-all font-mono">{commitment.revealedSeed}</span>
               </p>
               {order && (
                 <p>
-                  <span style={{ color: 'var(--muted)' }}>Slot order: </span>
+                  <span className="text-muted">Slot order: </span>
                   <span className="font-mono" data-testid="revealed-order">
                     {order.join(', ')}
                   </span>
@@ -219,7 +213,7 @@ export function FairnessPanel({
       )}
 
       {error && (
-        <p role="alert" className="text-sm" style={{ color: 'var(--danger, #f87171)' }}>
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}

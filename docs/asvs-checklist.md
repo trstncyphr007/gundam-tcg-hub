@@ -39,14 +39,14 @@ evidence column is not optional.
 
 ## V3 Web frontend security
 
-| #   | Control                            | Status      | Evidence                                                                                                                                        |
-| --- | ---------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 3.1 | Security headers on every response | **Met**     | HSTS, nosniff, referrer-policy, COOP, CORP, Permissions-Policy; asserted in the e2e suite and by ZAP nightly                                    |
-| 3.2 | Content-Security-Policy            | **Partial** | Per-request nonce, `strict-dynamic`, no wildcard sources, `object-src`/`base-uri` none. **Gap:** `style-src 'unsafe-inline'` — see "Known gaps" |
-| 3.3 | Clickjacking defence               | **Met**     | `frame-ancestors 'none'`, asserted in tests                                                                                                     |
-| 3.4 | Cookie attributes                  | **Met**     | `HttpOnly`, `SameSite=Lax`, `Secure` + `__Host-` prefix in production                                                                           |
-| 3.5 | CSRF defence                       | **Met**     | SameSite cookies plus an Origin check — demonstrated when a request without an Origin was rejected 403                                          |
-| 3.7 | No sensitive data in the URL       | **Met**     | Fixed 2026-09-20: the sign-in form now POSTs, so a degraded no-JS submit cannot put an email in the URL. Found by ZAP                           |
+| #   | Control                            | Status  | Evidence                                                                                                                                                                                                                                                                                        |
+| --- | ---------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3.1 | Security headers on every response | **Met** | HSTS, nosniff, referrer-policy, COOP, CORP, Permissions-Policy; asserted in the e2e suite and by ZAP nightly                                                                                                                                                                                    |
+| 3.2 | Content-Security-Policy            | **Met** | Per-request nonce for scripts _and_ styles, `strict-dynamic`, no `unsafe-inline` for either, no wildcard sources, `object-src`/`base-uri` none. No style attribute is served (lint + e2e on the HTML); an injected one on the production build was refused and reported. Gap 1 closed (ADR-031) |
+| 3.3 | Clickjacking defence               | **Met** | `frame-ancestors 'none'`, asserted in tests                                                                                                                                                                                                                                                     |
+| 3.4 | Cookie attributes                  | **Met** | `HttpOnly`, `SameSite=Lax`, `Secure` + `__Host-` prefix in production                                                                                                                                                                                                                           |
+| 3.5 | CSRF defence                       | **Met** | SameSite cookies plus an Origin check — demonstrated when a request without an Origin was rejected 403                                                                                                                                                                                          |
+| 3.7 | No sensitive data in the URL       | **Met** | Fixed 2026-09-20: the sign-in form now POSTs, so a degraded no-JS submit cannot put an email in the URL. Found by ZAP                                                                                                                                                                           |
 
 ## V6 Authentication
 
@@ -121,17 +121,19 @@ evidence column is not optional.
 
 Listed because a checklist that only records successes is marketing.
 
-### 1. `style-src 'unsafe-inline'` (V3.2)
+### 1. ~~`style-src 'unsafe-inline'` (V3.2)~~ — **CLOSED 2026-09-22**
 
-React's `style` prop and Tailwind's injected styles both need it. Removing it means nonced
-`<style>` tags plus `style-src-attr`, whose browser support is uneven enough to risk an
-unstyled page in Safari.
+Done the way the path out below said: all 428 inline style props moved to classes over the
+existing variables (411 by a parser-based codemod, 17 by hand), and production's
+`style-src` is now `'self' 'nonce-…'`. Lint refuses a new style prop; e2e refuses a style
+attribute in served HTML and any CSP violation on page load; on the production build, an
+injected `style` attribute was refused and reported (ADR-031). The Safari worry that kept it
+open turned out not to apply — no `<style>` tag or `style-src-attr` was needed, only no
+attributes at all.
 
-_Impact:_ CSS injection could exfiltrate via selectors or attempt UI redress. Script
-execution stays closed — `script-src` has no `unsafe-inline`, asserted in CI.
-
-_Path out:_ move inline styles to CSS classes and variables, then drop it. Worth doing
-before public launch; not worth an unstyled site now.
+_Original entry, for the record:_ React's `style` prop needed it; removing it risked an
+unstyled page. _Impact:_ CSS injection could exfiltrate via selectors or attempt UI redress.
+_Path out:_ move inline styles to CSS classes and variables, then drop it.
 
 ### 2. ~~No server-side branch protection~~ — **CLOSED 2026-09-20**
 

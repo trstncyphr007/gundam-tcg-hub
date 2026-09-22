@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import './overlay.css';
 
 /**
  * A second root layout, for the OBS overlay only.
@@ -20,17 +21,8 @@ export const metadata: Metadata = {
 export default function OverlayLayout({ children }: { children: ReactNode }): React.JSX.Element {
   return (
     <html lang="en">
-      <body
-        style={{
-          margin: 0,
-          padding: 0,
-          // Transparent, not a colour: OBS keys on the absence of a background.
-          background: 'transparent',
-          overflow: 'hidden',
-        }}
-      >
-        {children}
-      </body>
+      {/* Transparent and edge to edge: see overlay.css. */}
+      <body>{children}</body>
     </html>
   );
 }

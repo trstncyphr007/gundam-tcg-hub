@@ -43,7 +43,7 @@ async function errorOf(response: Response): Promise<string | undefined> {
 
 function ProblemLine({ problem, testId }: { problem: Problem; testId: string }) {
   return (
-    <p role="alert" className="text-sm" style={{ color: '#f87171' }} data-testid={testId}>
+    <p role="alert" className="text-sm text-danger" data-testid={testId}>
       {problem.message}{' '}
       {problem.reauth && (
         <a href={problem.reauth} className="underline" data-testid={`${testId}-reauth`}>
@@ -116,12 +116,11 @@ export function DataManager({ email }: { email: string }): React.JSX.Element {
     return (
       <section
         role="status"
-        className="space-y-2 rounded border p-4"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        className="space-y-2 rounded border p-4 bg-surface border-line"
         data-testid="account-deleted"
       >
         <h2 className="font-medium">Your account has been deleted</h2>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           Everything that was only yours is gone, and you are signed out everywhere. We have sent a
           last email to confirm it.
         </p>
@@ -135,12 +134,11 @@ export function DataManager({ email }: { email: string }): React.JSX.Element {
   return (
     <div className="space-y-6">
       <section
-        className="space-y-3 rounded border p-4"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        className="space-y-3 rounded border p-4 bg-surface border-line"
         data-testid="export-panel"
       >
         <h2 className="font-medium">Download your data</h2>
-        <p className="max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="max-w-prose text-sm text-muted">
           One file with everything this account holds: your profile, sign-ins, watches, collections,
           breaks, live sales, price reports and API keys. It leaves out anything that would work as
           a password, and other people&rsquo;s names.
@@ -150,8 +148,7 @@ export function DataManager({ email }: { email: string }): React.JSX.Element {
           disabled={busy}
           onClick={() => void download()}
           data-testid="export-data"
-          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-          style={{ background: 'var(--accent)' }}
+          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
         >
           Download my data
         </button>
@@ -164,20 +161,19 @@ export function DataManager({ email }: { email: string }): React.JSX.Element {
       </section>
 
       <section
-        className="space-y-3 rounded border p-4"
-        style={{ background: 'var(--surface)', borderColor: '#f87171' }}
+        className="space-y-3 rounded border p-4 bg-surface border-danger"
         data-testid="delete-panel"
       >
         <h2 className="font-medium">Delete your account</h2>
-        <p className="max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="max-w-prose text-sm text-muted">
           Permanent, straight away. Your watches, collections, breaks, profile, live sales, sessions
           and passkeys are deleted. Prices you reported that already count in the public index stay
           in it, with nothing that connects them to you. Download your data first if you want a
           copy.
         </p>
         <form onSubmit={(e) => void remove(e)} className="flex flex-wrap items-end gap-3">
-          <label className="flex-1 text-sm" style={{ minWidth: '16rem' }}>
-            <span style={{ color: 'var(--muted)' }}>
+          <label className="flex-1 text-sm min-w-64">
+            <span className="text-muted">
               Type <strong>{email}</strong> to confirm
             </span>
             <input
@@ -187,16 +183,14 @@ export function DataManager({ email }: { email: string }): React.JSX.Element {
               }}
               autoComplete="off"
               data-testid="delete-confirm"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
             />
           </label>
           <button
             type="submit"
             disabled={busy || confirm.trim() === ''}
             data-testid="delete-account"
-            className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-            style={{ background: '#b91c1c', color: '#fff' }}
+            className="rounded bg-[#b91c1c] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             Delete my account permanently
           </button>

@@ -1,0 +1,23 @@
+@import 'tailwindcss';
+
+/*
+ * The overlay's own stylesheet — not the site's, which paints a page background.
+ *
+ * OBS composites this page straight over the video and keys on the absence of a background,
+ * so the body must be transparent and edge to edge. These rules used to be an inline `style`
+ * on <body>; they live here so the CSP can refuse inline styles everywhere (ADR-031).
+ */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+/* Heavy shadow so the text stays readable over any stream footage. */
+.overlay-text {
+  text-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.9),
+    0 0 2px rgba(0, 0, 0, 1);
+}

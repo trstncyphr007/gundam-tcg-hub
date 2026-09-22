@@ -39,12 +39,11 @@ export function NewCollectionForm(): React.JSX.Element {
   return (
     <form
       onSubmit={(e) => void submit(e)}
-      className="space-y-3 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      className="space-y-3 rounded border p-4 bg-surface border-line"
     >
       <h2 className="font-medium">New collection</h2>
       <label className="block text-sm">
-        <span style={{ color: 'var(--muted)' }}>Name</span>
+        <span className="text-muted">Name</span>
         <input
           required
           maxLength={80}
@@ -54,15 +53,12 @@ export function NewCollectionForm(): React.JSX.Element {
           }}
           placeholder="Main binder"
           data-testid="collection-name"
-          className="mt-1 w-full rounded border px-3 py-2"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+          className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
         />
       </label>
-      <p className="text-xs" style={{ color: 'var(--muted)' }}>
-        Private until you say otherwise.
-      </p>
+      <p className="text-xs text-muted">Private until you say otherwise.</p>
       {error && (
-        <p role="alert" className="text-sm" style={{ color: 'var(--danger, #f87171)' }}>
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
@@ -70,8 +66,7 @@ export function NewCollectionForm(): React.JSX.Element {
         type="submit"
         disabled={busy || name.trim().length === 0}
         data-testid="create-collection"
-        className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-        style={{ background: 'var(--accent)' }}
+        className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
       >
         {busy ? 'Creating…' : 'Create collection'}
       </button>

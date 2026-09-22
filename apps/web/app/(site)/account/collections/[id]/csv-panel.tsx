@@ -91,10 +91,7 @@ export function CsvPanel({
   }
 
   return (
-    <section
-      className="space-y-4 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-    >
+    <section className="space-y-4 rounded border p-4 bg-surface border-line">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="font-medium">Import and export</h2>
         <a
@@ -106,7 +103,7 @@ export function CsvPanel({
         </a>
       </div>
 
-      <p className="text-xs" style={{ color: 'var(--muted)' }}>
+      <p className="text-xs text-muted">
         Columns: <code>{TEMPLATE.trim()}</code>. Up to 5,000 rows and 2 MB. Only <code>set</code>,{' '}
         <code>number</code> and <code>quantity</code> are required.
       </p>
@@ -120,11 +117,11 @@ export function CsvPanel({
           data-testid="csv-file"
           className="text-sm"
         />
-        {fileName && <span style={{ color: 'var(--muted)' }}>{fileName}</span>}
+        {fileName && <span className="text-muted">{fileName}</span>}
       </div>
 
       <label className="block text-sm">
-        <span style={{ color: 'var(--muted)' }}>…or paste it</span>
+        <span className="text-muted">…or paste it</span>
         <textarea
           rows={4}
           value={text}
@@ -134,15 +131,12 @@ export function CsvPanel({
           }}
           placeholder={TEMPLATE}
           data-testid="csv-text"
-          className="mt-1 w-full rounded border px-3 py-2 font-mono text-xs"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+          className="mt-1 w-full rounded border px-3 py-2 font-mono text-xs bg-page border-line"
         />
       </label>
 
       <fieldset className="flex flex-wrap gap-4 text-sm">
-        <legend className="text-xs" style={{ color: 'var(--muted)' }}>
-          When a card is already in this collection
-        </legend>
+        <legend className="text-xs text-muted">When a card is already in this collection</legend>
         <label className="flex items-center gap-2">
           <input
             type="radio"
@@ -170,7 +164,7 @@ export function CsvPanel({
       </fieldset>
 
       {error && (
-        <p role="alert" className="text-sm" style={{ color: 'var(--danger, #f87171)' }}>
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
@@ -181,8 +175,7 @@ export function CsvPanel({
           onClick={() => void send(false)}
           disabled={busy || text.trim() === ''}
           data-testid="preview-import"
-          className="rounded border px-4 py-2 text-sm font-medium disabled:opacity-50"
-          style={{ borderColor: 'var(--border)' }}
+          className="rounded border px-4 py-2 text-sm font-medium disabled:opacity-50 border-line"
         >
           {busy ? 'Reading…' : 'Preview'}
         </button>
@@ -192,8 +185,7 @@ export function CsvPanel({
             onClick={() => void send(true)}
             disabled={busy}
             data-testid="apply-import"
-            className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-            style={{ background: 'var(--accent)' }}
+            className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
           >
             Import {report.valid} row{report.valid === 1 ? '' : 's'}
           </button>
@@ -211,14 +203,14 @@ export function CsvPanel({
               : ` — ${String(report.created)} added, ${String(report.updated)} updated.`}
           </p>
           {report.errors.length > 0 && (
-            <ul className="space-y-1 text-xs" style={{ color: 'var(--danger, #f87171)' }}>
+            <ul className="space-y-1 text-xs text-danger">
               {report.errors.slice(0, 20).map((issue) => (
                 <li key={`${String(issue.row)}-${issue.message}`}>
                   {issue.row === 0 ? 'File' : `Row ${String(issue.row)}`}: {issue.message}
                 </li>
               ))}
               {report.errors.length > 20 && (
-                <li style={{ color: 'var(--muted)' }}>…and {report.errors.length - 20} more.</li>
+                <li className="text-muted">…and {report.errors.length - 20} more.</li>
               )}
             </ul>
           )}

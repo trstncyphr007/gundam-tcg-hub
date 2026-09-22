@@ -11,7 +11,7 @@ export default async function BreakersPage(): Promise<React.JSX.Element> {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Breakers</h1>
-        <p className="mt-1 max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 max-w-prose text-sm text-muted">
           Creators who have published a profile. Each one shows break counts, pull logs and hit
           rates against published pack odds where they exist — and whether their breaks have been
           through commit&ndash;reveal.
@@ -19,23 +19,15 @@ export default async function BreakersPage(): Promise<React.JSX.Element> {
       </header>
 
       {items.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          Nobody has published a profile yet.
-        </p>
+        <p className="text-sm text-muted">Nobody has published a profile yet.</p>
       ) : (
         <ul className="space-y-2" data-testid="breaker-list">
           {items.map((breaker) => (
-            <li
-              key={breaker.handle}
-              className="rounded border px-4 py-3"
-              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-            >
+            <li key={breaker.handle} className="rounded border px-4 py-3 bg-surface border-line">
               <Link href={`/breakers/${breaker.handle}`} className="font-medium underline">
                 {breaker.displayName}
               </Link>
-              <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                @{breaker.handle}
-              </p>
+              <p className="text-xs text-muted">@{breaker.handle}</p>
               {breaker.bio !== null && <p className="mt-2 text-sm">{breaker.bio}</p>}
             </li>
           ))}

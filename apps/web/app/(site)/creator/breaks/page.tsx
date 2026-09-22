@@ -13,13 +13,10 @@ export default async function BreaksPage() {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight">My breaks</h1>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          You need to sign in to run a break.
-        </p>
+        <p className="text-sm text-muted">You need to sign in to run a break.</p>
         <Link
           href="/sign-in"
-          className="inline-block rounded px-4 py-2 text-sm font-medium"
-          style={{ background: 'var(--accent)' }}
+          className="inline-block rounded px-4 py-2 text-sm font-medium bg-accent"
         >
           Sign in
         </Link>
@@ -31,7 +28,7 @@ export default async function BreaksPage() {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight">My breaks</h1>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           Running breaks needs the creator role. Ask an admin to grant it — role changes are
           deliberate and recorded.
         </p>
@@ -45,7 +42,7 @@ export default async function BreaksPage() {
     <div className="space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">My breaks</h1>
-        <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 text-sm text-muted">
           Log pulls as you open, and put the overlay on stream.
         </p>
       </header>
@@ -53,22 +50,19 @@ export default async function BreaksPage() {
       <NewBreakForm products={products?.items ?? []} />
 
       {!breaks || breaks.items.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          No breaks yet.
-        </p>
+        <p className="text-sm text-muted">No breaks yet.</p>
       ) : (
         <ul className="space-y-3">
           {breaks.items.map((entry) => (
             <li
               key={entry.id}
-              className="flex items-center gap-4 rounded border p-4"
-              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+              className="flex items-center gap-4 rounded border p-4 bg-surface border-line"
             >
               <div className="min-w-0">
                 <Link href={`/creator/breaks/${entry.id}`} className="font-medium underline">
                   {entry.title}
                 </Link>
-                <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+                <p className="mt-1 text-xs text-muted">
                   {STATUS_LABEL[entry.status]}
                   {entry.costCents === null ? '' : ` · cost $${(entry.costCents / 100).toFixed(2)}`}
                 </p>

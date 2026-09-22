@@ -20,36 +20,36 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body className="min-h-screen antialiased">
-        <header className="border-b" style={{ borderColor: 'var(--border)' }}>
+        <header className="border-b border-line">
           <nav className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-4">
             <Link href="/" className="font-semibold tracking-tight">
               Gundam TCG Hub
             </Link>
-            <Link href="/products" className="text-sm" style={{ color: 'var(--muted)' }}>
+            <Link href="/products" className="text-sm text-muted">
               Products
             </Link>
-            <Link href="/account/watches" className="text-sm" style={{ color: 'var(--muted)' }}>
+            <Link href="/account/watches" className="text-sm text-muted">
               My watches
             </Link>
-            <Link href="/account/collections" className="text-sm" style={{ color: 'var(--muted)' }}>
+            <Link href="/account/collections" className="text-sm text-muted">
               My collections
             </Link>
-            <Link href="/creator/breaks" className="text-sm" style={{ color: 'var(--muted)' }}>
+            <Link href="/creator/breaks" className="text-sm text-muted">
               Breaks
             </Link>
-            <Link href="/creator/live-sales" className="text-sm" style={{ color: 'var(--muted)' }}>
+            <Link href="/creator/live-sales" className="text-sm text-muted">
               Live sales
             </Link>
-            <Link href="/breakers" className="text-sm" style={{ color: 'var(--muted)' }}>
+            <Link href="/breakers" className="text-sm text-muted">
               Breakers
             </Link>
-            <Link href="/account/developer" className="text-sm" style={{ color: 'var(--muted)' }}>
+            <Link href="/account/developer" className="text-sm text-muted">
               API
             </Link>
-            <Link href="/account/security" className="text-sm" style={{ color: 'var(--muted)' }}>
+            <Link href="/account/security" className="text-sm text-muted">
               Security
             </Link>
-            <Link href="/sign-in" className="ml-auto text-sm" style={{ color: 'var(--muted)' }}>
+            <Link href="/sign-in" className="ml-auto text-sm text-muted">
               Sign in
             </Link>
           </nav>

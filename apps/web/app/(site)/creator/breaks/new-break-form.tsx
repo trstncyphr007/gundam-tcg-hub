@@ -52,12 +52,9 @@ export function NewBreakForm({ products }: { products: SealedProduct[] }): React
   if (token) {
     const url = `${window.location.origin}/overlay/${token.value}`;
     return (
-      <div
-        className="space-y-3 rounded border p-4"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-      >
+      <div className="space-y-3 rounded border p-4 bg-surface border-line">
         <h2 className="font-medium">Break created — copy your overlay URL now</h2>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           This is shown <strong>once</strong>. Add it to OBS as a Browser Source. If you lose it or
           it ends up on stream, regenerate it from the break page — the old one dies immediately.
         </p>
@@ -69,16 +66,14 @@ export function NewBreakForm({ products }: { products: SealedProduct[] }): React
           onFocus={(e) => {
             e.currentTarget.select();
           }}
-          className="w-full rounded border px-3 py-2 font-mono text-xs"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+          className="w-full rounded border px-3 py-2 font-mono text-xs bg-page border-line"
         />
         <button
           type="button"
           onClick={() => {
             setToken(null);
           }}
-          className="rounded px-3 py-1.5 text-sm font-medium"
-          style={{ background: 'var(--accent)' }}
+          className="rounded px-3 py-1.5 text-sm font-medium bg-accent"
         >
           I've saved it
         </button>
@@ -89,13 +84,12 @@ export function NewBreakForm({ products }: { products: SealedProduct[] }): React
   return (
     <form
       onSubmit={(e) => void submit(e)}
-      className="space-y-3 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      className="space-y-3 rounded border p-4 bg-surface border-line"
     >
       <h2 className="font-medium">Start a new break</h2>
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="block text-sm sm:col-span-2">
-          <span style={{ color: 'var(--muted)' }}>Title</span>
+          <span className="text-muted">Title</span>
           <input
             required
             maxLength={120}
@@ -104,12 +98,11 @@ export function NewBreakForm({ products }: { products: SealedProduct[] }): React
               setTitle(e.target.value);
             }}
             placeholder="Freedom Ascension box break"
-            className="mt-1 w-full rounded border px-3 py-2"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+            className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
           />
         </label>
         <label className="block text-sm">
-          <span style={{ color: 'var(--muted)' }}>Cost (USD)</span>
+          <span className="text-muted">Cost (USD)</span>
           <input
             type="number"
             min="0"
@@ -119,20 +112,18 @@ export function NewBreakForm({ products }: { products: SealedProduct[] }): React
               setCost(e.target.value);
             }}
             placeholder="99.99"
-            className="mt-1 w-full rounded border px-3 py-2"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+            className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
           />
         </label>
       </div>
       <label className="block text-sm">
-        <span style={{ color: 'var(--muted)' }}>Product (optional)</span>
+        <span className="text-muted">Product (optional)</span>
         <select
           value={productId}
           onChange={(e) => {
             setProductId(e.target.value);
           }}
-          className="mt-1 w-full rounded border px-3 py-2"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+          className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
         >
           <option value="">Not specified</option>
           {products.map((product) => (
@@ -143,15 +134,14 @@ export function NewBreakForm({ products }: { products: SealedProduct[] }): React
         </select>
       </label>
       {error && (
-        <p role="alert" className="text-sm" style={{ color: 'var(--danger, #f87171)' }}>
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
       <button
         type="submit"
         disabled={busy || title.trim().length === 0}
-        className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-        style={{ background: 'var(--accent)' }}
+        className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
       >
         {busy ? 'Creating…' : 'Create break'}
       </button>

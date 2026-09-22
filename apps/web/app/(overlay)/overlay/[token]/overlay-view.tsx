@@ -52,11 +52,7 @@ export function OverlayView({ token }: { token: string }): React.JSX.Element {
   }, [token]);
 
   if (dead) {
-    return (
-      <div style={{ fontFamily: 'system-ui, sans-serif', color: '#fff', padding: '1rem' }}>
-        Overlay URL was regenerated.
-      </div>
-    );
+    return <div className="font-sans text-white p-4">Overlay URL was regenerated.</div>;
   }
 
   if (!state) return <div />;
@@ -67,38 +63,25 @@ export function OverlayView({ token }: { token: string }): React.JSX.Element {
 
   return (
     <div
-      style={{
-        fontFamily: 'system-ui, sans-serif',
-        color: '#fff',
-        // Heavy shadow so the text stays readable over any stream footage.
-        textShadow: '0 2px 6px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,1)',
-        padding: '1.25rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.9rem',
-        maxWidth: '26rem',
-      }}
+      className="overlay-text flex max-w-[26rem] flex-col gap-[0.9rem] p-5 font-sans text-white"
+      data-testid="overlay-root"
     >
-      <div style={{ fontSize: '1.1rem', fontWeight: 600 }} data-testid="overlay-title">
+      <div className="text-[1.1rem] font-semibold" data-testid="overlay-title">
         {state.title}
       </div>
 
-      <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'baseline' }}>
+      <div className="flex gap-5 items-baseline">
         <div>
-          <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>TOTAL</div>
-          <div style={{ fontSize: '2rem', fontWeight: 700 }} data-testid="overlay-total">
+          <div className="text-[0.7rem] opacity-80">TOTAL</div>
+          <div className="text-[2rem] font-bold" data-testid="overlay-total">
             {dollars(state.totalCents)}
           </div>
         </div>
         {profit !== null && (
           <div>
-            <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>VS COST</div>
+            <div className="text-[0.7rem] opacity-80">VS COST</div>
             <div
-              style={{
-                fontSize: '1.3rem',
-                fontWeight: 700,
-                color: profit >= 0 ? '#4ade80' : '#f87171',
-              }}
+              className={`text-[1.3rem] font-bold ${profit >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'}`}
             >
               {profit >= 0 ? '+' : ''}
               {dollars(profit)}
@@ -109,28 +92,28 @@ export function OverlayView({ token }: { token: string }): React.JSX.Element {
 
       {last && (
         <div>
-          <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>LAST PULL</div>
-          <div style={{ fontSize: '1.15rem', fontWeight: 600 }} data-testid="overlay-last">
-            {last.label} <span style={{ opacity: 0.85 }}>{dollars(last.valueCentsAtPull)}</span>
+          <div className="text-[0.7rem] opacity-80">LAST PULL</div>
+          <div className="text-[1.15rem] font-semibold" data-testid="overlay-last">
+            {last.label} <span className="opacity-85">{dollars(last.valueCentsAtPull)}</span>
           </div>
         </div>
       )}
 
       {top.length > 0 && (
         <div>
-          <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>TOP HITS</div>
-          <ol style={{ margin: 0, padding: 0, listStyle: 'none' }} data-testid="overlay-top">
+          <div className="text-[0.7rem] opacity-80">TOP HITS</div>
+          <ol className="m-0 p-0 list-none" data-testid="overlay-top">
             {top.map((pull) => (
-              <li key={pull.seq} style={{ display: 'flex', gap: '0.5rem', fontSize: '0.95rem' }}>
-                <span style={{ minWidth: 0, flex: 1 }}>{pull.label}</span>
-                <span style={{ fontWeight: 600 }}>{dollars(pull.valueCentsAtPull)}</span>
+              <li key={pull.seq} className="flex gap-2 text-[0.95rem]">
+                <span className="min-w-0 flex-1">{pull.label}</span>
+                <span className="font-semibold">{dollars(pull.valueCentsAtPull)}</span>
               </li>
             ))}
           </ol>
         </div>
       )}
 
-      <div style={{ fontSize: '0.75rem', opacity: 0.75 }}>{state.pulls.length} pulled</div>
+      <div className="text-[0.75rem] opacity-75">{state.pulls.length} pulled</div>
     </div>
   );
 }

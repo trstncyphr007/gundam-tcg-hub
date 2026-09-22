@@ -73,12 +73,12 @@ export default async function CardPage({
 
   return (
     <article className="space-y-6">
-      <Link href="/" className="text-sm hover:underline" style={{ color: 'var(--muted)' }}>
+      <Link href="/" className="text-sm hover:underline text-muted">
         ← Back to search
       </Link>
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">{card.name}</h1>
-        <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 text-sm text-muted">
           #{card.number}
           {card.rarity ? ` · ${card.rarity}` : ''}
           {card.cardType ? ` · ${card.cardType}` : ''}
@@ -87,12 +87,7 @@ export default async function CardPage({
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-          <h2
-            className="text-sm font-medium uppercase tracking-wide"
-            style={{ color: 'var(--muted)' }}
-          >
-            Price history
-          </h2>
+          <h2 className="text-sm font-medium uppercase tracking-wide text-muted">Price history</h2>
 
           <nav className="flex gap-1" aria-label="Range">
             {RANGES.map((range) => (
@@ -101,12 +96,9 @@ export default async function CardPage({
                 href={href({ days: range.days })}
                 data-testid={`range-${range.label}`}
                 aria-current={range.days === days ? 'page' : undefined}
-                className="rounded border px-2 py-1 text-xs"
-                style={{
-                  borderColor: 'var(--border)',
-                  background: range.days === days ? 'var(--accent)' : 'transparent',
-                  color: range.days === days ? '#0b0d10' : 'var(--muted)',
-                }}
+                className={`rounded border border-line px-2 py-1 text-xs ${
+                  range.days === days ? 'bg-accent text-[#0b0d10]' : 'bg-transparent text-muted'
+                }`}
               >
                 {range.label}
               </Link>
@@ -121,12 +113,11 @@ export default async function CardPage({
                 data-testid={`condition-${entry.value}`}
                 aria-current={entry.value === condition ? 'page' : undefined}
                 title={entry.label}
-                className="rounded border px-2 py-1 text-xs uppercase"
-                style={{
-                  borderColor: 'var(--border)',
-                  background: entry.value === condition ? 'var(--accent)' : 'transparent',
-                  color: entry.value === condition ? '#0b0d10' : 'var(--muted)',
-                }}
+                className={`rounded border border-line px-2 py-1 text-xs uppercase ${
+                  entry.value === condition
+                    ? 'bg-accent text-[#0b0d10]'
+                    : 'bg-transparent text-muted'
+                }`}
               >
                 {entry.value}
               </Link>
@@ -137,26 +128,20 @@ export default async function CardPage({
         {latest && (
           <div className="flex flex-wrap gap-x-10 gap-y-3" data-testid="price-summary">
             <div>
-              <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                Latest ({latest.day})
-              </p>
+              <p className="text-xs text-muted">Latest ({latest.day})</p>
               <p className="text-2xl font-semibold tracking-tight" data-testid="latest-median">
                 {dollars(latest.medianCents, latest.currency)}
               </p>
             </div>
             <div>
-              <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                Typical range
-              </p>
+              <p className="text-xs text-muted">Typical range</p>
               <p className="text-2xl font-semibold tracking-tight">
                 {dollars(latest.p25Cents, latest.currency)} –{' '}
                 {dollars(latest.p75Cents, latest.currency)}
               </p>
             </div>
             <div>
-              <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                Backed by
-              </p>
+              <p className="text-xs text-muted">Backed by</p>
               <p className="text-2xl font-semibold tracking-tight">
                 {latest.observationCount} sale{latest.observationCount === 1 ? '' : 's'}
               </p>
@@ -167,7 +152,7 @@ export default async function CardPage({
         <PriceChart points={points} currency={latest?.currency ?? 'USD'} />
 
         {totalObservations > 0 && (
-          <p className="text-xs" style={{ color: 'var(--muted)' }} data-testid="source-mix">
+          <p className="text-xs text-muted" data-testid="source-mix">
             Computed from {totalObservations} observation
             {totalObservations === 1 ? '' : 's'} over this window:{' '}
             {(prices?.sources ?? [])
@@ -186,18 +171,12 @@ export default async function CardPage({
       </section>
 
       <section>
-        <h2
-          className="mb-2 text-sm font-medium uppercase tracking-wide"
-          style={{ color: 'var(--muted)' }}
-        >
-          Printings
-        </h2>
+        <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-muted">Printings</h2>
         <ul className="flex flex-wrap gap-2">
           {card.variants.map((variant) => (
             <li
               key={`${variant.finish}-${variant.language}`}
-              className="rounded border px-3 py-1 text-xs"
-              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+              className="rounded border px-3 py-1 text-xs bg-surface border-line"
             >
               {variant.finish.replace('_', ' ')} · {variant.language.toUpperCase()}
             </li>

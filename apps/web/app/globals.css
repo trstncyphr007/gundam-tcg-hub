@@ -7,6 +7,31 @@
   --text: #e8eaf0;
   --muted: #9aa3b8;
   --accent: #e8503a;
+  --danger: #f87171;
+  --warning: #f59e0b;
+}
+
+/*
+ * The palette as Tailwind colours, so components use classes (`text-muted`, `bg-surface`,
+ * `border-line`) instead of inline `style` attributes. That is what lets the CSP drop
+ * `style-src 'unsafe-inline'` (ADR-031): a nonce cannot cover a style *attribute*, only a
+ * `<style>` element, so the attributes had to go.
+ *
+ * `inline` keeps the `var(...)` references, so the colours stay defined in one place above.
+ *
+ * `page` and `fg` are the names components had been reaching for as `--bg` and `--fg`, which
+ * were never defined — inputs using them rendered with no background at all. They now mean
+ * what they were evidently meant to.
+ */
+@theme inline {
+  --color-page: var(--background);
+  --color-surface: var(--surface);
+  --color-line: var(--border);
+  --color-fg: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
 }
 
 body {

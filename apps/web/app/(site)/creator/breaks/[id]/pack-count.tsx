@@ -55,13 +55,12 @@ export function PackCount({
 
   return (
     <section
-      className="space-y-3 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      className="space-y-3 rounded border p-4 bg-surface border-line"
       data-testid="pack-count"
     >
       <div>
         <h2 className="font-medium">Packs opened</h2>
-        <p className="mt-1 max-w-prose text-xs" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 max-w-prose text-xs text-muted">
           Published odds are stated per pack, so this is what your hit rates are measured against.
           Leave it blank if nobody counted — the break is then left out of the comparison rather
           than counted wrongly.
@@ -69,8 +68,8 @@ export function PackCount({
       </div>
 
       <form onSubmit={(e) => void submit(e)} className="flex flex-wrap items-end gap-3">
-        <label className="text-sm" style={{ width: '9rem' }}>
-          <span style={{ color: 'var(--muted)' }}>Packs</span>
+        <label className="text-sm w-36">
+          <span className="text-muted">Packs</span>
           <input
             type="number"
             min="1"
@@ -80,26 +79,24 @@ export function PackCount({
               setPacks(e.target.value);
             }}
             data-testid="packs-opened"
-            className="mt-1 w-full rounded border px-3 py-2"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+            className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
           />
         </label>
         <button
           type="submit"
           disabled={busy}
           data-testid="save-packs"
-          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-          style={{ background: 'var(--accent)' }}
+          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
         >
           Save
         </button>
-        <span className="text-xs" data-testid="packs-saved" style={{ color: 'var(--muted)' }}>
+        <span className="text-xs text-muted" data-testid="packs-saved">
           {saved === null ? 'Not recorded' : `Recorded: ${String(saved)}`}
         </span>
       </form>
 
       {error && (
-        <p role="alert" className="text-sm" style={{ color: '#f87171' }}>
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}

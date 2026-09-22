@@ -22,7 +22,7 @@ function against(priceCents: number, medianCents: number | null): string {
 
 function Evidence({ href }: { href: string | null }): React.JSX.Element {
   if (href === null) {
-    return <span style={{ color: 'var(--muted)' }}>no evidence link</span>;
+    return <span className="text-muted">no evidence link</span>;
   }
   // `nofollow noopener`: a link a member of the public supplied, opened by an admin whose
   // session can change published prices. It gets no window handle back to this tab.
@@ -39,9 +39,9 @@ function ReportBody({ report }: { report: PendingReport }): React.JSX.Element {
       <p className="font-medium">
         {report.cardName ?? 'Unknown card'} · {report.condition.toUpperCase()} ·{' '}
         {money(report.priceCents, report.currency)}{' '}
-        <span style={{ color: 'var(--muted)' }}>({report.saleType})</span>
+        <span className="text-muted">({report.saleType})</span>
       </p>
-      <p style={{ color: 'var(--muted)' }}>
+      <p className="text-muted">
         {against(report.priceCents, report.medianCents)} · <Evidence href={report.evidenceRef} />
         {report.reporterPending > 1 && <> · this reporter has {report.reporterPending} waiting</>}
       </p>
@@ -55,9 +55,9 @@ function HeldBody({ held }: { held: HeldObservation }): React.JSX.Element {
       <p className="font-medium">
         {held.cardName ?? 'Unknown card'} · {held.condition.toUpperCase()} ·{' '}
         {money(held.priceCents, held.currency)}{' '}
-        <span style={{ color: 'var(--muted)' }}>({held.source.replace('_', ' ')})</span>
+        <span className="text-muted">({held.source.replace('_', ' ')})</span>
       </p>
-      <p style={{ color: 'var(--muted)' }}>
+      <p className="text-muted">
         {against(held.priceCents, held.medianCents)} · <Evidence href={held.evidenceRef} />
       </p>
     </div>
@@ -104,8 +104,7 @@ export default async function ModerationPage(): Promise<React.JSX.Element> {
         <div className="flex flex-wrap items-center gap-4">
           <Link
             href="/sign-in?reason=step-up&next=%2Fadmin%2Fmoderation"
-            className="inline-block rounded px-4 py-2 text-sm font-medium"
-            style={{ background: 'var(--accent)' }}
+            className="inline-block rounded px-4 py-2 text-sm font-medium bg-accent"
             data-testid="step-up-link"
           >
             Sign in with your passkey
@@ -124,9 +123,7 @@ export default async function ModerationPage(): Promise<React.JSX.Element> {
     return (
       <div className="space-y-4" data-testid="admin-forbidden">
         <h1 className="text-2xl font-semibold tracking-tight">Moderation</h1>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          This page is for administrators.
-        </p>
+        <p className="text-sm text-muted">This page is for administrators.</p>
       </div>
     );
   }
@@ -135,7 +132,7 @@ export default async function ModerationPage(): Promise<React.JSX.Element> {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight">Moderation</h1>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           The queue could not be loaded. Nothing has been decided.
         </p>
       </div>
@@ -148,7 +145,7 @@ export default async function ModerationPage(): Promise<React.JSX.Element> {
     <div className="space-y-10">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Moderation</h1>
-        <p className="mt-1 max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 max-w-prose text-sm text-muted">
           Every decision needs a reason and is recorded with your name against it. Nothing here
           deletes anything: a rejected price stays on record, it just never counts.
         </p>
@@ -157,16 +154,14 @@ export default async function ModerationPage(): Promise<React.JSX.Element> {
       <section className="space-y-3" data-testid="held-section">
         <div>
           <h2 className="text-lg font-medium">Held sales ({flagged.length})</h2>
-          <p className="mt-1 max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+          <p className="mt-1 max-w-prose text-sm text-muted">
             Our own sources, recorded and approved, then held because the price sat far outside the
             published spread. Clearing one lets it count; rejecting one means it never will. The VOD
             link is usually the quickest way to tell a typo from a real sale.
           </p>
         </div>
         {flagged.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>
-            Nothing held.
-          </p>
+          <p className="text-sm text-muted">Nothing held.</p>
         ) : (
           <ul className="space-y-3">
             {flagged.map((held) => (
@@ -181,15 +176,13 @@ export default async function ModerationPage(): Promise<React.JSX.Element> {
       <section className="space-y-3" data-testid="reports-section">
         <div>
           <h2 className="text-lg font-medium">Reported prices ({reports.length})</h2>
-          <p className="mt-1 max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+          <p className="mt-1 max-w-prose text-sm text-muted">
             Prices members of the public told us about. They count for nothing until approved. Who
             sent each one is deliberately not shown: judge the price and its evidence.
           </p>
         </div>
         {reports.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>
-            No reports waiting.
-          </p>
+          <p className="text-sm text-muted">No reports waiting.</p>
         ) : (
           <ul className="space-y-3">
             {reports.map((report) => (

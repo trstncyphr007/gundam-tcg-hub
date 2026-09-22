@@ -25,7 +25,7 @@ export default async function SecurityPage(): Promise<React.JSX.Element> {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Security</h1>
-        <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 text-sm text-muted">
           How you sign in to this account, and where it is signed in.
         </p>
       </header>

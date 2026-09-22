@@ -19,7 +19,7 @@ export default async function ProductsPage() {
     <div className="space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Sealed products</h1>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           {me
             ? 'Watch a product to get an alert the moment it is back in stock.'
             : 'Sign in to watch a product for restock alerts.'}
@@ -27,20 +27,17 @@ export default async function ProductsPage() {
       </header>
 
       {products === null ? (
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          The catalog is unavailable right now.
-        </p>
+        <p className="text-sm text-muted">The catalog is unavailable right now.</p>
       ) : (
         <ul className="space-y-3">
           {products.items.map((product) => (
             <li
               key={product.id}
-              className="flex items-center gap-4 rounded border p-4"
-              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+              className="flex items-center gap-4 rounded border p-4 bg-surface border-line"
             >
               <div className="min-w-0">
                 <p className="truncate font-medium">{product.name}</p>
-                <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+                <p className="mt-1 text-xs text-muted">
                   {product.kind.replace('_', ' ')} · MSRP {formatPrice(product.msrpCents)}
                 </p>
               </div>

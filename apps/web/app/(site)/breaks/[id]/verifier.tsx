@@ -55,10 +55,10 @@ type Outcome =
 function Verdict({ label, outcome }: { label: string; outcome: Outcome }): React.JSX.Element {
   const colour =
     outcome.kind === 'pass'
-      ? 'var(--accent)'
+      ? 'text-accent'
       : outcome.kind === 'fail'
-        ? 'var(--danger, #f87171)'
-        : 'var(--muted)';
+        ? 'text-danger'
+        : 'text-muted';
   const mark =
     outcome.kind === 'pass'
       ? '✓'
@@ -70,12 +70,12 @@ function Verdict({ label, outcome }: { label: string; outcome: Outcome }): React
 
   return (
     <li className="flex gap-3 text-sm">
-      <span aria-hidden style={{ color: colour }}>
+      <span aria-hidden className={colour}>
         {mark}
       </span>
       <span className="min-w-0 flex-1">
         <strong>{label}</strong>
-        <span className="block text-xs" style={{ color: 'var(--muted)' }}>
+        <span className="block text-xs text-muted">
           {outcome.kind === 'checking' ? 'checking…' : outcome.detail}
         </span>
       </span>
@@ -230,14 +230,10 @@ export function BreakVerifier({
   }, [run]);
 
   return (
-    <section
-      className="space-y-4 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-      data-testid="verifier"
-    >
+    <section className="space-y-4 rounded border p-4 bg-surface border-line" data-testid="verifier">
       <div>
         <h2 className="font-medium">Verify this break</h2>
-        <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 text-xs text-muted">
           These checks ran in your browser, on your machine, from the values below. Nothing here
           asks you to take our word for it.
         </p>
@@ -253,8 +249,7 @@ export function BreakVerifier({
         onClick={() => void refetch()}
         disabled={refetching}
         data-testid="verifier-refetch"
-        className="rounded border px-3 py-1.5 text-xs disabled:opacity-50"
-        style={{ borderColor: 'var(--border)' }}
+        className="rounded border px-3 py-1.5 text-xs disabled:opacity-50 border-line"
       >
         {refetching ? 'Fetching…' : 'Fetch the evidence again and re-check'}
       </button>
@@ -262,8 +257,7 @@ export function BreakVerifier({
       {!agrees && (
         <p
           role="alert"
-          className="rounded border px-3 py-2 text-sm"
-          style={{ borderColor: 'var(--danger, #f87171)', color: 'var(--danger, #f87171)' }}
+          className="rounded border px-3 py-2 text-sm border-danger text-danger"
           data-testid="verifier-disagrees"
         >
           Your browser and our server disagree about this log. Trust your browser.
@@ -273,43 +267,43 @@ export function BreakVerifier({
       {evidence.commitment && (
         <dl className="space-y-2 text-xs" data-testid="verifier-evidence">
           <div>
-            <dt style={{ color: 'var(--muted)' }}>Commitment, published before the break</dt>
+            <dt className="text-muted">Commitment, published before the break</dt>
             <dd className="break-all font-mono">{evidence.commitment.commitment}</dd>
           </div>
           <div>
-            <dt style={{ color: 'var(--muted)' }}>Audience seed</dt>
+            <dt className="text-muted">Audience seed</dt>
             <dd className="break-all font-mono">
               {evidence.commitment.clientSeed ?? 'not yet chosen'}
             </dd>
           </div>
           <div>
-            <dt style={{ color: 'var(--muted)' }}>Server seed, revealed after the break</dt>
+            <dt className="text-muted">Server seed, revealed after the break</dt>
             <dd className="break-all font-mono" data-testid="revealed-seed">
               {evidence.commitment.revealedSeed ?? 'not revealed yet'}
             </dd>
           </div>
           {order && (
             <div>
-              <dt style={{ color: 'var(--muted)' }}>Slot order</dt>
+              <dt className="text-muted">Slot order</dt>
               <dd className="font-mono" data-testid="slot-order">
                 {order.join(', ')}
               </dd>
             </div>
           )}
           <div>
-            <dt style={{ color: 'var(--muted)' }}>Algorithm</dt>
+            <dt className="text-muted">Algorithm</dt>
             <dd className="font-mono">{evidence.commitment.algorithmVersion}</dd>
           </div>
         </dl>
       )}
 
       {evidence.chain.head !== null && (
-        <p className="text-xs" style={{ color: 'var(--muted)' }}>
+        <p className="text-xs text-muted">
           Chain head: <span className="break-all font-mono">{chain.head}</span>
         </p>
       )}
 
-      <p className="text-xs" style={{ color: 'var(--muted)' }}>
+      <p className="text-xs text-muted">
         The method is written up at{' '}
         <a href="/methodology" className="underline">
           /methodology

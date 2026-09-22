@@ -17,12 +17,17 @@ export function middleware(request: NextRequest): NextResponse {
   const scriptSrc = isDev
     ? `script-src 'self' 'unsafe-inline' 'unsafe-eval'`
     : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`;
+  // No inline styles either, in production (ADR-031). Components style with classes from the
+  // build's stylesheet; a style *attribute* anywhere is refused, which closes CSS injection —
+  // selector-based exfiltration and UI redress — as well as script injection. The dev server
+  // injects its own unnonced <style> tags for hot reload, so dev keeps the looser policy, as
+  // it does for scripts.
+  const styleSrc = isDev ? `style-src 'self' 'unsafe-inline'` : `style-src 'self' 'nonce-${nonce}'`;
 
   const csp = [
     `default-src 'self'`,
     scriptSrc,
-    // Tailwind injects styles at build time; inline styles stay allowed, scripts do not.
-    `style-src 'self' 'unsafe-inline'`,
+    styleSrc,
     // No `https:` here. That is a wildcard: it permits an image from any HTTPS origin,
     // which is both an exfiltration channel (the path carries data) and a tracking one.
     // We render no remote images -- card art is linked, not embedded (plan §23) -- so when

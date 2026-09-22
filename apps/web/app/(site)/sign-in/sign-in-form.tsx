@@ -73,11 +73,7 @@ export function SignInForm({ next }: { next: string }) {
 
   if (status.kind === 'sent') {
     return (
-      <p
-        className="rounded border p-4 text-sm"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-        role="status"
-      >
+      <p className="rounded border p-4 text-sm bg-surface border-line" role="status">
         Check your email. The link works once and expires in 15 minutes.
       </p>
     );
@@ -89,18 +85,12 @@ export function SignInForm({ next }: { next: string }) {
         type="button"
         onClick={() => void signInWithPasskey()}
         data-testid="passkey-sign-in"
-        className="w-full rounded border px-4 py-2 text-sm font-medium"
-        style={{ borderColor: 'var(--border)' }}
+        className="w-full rounded border px-4 py-2 text-sm font-medium border-line"
       >
         Sign in with a passkey
       </button>
       {passkeyError && (
-        <p
-          className="text-sm"
-          role="alert"
-          data-testid="passkey-sign-in-error"
-          style={{ color: 'var(--accent)' }}
-        >
+        <p className="text-sm text-accent" role="alert" data-testid="passkey-sign-in-error">
           {passkeyError}
         </p>
       )}
@@ -113,16 +103,15 @@ export function SignInForm({ next }: { next: string }) {
             callbackURL: absoluteCallback(next),
           });
         }}
-        className="w-full rounded px-4 py-2 text-sm font-medium"
-        style={{ background: '#5865f2' }}
+        className="w-full rounded bg-[#5865f2] px-4 py-2 text-sm font-medium"
       >
         Continue with Discord
       </button>
 
-      <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--muted)' }}>
-        <span className="h-px flex-1" style={{ background: 'var(--border)' }} />
+      <div className="flex items-center gap-3 text-xs text-muted">
+        <span className="h-px flex-1 bg-line" />
         or
-        <span className="h-px flex-1" style={{ background: 'var(--border)' }} />
+        <span className="h-px flex-1 bg-line" />
       </div>
 
       {/*
@@ -147,19 +136,17 @@ export function SignInForm({ next }: { next: string }) {
           onChange={(event) => {
             setEmail(event.target.value);
           }}
-          className="w-full rounded border px-3 py-2 text-sm outline-none"
-          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+          className="w-full rounded border px-3 py-2 text-sm outline-none bg-surface border-line"
         />
         <button
           type="submit"
           disabled={status.kind === 'sending'}
-          className="w-full rounded px-4 py-2 text-sm font-medium disabled:opacity-60"
-          style={{ background: 'var(--accent)' }}
+          className="w-full rounded px-4 py-2 text-sm font-medium disabled:opacity-60 bg-accent"
         >
           {status.kind === 'sending' ? 'Sending…' : 'Email me a sign-in link'}
         </button>
         {status.kind === 'error' && (
-          <p className="text-sm" role="alert" style={{ color: 'var(--accent)' }}>
+          <p className="text-sm text-accent" role="alert">
             {status.message}
           </p>
         )}

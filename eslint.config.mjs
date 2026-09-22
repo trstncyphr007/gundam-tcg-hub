@@ -56,6 +56,13 @@ export default defineConfig(
           message: 'dangerouslySetInnerHTML is banned (XSS, SR-2.3).',
         },
         {
+          // Renders as a style *attribute*, which the production CSP refuses (ADR-031): the
+          // element would silently lose its styling. Use a class; for a genuinely dynamic
+          // value, an SVG presentation attribute or a CSSOM write from a ref.
+          selector: "JSXAttribute[name.name='style']",
+          message: 'Inline style props are blocked by the CSP (ADR-031). Use a className.',
+        },
+        {
           selector: "CallExpression[callee.object.name='sql'][callee.property.name='raw']",
           message: 'sql.raw() bypasses parameterization (SR-X.11).',
         },

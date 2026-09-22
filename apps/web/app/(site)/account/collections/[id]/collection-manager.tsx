@@ -113,13 +113,12 @@ export function CollectionManager({
 
       <div className="flex flex-wrap items-center gap-3">
         <label className="text-sm">
-          <span style={{ color: 'var(--muted)' }}>Who can see this</span>
+          <span className="text-muted">Who can see this</span>
           <select
             value={visibility}
             onChange={(e) => void changeVisibility(e.target.value as CollectionVisibility)}
             data-testid="visibility"
-            className="ml-2 rounded border px-3 py-2 text-sm"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+            className="ml-2 rounded border px-3 py-2 text-sm bg-page border-line"
           >
             {VISIBILITY.map(([value, label]) => (
               <option key={value} value={value}>
@@ -129,14 +128,14 @@ export function CollectionManager({
           </select>
         </label>
         {visibility !== 'private' && (
-          <span className="text-xs" style={{ color: 'var(--muted)' }}>
+          <span className="text-xs text-muted">
             A shared page shows the cards and the name. It never shows who owns it.
           </span>
         )}
       </div>
 
       {error && (
-        <p role="alert" className="text-sm" style={{ color: 'var(--danger, #f87171)' }}>
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
@@ -144,13 +143,11 @@ export function CollectionManager({
       <AddCardForm collectionId={collectionId} onAdded={() => void refresh()} />
 
       {items.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          Nothing in here yet.
-        </p>
+        <p className="text-sm text-muted">Nothing in here yet.</p>
       ) : (
         <table className="w-full text-sm" data-testid="item-table">
           <thead>
-            <tr className="text-left text-xs" style={{ color: 'var(--muted)' }}>
+            <tr className="text-left text-xs text-muted">
               <th className="py-2">Card</th>
               <th className="py-2">Printing</th>
               <th className="py-2">Cond.</th>
@@ -161,14 +158,14 @@ export function CollectionManager({
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
+              <tr key={item.id} className="border-t border-line">
                 <td className="py-2">
                   <span className="font-medium">{item.cardName}</span>
-                  <span className="ml-2 text-xs" style={{ color: 'var(--muted)' }}>
+                  <span className="ml-2 text-xs text-muted">
                     {item.setCode} #{item.cardNumber}
                   </span>
                 </td>
-                <td className="py-2 text-xs" style={{ color: 'var(--muted)' }}>
+                <td className="py-2 text-xs text-muted">
                   {item.finish} · {item.language}
                 </td>
                 <td className="py-2">{CONDITION_LABEL[item.condition] ?? item.condition}</td>
@@ -179,8 +176,7 @@ export function CollectionManager({
                       aria-label={`Remove one ${item.cardName}`}
                       onClick={() => void setQuantity(item, item.quantity - 1)}
                       disabled={item.quantity <= 1}
-                      className="rounded border px-2 disabled:opacity-40"
-                      style={{ borderColor: 'var(--border)' }}
+                      className="rounded border px-2 disabled:opacity-40 border-line"
                     >
                       −
                     </button>
@@ -189,8 +185,7 @@ export function CollectionManager({
                       type="button"
                       aria-label={`Add one ${item.cardName}`}
                       onClick={() => void setQuantity(item, item.quantity + 1)}
-                      className="rounded border px-2"
-                      style={{ borderColor: 'var(--border)' }}
+                      className="rounded border px-2 border-line"
                     >
                       +
                     </button>
@@ -200,7 +195,7 @@ export function CollectionManager({
                   {item.acquiredPriceCents === null ? (
                     // Not "$0.00": we do not know, and saying zero would report the card as
                     // pure profit.
-                    <span style={{ color: 'var(--muted)' }}>not recorded</span>
+                    <span className="text-muted">not recorded</span>
                   ) : (
                     dollars(item.acquiredPriceCents, item.currency)
                   )}
@@ -209,8 +204,7 @@ export function CollectionManager({
                   <button
                     type="button"
                     onClick={() => void remove(item)}
-                    className="text-xs underline"
-                    style={{ color: 'var(--muted)' }}
+                    className="text-xs underline text-muted"
                   >
                     remove
                   </button>

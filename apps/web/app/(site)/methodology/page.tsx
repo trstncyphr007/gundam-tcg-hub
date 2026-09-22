@@ -18,7 +18,7 @@ export default function MethodologyPage() {
     <article className="max-w-2xl space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">How prices are computed</h1>
-        <p className="mt-2 text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="mt-2 text-sm text-muted">
           Every number we publish is reached the same way, and the rules are deliberately dull. If
           you think one of them is wrong, we would rather argue about the method than about a
           number.
@@ -40,7 +40,7 @@ export default function MethodologyPage() {
           If we know of fewer than three sales for a card on a given day, we publish nothing for
           that day. Not a zero, not yesterday&rsquo;s number carried forward — nothing.
         </p>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           This is why a chart has gaps in it. A gap is a day we could not price honestly, and we
           would rather show you that than draw a line through it.
         </p>
@@ -72,37 +72,33 @@ export default function MethodologyPage() {
         </p>
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-xs" style={{ color: 'var(--muted)' }}>
+            <tr className="text-left text-xs text-muted">
               <th className="py-2">Source</th>
               <th className="py-2">Weight</th>
               <th className="py-2">Why</th>
             </tr>
           </thead>
           <tbody>
-            <tr className="border-t" style={{ borderColor: 'var(--border)' }}>
+            <tr className="border-t border-line">
               <td className="py-2">Break pulls, live sales</td>
               <td className="py-2">3</td>
-              <td className="py-2" style={{ color: 'var(--muted)' }}>
-                We watched it happen
-              </td>
+              <td className="py-2 text-muted">We watched it happen</td>
             </tr>
-            <tr className="border-t" style={{ borderColor: 'var(--border)' }}>
+            <tr className="border-t border-line">
               <td className="py-2">Official marketplace APIs</td>
               <td className="py-2">2</td>
-              <td className="py-2" style={{ color: 'var(--muted)' }}>
-                Trustworthy, but someone else&rsquo;s number
-              </td>
+              <td className="py-2 text-muted">Trustworthy, but someone else&rsquo;s number</td>
             </tr>
-            <tr className="border-t" style={{ borderColor: 'var(--border)' }}>
+            <tr className="border-t border-line">
               <td className="py-2">User reports</td>
               <td className="py-2">1</td>
-              <td className="py-2" style={{ color: 'var(--muted)' }}>
+              <td className="py-2 text-muted">
                 Someone told us — and only after a human approves it
               </td>
             </tr>
           </tbody>
         </table>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           Weighting repeats an observation rather than multiplying it, so the weighted median is
           still a price somebody actually paid, not an average nobody paid.
         </p>
@@ -124,7 +120,7 @@ export default function MethodologyPage() {
           outside the current spread are flagged for review before they count. The sources we weight
           most heavily cannot be submitted at all — they come from our own logs.
         </p>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           That last point is a database privilege, not a policy we intend to follow. A signed-in
           session can file a report and nothing else; a break pull or a live sale becomes an
           observation only by passing through a job that no web request can reach.
@@ -145,7 +141,7 @@ export default function MethodologyPage() {
           $900 sale of a $12 card is either a typo or the most interesting thing that happened all
           week, and only a person can tell which.
         </p>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           Nothing is held when we have no recent published price for that card: you cannot call a
           price an outlier with nothing to be outside of.
         </p>
@@ -190,7 +186,7 @@ export default function MethodologyPage() {
             one that would get screenshotted.
           </li>
         </ul>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           &ldquo;Above&rdquo; or &ldquo;below published&rdquo; is a statement about one sample. It
           is not a claim about the person, and we do not make one.
         </p>
@@ -215,7 +211,7 @@ export default function MethodologyPage() {
           </a>
           .
         </p>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           Card names, text and images are the publisher&rsquo;s property and are not ours to
           license. This site is not affiliated with Bandai.
         </p>

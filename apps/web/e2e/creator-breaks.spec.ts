@@ -76,6 +76,19 @@ test.describe('creator breaks', () => {
     expect(['rgba(0, 0, 0, 0)', 'transparent']).toContain(background);
     await expect(overlay.locator('header')).toHaveCount(0);
     await expect(overlay.locator('nav')).toHaveCount(0);
+
+    // The overlay has its own stylesheet (ADR-031) — the site's would paint a background.
+    // If it failed to load, the checks above would still pass on browser defaults, so these
+    // prove it did: edge to edge, the stream-readable shadow, and the sizes it declares.
+    await expect(overlay.locator('body')).toHaveCSS('margin', '0px');
+    await expect(overlay.getByTestId('overlay-root')).toHaveCSS(
+      'text-shadow',
+      /rgba\(0, 0, 0, 0\.9\)/,
+    );
+    await expect(overlay.getByTestId('overlay-title')).toHaveCSS('font-size', '17.6px');
+    // No style attributes in the markup it was served — the only kind the CSP refuses.
+    const html = await (await overlay.request.get(overlayUrl)).text();
+    expect(html).not.toMatch(/<[a-z][\w-]*\s[^>]*\bstyle="/i);
     await overlay.close();
   });
 

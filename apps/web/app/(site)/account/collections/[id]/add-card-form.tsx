@@ -154,8 +154,7 @@ export function AddCardForm({
   return (
     <form
       onSubmit={(e) => void submit(e)}
-      className="space-y-3 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      className="space-y-3 rounded border p-4 bg-surface border-line"
     >
       <h2 className="font-medium">Add a card</h2>
 
@@ -164,20 +163,15 @@ export function AddCardForm({
           <span className="font-medium" data-testid="chosen-card">
             {card.name}
           </span>
-          <span style={{ color: 'var(--muted)' }}>#{card.number}</span>
-          <button
-            type="button"
-            onClick={reset}
-            className="text-xs underline"
-            style={{ color: 'var(--muted)' }}
-          >
+          <span className="text-muted">#{card.number}</span>
+          <button type="button" onClick={reset} className="text-xs underline text-muted">
             change
           </button>
         </div>
       ) : (
         <div className="relative">
           <label className="block text-sm">
-            <span style={{ color: 'var(--muted)' }}>Search cards</span>
+            <span className="text-muted">Search cards</span>
             <input
               ref={searchRef}
               value={query}
@@ -187,14 +181,12 @@ export function AddCardForm({
               }}
               placeholder="Name or number"
               data-testid="card-search"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
             />
           </label>
           {hits.length > 0 && (
             <ul
-              className="mt-2 divide-y rounded border"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              className="mt-2 divide-y rounded border bg-page border-line"
               data-testid="card-hits"
             >
               {hits.map((hit) => (
@@ -205,7 +197,7 @@ export function AddCardForm({
                     className="flex w-full gap-3 px-3 py-2 text-left text-sm"
                   >
                     <span className="min-w-0 flex-1">{hit.name}</span>
-                    <span style={{ color: 'var(--muted)' }}>#{hit.number}</span>
+                    <span className="text-muted">#{hit.number}</span>
                   </button>
                 </li>
               ))}
@@ -217,15 +209,14 @@ export function AddCardForm({
       {card && (
         <div className="grid gap-3 sm:grid-cols-4">
           <label className="block text-sm">
-            <span style={{ color: 'var(--muted)' }}>Printing</span>
+            <span className="text-muted">Printing</span>
             <select
               value={variantId}
               onChange={(e) => {
                 setVariantId(e.target.value);
               }}
               data-testid="variant"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
             >
               {variants.map((variant) => (
                 <option key={variant.id} value={variant.id}>
@@ -235,15 +226,14 @@ export function AddCardForm({
             </select>
           </label>
           <label className="block text-sm">
-            <span style={{ color: 'var(--muted)' }}>Condition</span>
+            <span className="text-muted">Condition</span>
             <select
               value={condition}
               onChange={(e) => {
                 setCondition(e.target.value);
               }}
               data-testid="condition"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
             >
               {CONDITIONS.map(([value, label]) => (
                 <option key={value} value={value}>
@@ -253,7 +243,7 @@ export function AddCardForm({
             </select>
           </label>
           <label className="block text-sm">
-            <span style={{ color: 'var(--muted)' }}>Quantity</span>
+            <span className="text-muted">Quantity</span>
             <input
               type="number"
               min="1"
@@ -263,12 +253,11 @@ export function AddCardForm({
                 setQuantity(e.target.value);
               }}
               data-testid="quantity"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
             />
           </label>
           <label className="block text-sm">
-            <span style={{ color: 'var(--muted)' }}>Paid each (optional)</span>
+            <span className="text-muted">Paid each (optional)</span>
             <input
               inputMode="decimal"
               value={price}
@@ -277,22 +266,21 @@ export function AddCardForm({
               }}
               placeholder="12.50"
               data-testid="paid"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
             />
           </label>
         </div>
       )}
 
       {card && (
-        <p className="text-xs" style={{ color: 'var(--muted)' }}>
+        <p className="text-xs text-muted">
           Leave the price blank if you don’t know it. A blank is honest; a zero would report the
           card as pure profit.
         </p>
       )}
 
       {error && (
-        <p role="alert" className="text-sm" style={{ color: 'var(--danger, #f87171)' }}>
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
@@ -301,8 +289,7 @@ export function AddCardForm({
         type="submit"
         disabled={busy || !variantId}
         data-testid="add-card"
-        className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-        style={{ background: 'var(--accent)' }}
+        className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
       >
         {busy ? 'Adding…' : 'Add to collection'}
       </button>
