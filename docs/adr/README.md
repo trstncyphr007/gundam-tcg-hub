@@ -33,3 +33,4 @@ New decisions get their own file.
 | 026 | [Seeing and ending your sessions, and hearing about new devices](026-sessions-and-new-device-notices.md)        | Accepted                    |
 | 027 | [Downloading your data, and deleting your account](027-export-and-deletion.md)                                  | Accepted                    |
 | 028 | [IP addresses at rest are same-day hashes](028-ip-addresses-as-daily-hashes.md)                                 | Accepted                    |
+| 029 | [Retiring an encryption key, not just adding one](029-retiring-encryption-keys.md)                              | Accepted                    |
