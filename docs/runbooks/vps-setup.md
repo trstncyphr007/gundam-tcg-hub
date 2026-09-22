@@ -16,7 +16,7 @@ reviewable, lintable and re-runnable — a second run reports no changes.
 | Release pipeline (build, scan, SBOM, sign, push)        | ✅ written; runs on merge to `main`                                     |
 | Deploy workflow + server-side deploy script             | ✅ written; **not yet exercised** (needs a server)                      |
 | Preflight check (`infra/vps/preflight.sh`)              | ✅ written; exercised against fake `/srv/gth` trees, not a real host    |
-| Image packages public (ADR-032)                         | ⬜ decided; **waiting on you** to flip visibility in GitHub             |
+| Image packages public (ADR-032)                         | ✅ done 2026-09-23; anonymous pull + signature + SBOM verified          |
 | Host hardening playbook                                 | ✅ written; lint + syntax clean, **container-smoked**, not host-tested  |
 | VPS provisioned and hardened                            | ⬜ waiting on the VPS                                                   |
 | Domain, TLS, backups                                    | ⬜ waiting on the domain                                                |
