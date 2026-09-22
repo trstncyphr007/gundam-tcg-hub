@@ -27,6 +27,29 @@ rules:
       - pattern: eval(...)
       - pattern: new Function(...)
 
+  - id: gth-no-outbound-http
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      Server code makes no outbound HTTP requests except the Discord webhook transport, which
+      is host-allowlisted and refuses redirects (SR-1.1, ADR-030). A new outbound request is an
+      SSRF surface: it needs its own allowlist, a redirect policy and, if the host can be
+      chosen by a user, resolved-address checks against DNS rebinding. Add it to that module,
+      or change this rule on purpose.
+    pattern-either:
+      - pattern: fetch(...)
+      - pattern: globalThis.fetch
+      - pattern-regex: (from|require\()\s*['"](node:)?(http|https|http2|dgram)['"]
+      - pattern-regex: (from|require\()\s*['"](undici|axios|got|node-fetch|superagent)['"]
+    paths:
+      include:
+        - apps/api/src/**
+        - packages/*/src/**
+      exclude:
+        - packages/alerts/src/transports.ts
+        - '**/*.test.ts'
+        - packages/db/src/test/**
+
   - id: gth-no-tls-verification-bypass
     languages: [typescript, javascript]
     severity: ERROR

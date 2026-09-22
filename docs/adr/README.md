@@ -34,3 +34,4 @@ New decisions get their own file.
 | 027 | [Downloading your data, and deleting your account](027-export-and-deletion.md)                                  | Accepted                    |
 | 028 | [IP addresses at rest are same-day hashes](028-ip-addresses-as-daily-hashes.md)                                 | Accepted                    |
 | 029 | [Retiring an encryption key, not just adding one](029-retiring-encryption-keys.md)                              | Accepted                    |
+| 030 | [The platform makes one outbound request, and CI keeps it that way](030-one-outbound-request.md)                | Accepted                    |
