@@ -179,3 +179,17 @@ did not build and sign cannot be deployed even by someone with SSH access.
 - [ ] Restrict inbound 80/443 to Cloudflare IP ranges, or switch to a Cloudflare Tunnel.
 - [ ] Run a restore drill (`docs/runbooks/backups.md`) and record the time.
 - [ ] Record the Lynis score and `nmap` output in the table above.
+- [ ] **Publish the contact address** (see below).
+- [ ] Add a **CAA** record so only your certificate issuer can issue for the domain, and set up
+      SPF, DKIM and DMARC for the role mailbox before any mail is sent from it.
+
+### Publishing the contact address
+
+Create the role mailbox — `security@<domain>`, or one address that also covers privacy and
+takedown requests — then set `CONTACT_EMAIL` in `apps/web/lib/site.ts` and redeploy.
+
+Until it is set, `/privacy` and `/terms` say a contact is coming and
+`/.well-known/security.txt` returns 404 rather than naming an address nobody reads (ADR-034).
+Afterwards, `curl -sS https://<domain>/.well-known/security.txt` must list `Contact:` and an
+`Expires:` date under six months away. The date is generated per request, so the file cannot
+rot into an expired one on its own.
