@@ -5,5 +5,6 @@ export * from './passkeys.js';
 export * from './devices.js';
 export * from './sessions.js';
 export * from './ip-hash.js';
+export * from './failed-attempts.js';
 // Re-exported so apps integrate without depending on better-auth internals directly.
 export { fromNodeHeaders, toNodeHandler } from 'better-auth/node';

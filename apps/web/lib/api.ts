@@ -186,6 +186,14 @@ export interface OperationsSummary {
   };
 }
 
+/** Failed attempts, counted (SR-X.22). Aggregates only — nobody is named. */
+export interface SecuritySummary {
+  generatedAt: string;
+  counts: { action: string; lastHour: number; last24h: number; last7d: number }[];
+  noisySources: { source: string; attempts: number; lastAt: string }[];
+  endpoints: { endpoint: string; attempts: number }[];
+}
+
 export interface CreatorProfile {
   id: string;
   handle: string;
@@ -532,6 +540,9 @@ export const api = {
   /** Scanner health, restocks and alert delivery (FR-1.12). */
   adminOperations: (): Promise<AdminResult<OperationsSummary>> =>
     adminGet<OperationsSummary>('/v1/admin/operations'),
+  /** Failed sign-ins and rate-limit refusals, counted (SR-X.22). */
+  adminSecurity: (): Promise<AdminResult<SecuritySummary>> =>
+    adminGet<SecuritySummary>('/v1/admin/security'),
   /** The seller's own log. Carries buyer handles, so it is never cached anywhere. */
   liveSales: () => getAuthed<{ items: LiveSale[] }>('/v1/live-sales'),
   breakers: () => getPublic<{ items: BreakerSummary[] }>('/v1/breakers'),

@@ -59,10 +59,24 @@ test.describe('operations dashboard (FR-1.12)', () => {
     await page.goto('/admin/operations');
 
     await expect(page.getByTestId('operations')).toBeVisible();
-    for (const section of ['scanner-section', 'restocks-section', 'deliveries-section']) {
+    for (const section of [
+      'scanner-section',
+      'restocks-section',
+      'deliveries-section',
+      'security-section',
+    ]) {
       await expect(page.getByTestId(section)).toBeVisible();
     }
     await expect(page.getByTestId('backlog')).toContainText('waiting');
+
+    // Refused attempts are counted, and every watched kind is listed even at zero: a quiet
+    // hour and a hook that stopped writing must not look the same (ADR-037).
+    await expect(page.getByTestId('security-row')).toHaveCount(3);
+    await expect(page.getByTestId('security-counts')).toContainText('Failed sign-ins');
+    // Whatever is on it, it is aggregates: no address, and no email.
+    const security = await (await page.request.get('/v1/admin/security')).text();
+    expect(security).not.toMatch(/\d+\.\d+\.\d+\.\d+/);
+    expect(security).not.toContain('@');
 
     // And the two admin pages lead to each other.
     await page.getByTestId('admin-nav').getByRole('link', { name: 'Moderation' }).click();

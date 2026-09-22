@@ -7,6 +7,7 @@ import {
   decideReport,
   getModerationQueue,
   getOperationsSummary,
+  getSecuritySummary,
   normaliseReason,
   writeAuditLog,
 } from '@gth/db';
@@ -91,6 +92,17 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminDeps): void
     if (actor === null) return reply;
 
     const summary = await getOperationsSummary(db);
+    return reply.header('cache-control', 'no-store').send(summary);
+  });
+
+  // What the audit log says about attempts that failed (SR-X.22). Counts and day-hashes only:
+  // the question is "is something happening right now?", and a number that jumps answers it
+  // without naming anyone.
+  app.get('/v1/admin/security', async (request, reply) => {
+    const actor = guard(request, reply);
+    if (actor === null) return reply;
+
+    const summary = await getSecuritySummary(db);
     return reply.header('cache-control', 'no-store').send(summary);
   });
 

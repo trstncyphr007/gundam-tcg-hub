@@ -5,6 +5,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
 import { magicLink } from 'better-auth/plugins/magic-link';
 import { describeDevice } from './devices.js';
+import { describeFailure, isAuthAttemptPath, recordFailedAttempt } from './failed-attempts.js';
 import { hashIp } from './ip-hash.js';
 import {
   PasskeyPolicyError,
@@ -301,6 +302,19 @@ export function createAuth(db: Database, config: AuthConfig) {
 
       /** Audit and notify on any change to how an account can be entered (SR-X.5, SR-X.21). */
       after: createAuthMiddleware(async (ctx) => {
+        // A refused attempt at a way in is worth recording, even though it changed nothing:
+        // one is a typo, two hundred is somebody working through a list (SR-X.22). The row
+        // holds the endpoint, a code and that day's source hash — never an address that was
+        // tried, which is the enumeration answer these endpoints exist to withhold.
+        const failure = isAuthAttemptPath(ctx.path) ? describeFailure(ctx.context.returned) : null;
+        if (failure) {
+          await recordFailedAttempt(db, config, {
+            path: ctx.path,
+            ...failure,
+            headers: ctx.headers,
+          });
+        }
+
         const event =
           ctx.path === '/passkey/verify-registration'
             ? 'passkey_added'
@@ -308,7 +322,7 @@ export function createAuth(db: Database, config: AuthConfig) {
               ? 'passkey_removed'
               : null;
         if (event === null) return;
-        // Only on success: a refused or failed request changed nothing worth reporting.
+        // Only on success: a refused request adds no passkey to tell anyone about.
         if (ctx.context.returned instanceof Error) return;
 
         const session = ctx.context.session ?? (await getSessionFromCtx(ctx));
