@@ -104,9 +104,10 @@ the grants, and the row policy that stops a device being recorded against anothe
 
 ## What this does not do
 
-- **Sessions still store the raw IP address.** Better Auth writes it and uses it for rate
-  limiting. SR-X.24 asks for hashed IPs. Nothing we serve exposes it any more, but it is at
-  rest. Hashing it means replacing Better Auth's IP tracking, which is its own change.
+- ~~**Sessions still store the raw IP address.**~~ Closed by
+  [ADR-028](028-ip-addresses-as-daily-hashes.md): only a same-day hash is stored. It turned
+  out not to need replacing Better Auth's IP tracking — the session-create hook catches the
+  one place it writes one.
 - **Only email.** No Discord DM for notices. The account's email is the one channel every
   account is guaranteed to have.
 - **The first sign-in on a device someone has stolen from the owner is not "new".** The

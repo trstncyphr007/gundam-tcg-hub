@@ -45,7 +45,13 @@ export const sessions = app.table(
       .references(() => users.id, { onDelete: 'cascade' }),
     token: text('token').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    /** Stored for "your active sessions" and anomaly review; IP is truncated by Better Auth. */
+    /**
+     * Where the sign-in came from — as a hash under that day's key, never the address
+     * (SR-X.24, ADR-028). Same network, same day: same value. Nothing more can be read from
+     * it. The name is Better Auth's; the content is ours, set by the session-create hook,
+     * and the check below refuses anything else. (An earlier comment here said Better Auth
+     * truncated the address. It did not; it stored it whole.)
+     */
     ipAddress: text('ip_address'),
     userAgent: text('user_agent'),
     /**
@@ -67,6 +73,12 @@ export const sessions = app.table(
     check(
       'sessions_auth_method_known',
       sql`${t.authMethod} is null or ${t.authMethod} in ('passkey', 'magic_link', 'discord')`,
+    ),
+    // A raw address written by a future bug, a library upgrade or a hand-run script fails
+    // here instead of sitting in the table.
+    check(
+      'sessions_ip_hashed',
+      sql`${t.ipAddress} is null or ${t.ipAddress} ~ '^iph1:[0-9]{4}-[0-9]{2}-[0-9]{2}:[A-Za-z0-9_-]{22}$'`,
     ),
   ],
 );

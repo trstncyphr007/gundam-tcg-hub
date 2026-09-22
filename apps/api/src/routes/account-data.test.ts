@@ -1,4 +1,4 @@
-import { type SecurityNotice, createAuth } from '@gth/auth';
+import { IP_HASH_PATTERN, type SecurityNotice, createAuth } from '@gth/auth';
 import { createDb, seedSample } from '@gth/db';
 import { type TestDatabase, startTestDatabase } from '@gth/db/test';
 import type { FastifyInstance } from 'fastify';
@@ -206,8 +206,10 @@ describe('downloading your data', () => {
     expect(data['apiKeys']).toEqual([
       expect.objectContaining({ name: 'Key mine', prefix: 'pfxmine' }),
     ]);
-    // Their own session history, IP included: it is data about them, held by us.
-    expect(data['sessions']?.[0]).toHaveProperty('ipAddress');
+    // Their own session history, with what we hold about where it came from — which is a
+    // same-day hash, labelled as one, never the address (ADR-028).
+    expect(String(data['sessions']?.[0]?.['ipHash'])).toMatch(IP_HASH_PATTERN);
+    expect(res.body).not.toMatch(/198\.18\.9\.\d+/);
     expect(data['withheld']).toEqual(expect.arrayContaining([expect.stringContaining('buyer')]));
   });
 
