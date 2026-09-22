@@ -1,0 +1,11 @@
+---
+# The nightly jobs, their schedule, and what they are for. Times are UTC and deliberately
+# apart: the rollup reads what the day produced, retention deletes on a clock of its own, and
+# neither should be inside the backup window (03:00).
+jobs_schedule:
+  - name: rollup
+    description: Gundam TCG Hub price rollup
+    hour: '03:30:00'
+  - name: retention
+    description: Gundam TCG Hub data retention
+    hour: '04:30:00'

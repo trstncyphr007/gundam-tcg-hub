@@ -94,6 +94,31 @@ for f in docker-compose.prod.yml Caddyfile secrets.sops.env; do
 done
 [ -x "${GTH_ROOT}/deploy.sh" ] && pass "${GTH_ROOT}/deploy.sh is executable" || fail "${GTH_ROOT}/deploy.sh is missing or not executable"
 
+echo "== scheduled jobs"
+# The retention job deletes personal data on a clock (ADR-035), so "is it scheduled?" is a
+# question worth answering before a deploy rather than after a subject access request.
+if have systemctl && [ -d /run/systemd/system ]; then
+  for unit in gth-rollup.timer gth-retention.timer gth-backup.timer; do
+    if systemctl is-enabled "$unit" >/dev/null 2>&1; then
+      pass "${unit} enabled"
+    else
+      fail "${unit} is not enabled — run the ansible playbook (roles/jobs)"
+    fi
+  done
+else
+  skip 'job timers (no systemd here)'
+fi
+# A failed job that alerts nobody is a job nobody knows stopped.
+if [ -r /etc/gth/ops.env ] && grep -q '^DISCORD_OPS_WEBHOOK_URL=.\+' /etc/gth/ops.env; then
+  pass 'failures have somewhere to go (DISCORD_OPS_WEBHOOK_URL)'
+elif [ -r /etc/gth/restic.env ] && grep -q '^DISCORD_OPS_WEBHOOK_URL=.\+' /etc/gth/restic.env; then
+  pass 'failures have somewhere to go (DISCORD_OPS_WEBHOOK_URL, from restic.env)'
+elif is_root; then
+  fail 'no DISCORD_OPS_WEBHOOK_URL in /etc/gth/ops.env — a failed job or backup would alert nobody'
+else
+  skip 'ops alert configuration (needs root to read /etc/gth)'
+fi
+
 echo "== age key"
 if [ -f "$AGE_KEY_FILE" ]; then
   mode=$(stat -c '%a' "$AGE_KEY_FILE")

@@ -47,5 +47,8 @@
       tags: [audit]
     - role: app
       tags: [app]
+    # Before `backups`, which reports failures through the alert unit this role installs.
+    - role: jobs
+      tags: [jobs]
     - role: backups
       tags: [backups]

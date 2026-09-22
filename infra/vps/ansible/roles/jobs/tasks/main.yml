@@ -1,0 +1,182 @@
+---
+# The nightly jobs, and one place for "something failed" to be heard (plan §20, SR-X.22).
+#
+# Both jobs were documented in docs/runbooks/scheduled-jobs.md as systemd units to write by
+# hand, against a `worker` compose service that did not exist. So neither could run on a real
+# host — including the retention job, whose whole point is deleting personal data on a clock.
+# They are installed here instead, against the `jobs` profile in the production compose file.
+
+- name: Create the credentials directory
+  ansible.builtin.file:
+    path: /etc/gth
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Check for the ops alert configuration
+  ansible.builtin.stat:
+    path: /etc/gth/ops.env
+  register: jobs_ops_env
+
+- name: Warn when nothing will hear a failure
+  # A warning rather than a failure: the timers are still worth installing, and a host with
+  # no webhook yet is a host that is not live yet. But it is worth saying out loud, because
+  # a job that fails silently is indistinguishable from a job that ran.
+  ansible.builtin.debug:
+    msg: >-
+      /etc/gth/ops.env is missing, so a failed job or backup will alert nobody. Create it
+      with DISCORD_OPS_WEBHOOK_URL=... (mode 0400) — see docs/runbooks/scheduled-jobs.md.
+  when: not jobs_ops_env.stat.exists
+
+- name: Install the alert script
+  # One script for every kind of failure, so there is one thing to test and one thing to fix.
+  # It deliberately posts no log output: the point is "go and look", and a journal excerpt is
+  # the easiest way to spill a connection string into a chat room (SR-X.20).
+  ansible.builtin.copy:
+    dest: /usr/local/bin/gth-alert.sh
+    owner: root
+    group: root
+    mode: '0750'
+    content: |
+      #!/usr/bin/env bash
+      # Managed by Ansible (infra/vps/ansible/roles/jobs).
+      # Usage: gth-alert.sh <unit-name>
+      set -euo pipefail
+
+      unit="${1:-unknown}"
+
+      # Exit 0 when unconfigured: an OnFailure handler that itself fails buries the original
+      # failure under a second one in the journal.
+      [ -n "${DISCORD_OPS_WEBHOOK_URL:-}" ] || {
+        echo "no DISCORD_OPS_WEBHOOK_URL; not alerting for ${unit}" >&2
+        exit 0
+      }
+
+      text="⚠️ ${unit} FAILED on $(hostname) at $(date -u +%FT%TZ). Check: journalctl -u ${unit} -n 50"
+      payload=$(printf '%s' "$text" | python3 -c 'import json,sys; print(json.dumps({"content": sys.stdin.read(), "flags": 4}))')
+
+      curl -fsS --max-time 10 -X POST \
+        -H 'content-type: application/json' \
+        -d "$payload" \
+        "$DISCORD_OPS_WEBHOOK_URL" >/dev/null
+
+- name: Install the job runner
+  # Decrypts the secrets itself rather than reusing the deploy's copy in /run: that copy is on
+  # tmpfs and is gone after a reboot, so a job that depended on it would fail every time the
+  # host restarted — at 04:30, silently, for the one job that must not stop.
+  ansible.builtin.copy:
+    dest: /usr/local/bin/gth-job.sh
+    owner: root
+    group: root
+    mode: '0750'
+    content: |
+      #!/usr/bin/env bash
+      # Managed by Ansible (infra/vps/ansible/roles/jobs).
+      # Usage: gth-job.sh <staging|production> <retention|rollup>
+      set -euo pipefail
+
+      environment="${1:?usage: gth-job.sh <staging|production> <retention|rollup>}"
+      job="${2:?}"
+
+      case "$environment" in staging|production) ;; *) echo "unknown environment: $environment" >&2; exit 1 ;; esac
+      case "$job" in retention|rollup) ;; *) echo "unknown job: $job" >&2; exit 1 ;; esac
+
+      root="{{ app_root }}/${environment}"
+      runtime_env="/run/gth/job-${environment}.env"
+
+      # The image to run is the one currently deployed, recorded by deploy.sh. Refusing here
+      # is better than letting compose substitute an empty API_IMAGE and fail obscurely.
+      [ -s "${root}/last-good.env" ] || { echo "no release recorded in ${root}/last-good.env; deploy first" >&2; exit 1; }
+
+      install -d -m 0700 /run/gth
+      cleanup() { rm -f "$runtime_env"; }
+      trap cleanup EXIT
+
+      SOPS_AGE_KEY_FILE=/root/.config/sops/age/keys.txt \
+        sops -d "${root}/secrets.sops.env" > "$runtime_env"
+      grep -E '^(API_IMAGE|WEB_IMAGE)=' "${root}/last-good.env" >> "$runtime_env"
+      chmod 0400 "$runtime_env"
+
+      docker compose -p "gth-${environment}" -f "${root}/docker-compose.prod.yml" \
+        --env-file "$runtime_env" --profile jobs run --rm "$job"
+
+- name: Install the alert unit template
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/gth-alert@.service
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by Ansible (infra/vps/ansible/roles/jobs).
+      # Used as OnFailure=gth-alert@%n.service, so %i is the unit that failed.
+      [Unit]
+      Description=Report a failed %i
+
+      [Service]
+      Type=oneshot
+      # ops.env is the ops webhook; restic.env is read too so an existing host that put the
+      # webhook there keeps working.
+      EnvironmentFile=-/etc/gth/ops.env
+      EnvironmentFile=-/etc/gth/restic.env
+      ExecStart=/usr/local/bin/gth-alert.sh %i
+  notify: Reload systemd
+
+- name: Install the job services
+  ansible.builtin.copy:
+    dest: '/etc/systemd/system/gth-{{ item.name }}.service'
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by Ansible (infra/vps/ansible/roles/jobs).
+      [Unit]
+      Description={{ item.description }}
+      After=docker.service
+      Requires=docker.service
+      OnFailure=gth-alert@%n.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/gth-job.sh production {{ item.name }}
+      Nice=10
+  loop: '{{ jobs_schedule }}'
+  loop_control:
+    label: 'gth-{{ item.name }}.service'
+  notify: Reload systemd
+
+- name: Install the job timers
+  ansible.builtin.copy:
+    dest: '/etc/systemd/system/gth-{{ item.name }}.timer'
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by Ansible (infra/vps/ansible/roles/jobs).
+      [Unit]
+      Description={{ item.description }}
+
+      [Timer]
+      OnCalendar=*-*-* {{ item.hour }} UTC
+      # Catch up after downtime rather than skipping a night in silence. It matters most for
+      # retention: a host that was off at 04:30 must still delete when it comes back.
+      Persistent=true
+      RandomizedDelaySec=120
+
+      [Install]
+      WantedBy=timers.target
+  loop: '{{ jobs_schedule }}'
+  loop_control:
+    label: 'gth-{{ item.name }}.timer'
+  notify: Reload systemd
+
+- name: Enable the job timers
+  ansible.builtin.systemd_service:
+    name: 'gth-{{ item.name }}.timer'
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: '{{ jobs_schedule }}'
+  loop_control:
+    label: 'gth-{{ item.name }}.timer'
+  when: not gth_container_smoke

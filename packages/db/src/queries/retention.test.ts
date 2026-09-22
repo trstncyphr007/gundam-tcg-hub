@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb } from '../client.js';
+import { retentionJob } from '../jobs.js';
 import { type TestDatabase, startTestDatabase } from '../test/harness.js';
 import { runRetention } from './retention.js';
 import { asUser } from './watches.js';
@@ -151,6 +152,21 @@ describe('the nightly retention sweep', () => {
       worker.execute("select app.run_retention(now() - interval '1 second')"),
       /does not exist|function app\.run_retention/i,
     );
+  });
+
+  it('is what the nightly job runs, on the worker role', async () => {
+    // `retentionJob` is the body shared by `pnpm db:retention` and the production image's
+    // `dist/job-retention.js`. Worth asserting here because the command a developer runs and
+    // the command the server runs have to be the same code — they were not, and the server's
+    // did not exist at all until the jobs shipped inside the image.
+    const lines = await retentionJob(worker);
+    expect(lines[0]).toMatch(/^erased \d+ buyer handle\(s\) older than 90 days$/);
+    expect(lines.slice(1)).toEqual([
+      'deleted 0 expired_sessions',
+      'deleted 0 expired_verifications',
+      'deleted 0 stale_devices',
+      'deleted 0 audit_entries',
+    ]);
   });
 
   it('will not delete a device that is still recent, even for the owner', async () => {

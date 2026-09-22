@@ -40,47 +40,63 @@ A run prints a line per category, and all zeroes is a normal night.
 Ingestion runs before the rollup because an observation that arrives afterwards would
 otherwise wait a whole day to count.
 
-## Systemd units (on the VPS)
+## On the VPS: nothing to write by hand
 
-```ini
-# /etc/systemd/system/gth-rollup.service
-[Unit]
-Description=Gundam TCG Hub price rollup
-After=docker.service
+Ansible installs both units and their timers (`infra/vps/ansible/roles/jobs`), so a rebuilt
+host schedules them without anyone remembering to. They run:
 
-[Service]
-Type=oneshot
-WorkingDirectory=/srv/gth/production
-ExecStart=/usr/bin/docker compose run --rm worker pnpm price:rollup
+```
+/usr/local/bin/gth-job.sh production <rollup|retention>
 ```
 
-```ini
-# /etc/systemd/system/gth-retention.service
-[Unit]
-Description=Gundam TCG Hub data retention
-After=docker.service
+which decrypts the secrets itself with sops, takes the currently deployed image digest from
+`last-good.env`, and runs the matching one-off service from the production compose file:
 
-[Service]
-Type=oneshot
-WorkingDirectory=/srv/gth/production
-ExecStart=/usr/bin/docker compose run --rm worker pnpm db:retention
+```
+docker compose --profile jobs run --rm retention
 ```
 
-Each with a matching `.timer` (`OnCalendar=*-*-* 03:30:00` / `04:30:00`, `Persistent=true`).
-`Persistent=true` matters for retention: a host that was down at 04:30 must still run the
-deletion when it comes back, not skip that night.
+Three details that are deliberate:
+
+- **The jobs ship inside the API image** (`dist/job-retention.js`, `dist/job-rollup.js`), so
+  the server runs the code that was built, scanned and signed. They were pnpm scripts until
+  ADR-036, which the production image — distroless, no pnpm, no repository — cannot run at
+  all. The units in the previous version of this runbook referred to a `worker` service that
+  did not exist.
+- **The job decrypts its own secrets** rather than reusing the deploy's copy in `/run`. That
+  copy is on tmpfs and vanishes at reboot, so a job depending on it would fail every time the
+  host restarted, at 04:30, for the job that must not stop.
+- **`Persistent=true`** on both timers: a host that was off at 04:30 must still delete when it
+  comes back, not skip that night.
 
 ## Alerting
 
-Both units should alert on failure the same way the backup timer does
-(`OnFailure=gth-alert@%n.service`, see `docs/runbooks/backups.md`). A silent retention failure
-is the one that costs something.
+Both units carry `OnFailure=gth-alert@%n.service`, and so does the backup timer. That one unit
+posts `⚠️ <unit> FAILED on <host> at <time>` to `DISCORD_OPS_WEBHOOK_URL`, and deliberately
+includes no log output — "go and look" is the message, and a journal excerpt is the easiest
+way to spill a connection string into a chat room (SR-X.20).
+
+Put the webhook in `/etc/gth/ops.env`, root-owned, mode 0400:
+
+```
+DISCORD_OPS_WEBHOOK_URL=https://discord.com/api/webhooks/...
+```
+
+**Until that file exists, a failed job or backup alerts nobody** — the alert unit exits 0
+rather than failing on top of the failure it was reporting. `preflight.sh` checks for it, and
+the playbook warns when it is missing.
 
 ## Checking it worked
 
 ```bash
 systemctl list-timers 'gth-*'
 journalctl -u gth-retention.service --since yesterday
+
+# Run one now, without waiting for the timer:
+sudo systemctl start gth-retention.service
+
+# Prove the alert path works, before you need it — this posts to the ops channel:
+sudo systemctl start gth-alert@manual-test.service
 ```
 
 The retention job prints how many handles it erased, then a line per sweep category. A run

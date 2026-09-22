@@ -26,9 +26,22 @@ AWS_ACCESS_KEY_ID=<write-only key>
 AWS_SECRET_ACCESS_KEY=<secret>
 ENV
 chmod 0400 /etc/gth/restic.env
+
+# Where a failure is reported. Separate file, because it is not a restic credential and the
+# job timers read it too (docs/runbooks/scheduled-jobs.md).
+cat > /etc/gth/ops.env <<'ENV'
+DISCORD_OPS_WEBHOOK_URL=https://discord.com/api/webhooks/...
+ENV
+chmod 0400 /etc/gth/ops.env
+
 set -a; . /etc/gth/restic.env; set +a
 restic init
 ```
+
+**Do not skip `ops.env`.** Until ADR-036 the failure alert read the webhook only from
+`restic.env`, which this template never contained — so a by-the-book install had an alert unit
+that exited 0 every time and told nobody. A backup that fails silently is worse than no
+backup, because it is believed.
 
 **The backup credentials must not be able to delete.** Create a write-only key for the server
 and keep a separate admin key offline for pruning, so ransomware on the VPS cannot wipe the
