@@ -37,3 +37,4 @@ New decisions get their own file.
 | 030 | [The platform makes one outbound request, and CI keeps it that way](030-one-outbound-request.md)                | Accepted                    |
 | 031 | [No inline styles, so the CSP can refuse them](031-no-inline-styles.md)                                         | Accepted                    |
 | 032 | [Provenance for every image, verified where it is used](032-provenance-for-every-image.md)                      | Accepted                    |
+| 033 | [The operations dashboard judges the scanner by its reports](033-operations-dashboard.md)                       | Accepted                    |

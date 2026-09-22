@@ -6,6 +6,7 @@ import {
   decideFlag,
   decideReport,
   getModerationQueue,
+  getOperationsSummary,
   normaliseReason,
   writeAuditLog,
 } from '@gth/db';
@@ -80,6 +81,17 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminDeps): void
 
     const queue = await getModerationQueue(db);
     return reply.header('cache-control', 'no-store').send(queue);
+  });
+
+  // Scanner health, restocks and alert delivery at a glance (FR-1.12). Read-only and
+  // aggregate — no user appears in it — but behind the same four gates: which retailers are
+  // being watched, and how the alerting is failing, is not for the public.
+  app.get('/v1/admin/operations', async (request, reply) => {
+    const actor = guard(request, reply);
+    if (actor === null) return reply;
+
+    const summary = await getOperationsSummary(db);
+    return reply.header('cache-control', 'no-store').send(summary);
   });
 
   app.post(
