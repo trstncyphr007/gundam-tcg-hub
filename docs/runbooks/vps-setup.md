@@ -15,6 +15,8 @@ reviewable, lintable and re-runnable — a second run reports no changes.
 | Production compose stack, Caddy config, hardened images | ✅ built and **verified locally** (`bash scripts/verify-prod-stack.sh`) |
 | Release pipeline (build, scan, SBOM, sign, push)        | ✅ written; runs on merge to `main`                                     |
 | Deploy workflow + server-side deploy script             | ✅ written; **not yet exercised** (needs a server)                      |
+| Preflight check (`infra/vps/preflight.sh`)              | ✅ written; exercised against fake `/srv/gth` trees, not a real host    |
+| Image packages public (ADR-032)                         | ✅ done 2026-09-23; anonymous pull + signature + SBOM verified          |
 | Host hardening playbook                                 | ✅ written; lint + syntax clean, **container-smoked**, not host-tested  |
 | VPS provisioned and hardened                            | ⬜ waiting on the VPS                                                   |
 | Domain, TLS, backups                                    | ⬜ waiting on the domain                                                |
@@ -156,10 +158,17 @@ them deletes personal data on a clock, so it is not optional.
 
 ## 7. First deploy
 
-1. Merge to `main` → the **release** workflow builds, scans, signs and pushes images, and
-   prints the digests in its summary.
-2. Run the **deploy** workflow, pasting those digests, environment `staging` first.
-3. Check the smoke test passed, then repeat with `production`.
+1. Merge to `main` → the **release** workflow builds, scans, signs, attests and pushes
+   images, verifies their provenance, and prints the digests in its summary.
+2. **Preflight, on the server:** `sudo /srv/gth/preflight.sh staging <api-digest> <web-digest>`.
+   Fix every FAIL before going on — each one is a deploy that would fail, or worse, succeed
+   wrongly. (See `deploy.md` → Preflight.)
+3. Run the **deploy** workflow, pasting those digests, environment `staging` first.
+4. Check the smoke test passed. Then preflight `production`, and deploy it.
+
+The smoke test goes through Caddy the way a visitor does — over HTTPS to the domain once
+there is one — and allows a minute for Caddy's first certificate, so a brand-new domain does
+not roll back a good release.
 
 The server verifies the signatures again before anything starts, so an image this repository
 did not build and sign cannot be deployed even by someone with SSH access.

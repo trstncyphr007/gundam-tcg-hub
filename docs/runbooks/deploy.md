@@ -10,26 +10,50 @@ the first real run to surface something; that is what staging is for.
 - `/srv/gth/<env>/` holding `docker-compose.prod.yml`, `Caddyfile` and `secrets.sops.env`
 - `/root/.config/sops/age/keys.txt` present, root-owned, mode `0400`
 - Tailscale up, with SSH reachable only over the tailnet
-- **The server can read the images** — see "Registry access" below. Today it cannot.
+- **The images are public** — see "Registry access" below
+- **`sudo /srv/gth/preflight.sh <env> <api-digest> <web-digest>` reports no FAIL**
 
-## Registry access — decide before the first deploy
+## Registry access — decided: public
 
-The images (`ghcr.io/trstncyphr007/gth-api`, `gth-web`) are **private packages**. Checked
-2026-09-23: an anonymous manifest read returns 403. The deploy _workflow_ now logs in with
-its own short-lived token (ADR-032), but **the server** also pulls the images and verifies
-their signatures, and nothing on it can read a private package. As things stand, step 1
-below would fail on the server.
+**Decision (2026-09-23): both image packages are public.** The repository is already public,
+so the images reveal nothing their source does not, and they hold no secrets — those are
+decrypted on the server at deploy time. The server then pulls and verifies with no registry
+credential at all: nothing to leak, nothing to rotate.
 
-Pick one:
+**Done 2026-09-23.** Both packages are public, and the whole server-side gate was then proven
+from a machine with no GitHub credentials at all: anonymous `docker pull`, `cosign verify`
+against this repository's `release.yml` on `main`, and the CycloneDX SBOM attestation — every
+check `deploy.sh` makes.
 
-- **Make both packages public (recommended).** The repository is already public, so the
-  images reveal nothing their source does not; they hold no secrets (those are decrypted
-  on the server at deploy time). Pulls and signature checks then need no credential, so
-  there is none to leak or rotate. GitHub → your profile → Packages → each package →
-  Package settings → Change visibility → Public.
-- **Keep them private.** Create a fine-grained token with only `read:packages`, store it in
-  `secrets.sops.env` as `GHCR_READ_TOKEN`, and add a `docker login ghcr.io` to `deploy.sh`
-  before the verify step. Add the token to the rotation inventory in `key-rotation.md`.
+If a package is ever made private again, `preflight.sh` reports it as "not publicly readable"
+and a deploy fails at its first pull. (To set visibility: your profile → **Packages** → the
+package → **Package settings** → **Change visibility**.)
+
+(The alternative was a `read:packages` token in SOPS and a `docker login` in `deploy.sh` —
+one more long-lived secret on the box, for no confidentiality gained.)
+
+## Preflight — before every first deploy, and whenever something changed
+
+```bash
+sudo /srv/gth/preflight.sh staging   <api-digest> <web-digest>
+sudo /srv/gth/preflight.sh production <api-digest> <web-digest>
+```
+
+It checks, and changes nothing:
+
+- **Tools and host:** docker and compose, cosign and sops present; SSH keys-only and no
+  root; firewall active; Tailscale up; the clock synchronised (keyless signatures are
+  short-lived certificates); `/run` in memory; disk free for images.
+- **Files:** the compose file, Caddyfile, secrets and `deploy.sh`; the age key present, root's,
+  mode `0400`.
+- **Secrets:** that they decrypt with _this_ host's key; every setting compose requires is
+  set; no placeholder was left in (`<domain>`, `generated-by-env-init`, …); and in
+  production, that passkeys are bound to the real domain (it cannot change later) and the
+  site has a domain for TLS. It names settings, never values, and removes the decrypted copy.
+- **Images:** publicly readable; and with digests, signed by this repository's `release.yml`
+  on `main` — the same check `deploy.sh` makes.
+
+Every line is PASS, FAIL or SKIP; SKIP means a check could not run here, not that it passed.
 
 ## How a deploy happens
 
