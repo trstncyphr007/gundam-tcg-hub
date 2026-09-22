@@ -101,25 +101,65 @@ jobs:
           WEB_DIGEST: ${{ steps.push.outputs.web-digest }}
         run: |
           set -euo pipefail
+          # Keyless signing fetches a GitHub OIDC token, and that fetch has failed transiently
+          # (run 35680553653: "reading ID token: invalid character 'u'") — a release lost to
+          # a hiccup. Three tries with a pause. Signing twice only adds a second signature.
+          retry() {
+            local n
+            for n in 1 2 3; do
+              "$@" && return 0
+              echo "attempt ${n} failed; retrying in $((n * 10))s"
+              sleep $((n * 10))
+            done
+            return 1
+          }
           owner=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
           for pair in "api:${API_DIGEST}" "web:${WEB_DIGEST}"; do
             name="${pair%%:*}"; digest="${pair#*:}"
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "missing digest for ${name}"; exit 1; }
             image="${REGISTRY}/${owner}/gth-${name}@${digest}"
-            cosign sign --yes "$image"
-            cosign attest --yes --type cyclonedx --predicate "reports/sbom-${name}.cdx.json" "$image"
+            retry cosign sign --yes "$image"
+            retry cosign attest --yes --type cyclonedx --predicate "reports/sbom-${name}.cdx.json" "$image"
           done
 
-      # GitHub's own provenance store rejects user-owned private repositories, so this is
-      # skipped until the repo is public (ADR-014). It is a second, GitHub-side record:
-      # the signatures and SBOM attestations above live in the registry and are what the
-      # deploy workflow and the server actually verify.
-      - if: github.event.repository.visibility == 'public'
+      # SLSA build provenance, one per image (ADR-032). GitHub's store rejects user-owned
+      # private repositories, hence the condition (ADR-014); the repo is public, so these run.
+      # Until 2026-09-23 only gth-api was attested — the web image never had provenance.
+      - name: provenance for gth-api
+        if: github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/gth-api
           subject-digest: ${{ steps.push.outputs.api-digest }}
           push-to-registry: true
+
+      - name: provenance for gth-web
+        if: github.event.repository.visibility == 'public'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/gth-web
+          subject-digest: ${{ steps.push.outputs.web-digest }}
+          push-to-registry: true
+
+      # An attestation nobody verifies is a claim, not a control. Check both, here, against
+      # this workflow on main — so a release whose provenance does not verify fails before
+      # anyone can pick its digests for a deploy.
+      - name: verify provenance for both images
+        if: github.event.repository.visibility == 'public'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          API_DIGEST: ${{ steps.push.outputs.api-digest }}
+          WEB_DIGEST: ${{ steps.push.outputs.web-digest }}
+        run: |
+          set -euo pipefail
+          owner=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          for pair in "api:${API_DIGEST}" "web:${WEB_DIGEST}"; do
+            name="${pair%%:*}"; digest="${pair#*:}"
+            gh attestation verify "oci://${REGISTRY}/${owner}/gth-${name}@${digest}" \
+              --owner "$OWNER" \
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml"
+          done
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
