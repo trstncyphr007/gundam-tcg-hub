@@ -110,6 +110,9 @@ rm -rf /tmp/restore
 
 1. New VPS → `docs/runbooks/vps-setup.md` (steps 1–8).
 2. Restore the latest dump into the fresh database before starting the app.
-3. Deploy the last-known-good digests (`/srv/gth/<env>/last-good.env`, also in the deploy
+3. **Re-apply account deletions made since that dump** — see
+   [`restore.md`](restore.md#after-any-restore-re-apply-account-deletions). A backup is older
+   than the promises made since it was taken.
+4. Deploy the last-known-good digests (`/srv/gth/<env>/last-good.env`, also in the deploy
    workflow's history).
-4. Repoint DNS.
+5. Repoint DNS.

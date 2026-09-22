@@ -89,10 +89,14 @@ export const priceObservations = app.table(
       'price_observations_not_both_decisions',
       sql`${t.approvedAt} is null or ${t.rejectedAt} is null`,
     ),
-    // A user report must name its reporter, or there is nobody to weight or to ask.
+    // A user report must name its reporter while it is being judged, or there is nobody to
+    // weight or to ask. Once approved it is part of the public record, and it outlives the
+    // reporter's account anonymously: the foreign key's `set null` is what erases them from
+    // it (ADR-027). Before this, that `set null` contradicted the check, and deleting any
+    // account that had ever reported a price failed outright.
     check(
       'price_observations_reporter_required',
-      sql`${t.source} <> 'user_report' or ${t.reporterId} is not null`,
+      sql`${t.source} <> 'user_report' or ${t.reporterId} is not null or ${t.approvedAt} is not null`,
     ),
   ],
 );

@@ -46,7 +46,10 @@ export interface AuthConfig {
 }
 
 export type SecurityNotice =
-  | { email: string; event: 'passkey_added' | 'passkey_removed' }
+  | {
+      email: string;
+      event: 'passkey_added' | 'passkey_removed' | 'data_exported' | 'account_deleted';
+    }
   | {
       email: string;
       event: 'new_sign_in';

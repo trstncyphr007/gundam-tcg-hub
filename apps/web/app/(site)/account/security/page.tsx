@@ -31,6 +31,11 @@ export default async function SecurityPage(): Promise<React.JSX.Element> {
       </header>
       <PasskeyManager />
       <SessionManager />
+      <p className="text-sm">
+        <Link href="/account/data" className="underline" data-testid="data-link">
+          Download or delete your data →
+        </Link>
+      </p>
     </div>
   );
 }

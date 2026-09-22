@@ -83,6 +83,38 @@ stock history — and a wholesale restore throws it away.
 
 ---
 
+## After any restore: re-apply account deletions
+
+When someone deletes their account, we tell them it is gone (SR-X.25, ADR-027). A backup
+taken before that still has them in it, so **every** restore — full host, scratch copy
+promoted to live, anything — brings deleted people back unless this step is run. Backups
+themselves age out on the retention schedule in `backups.md`; that is what bounds how long a
+deleted account survives _in a backup_, and it is why a restore must not undo the deletion.
+
+Every deletion leaves one row in the audit log, which is append-only and holds no email.
+Before serving traffic, from the **live** database's audit log (or the newest one you have):
+
+```sql
+-- Accounts deleted after the snapshot you restored. :snapshot_time is the dump's timestamp.
+select target_id from app.audit_log
+ where action = 'account.deleted' and at >= :snapshot_time;
+```
+
+and for each id, in the restored database:
+
+```sql
+begin;
+select set_config('app.user_id', '<id>', true);
+select app.delete_account('<id>');   -- no-op if it was never in the snapshot
+commit;
+```
+
+Then record in the incident notes how many were re-applied. If the live audit log is lost
+too, say so there — it is the one case where a deletion cannot be honoured automatically,
+and it is worth knowing it happened.
+
+---
+
 ## Why expand/contract matters
 
 Migrations are written as expand/contract — add nullable, backfill, then constrain — so the

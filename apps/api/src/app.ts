@@ -3,7 +3,7 @@ import cors, { type FastifyCorsOptions } from '@fastify/cors';
 import etag from '@fastify/etag';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
-import type { Auth } from '@gth/auth';
+import type { Auth, SecurityNotice } from '@gth/auth';
 import { ForbiddenError, PasskeyRequiredError, StepUpRequiredError } from '@gth/auth';
 import { type Database, pingDatabase } from '@gth/db';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
@@ -12,6 +12,7 @@ import { ApiKeyError, apiKeyPlugin } from './plugins/api-key.js';
 import { authPlugin } from './plugins/auth.js';
 import { QuotaStore, quotaPlugin } from './plugins/quota.js';
 import { registerAccountRoutes } from './routes/account.js';
+import { registerAccountDataRoutes } from './routes/account-data.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerDeveloperRoutes } from './routes/developer.js';
 import { type BreakDeps, registerBreakRoutes } from './routes/breaks.js';
@@ -49,6 +50,8 @@ export interface AppDeps {
    * all, rather than mounted and quietly unable to decide anything.
    */
   moderationDb?: Database | undefined;
+  /** Security emails sent outside a Better Auth flow: export and deletion (ADR-027). */
+  notify?: ((notice: SecurityNotice) => Promise<void>) | undefined;
 }
 
 /** Never log credentials or session material (SR-X.20). */
@@ -282,6 +285,7 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
   if (deps.writeDb && deps.auth) {
     registerAccountRoutes(app, deps.writeDb);
     registerSessionRoutes(app, deps.writeDb);
+    registerAccountDataRoutes(app, deps.writeDb, deps.notify);
     registerWatchRoutes(app, deps.writeDb);
     registerCollectionRoutes(app, deps.writeDb);
     registerProfileRoutes(app, deps.writeDb);

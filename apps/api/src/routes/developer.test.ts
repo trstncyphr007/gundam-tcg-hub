@@ -140,7 +140,12 @@ describe('self-serve API keys (FR-3.7)', () => {
     const body = list.body;
     // Neither the secret nor anything derived from it comes back a second time.
     expect(body).not.toContain(key);
-    expect(body).not.toContain(key.split('_').at(-1) ?? 'unreachable');
+    // Everything after the prefix, not after the last underscore: the secret is base64url,
+    // which has underscores of its own. Splitting on the last one sometimes left a single
+    // character — which the prefix could contain — and failed this at random.
+    const secret = /^gth_test_[a-z0-9]{8}_(.+)$/.exec(key)?.[1] ?? 'unreachable';
+    expect(secret.length).toBeGreaterThanOrEqual(32);
+    expect(body).not.toContain(secret);
     expect(body).not.toContain('keyHash');
     expect(body).not.toContain('key_hash');
 
