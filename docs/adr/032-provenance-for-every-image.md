@@ -51,6 +51,10 @@ The **server's** access to private images is left as a decision (runbook `deploy
 
 It changes a published asset's visibility, so it isn't mine to flip.
 
+**Decided 2026-09-23: public.** The owner chose the recommended option. `preflight.sh` checks
+that both packages are anonymously readable, so a package that goes private again is caught
+before a deploy rather than during one.
+
 ## Consequences
 
 - ASVS 17.3 is **Met**, with that one open decision recorded against it.
