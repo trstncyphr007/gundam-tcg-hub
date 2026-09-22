@@ -85,6 +85,9 @@ promoted to FAIL after one clean nightly run.
 - ASVS 3.2 is **Met**, and gap 1 is closed.
 - **A genuinely dynamic style value** needs an SVG attribute, a class from a fixed set, or a
   CSSOM write from a ref. The lint message says so.
-- **Next's default 404 and error pages** use inline styles of their own. Under the production
-  CSP they render unstyled but still work. A custom not-found page would fix that, and it's a
-  small follow-up.
+- **Next's default 404 and error pages** use inline styles of their own. Fixed 2026-09-23: the
+  site has its own `not-found`, `error` and `global-error`, and a lowest-priority catch-all
+  sends unmatched URLs into the site layout rather than Next's global 404 (the stable
+  alternative to the experimental `global-not-found`). e2e checks both kinds of 404 for
+  status, layout and clean markup, and that the catch-all never swallows `/v1` or
+  `/api/auth`.
