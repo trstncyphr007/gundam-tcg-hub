@@ -172,6 +172,35 @@ describe('the ops notifier', () => {
       });
     await expect(notifier(503).notify('x')).resolves.toMatchObject({ retryable: true });
     await expect(notifier(404).notify('x')).resolves.toMatchObject({ retryable: false });
+    await expect(notifier(429).notify('x')).resolves.toMatchObject({ retryable: true });
+  });
+
+  it('survives the network being down, and says it is worth trying again', async () => {
+    const notifier = createOpsNotifier({
+      webhookUrl: WEBHOOK,
+      fetchImpl: vi.fn().mockRejectedValue(new Error('network down')),
+    });
+    // An alert that throws takes the watchdog down with it, which would be a fine way to
+    // lose alerting entirely the first time Discord has a bad afternoon.
+    await expect(notifier.notify('x')).resolves.toMatchObject({ ok: false, retryable: true });
+  });
+
+  it('gives up on a webhook that never answers', async () => {
+    const notifier = createOpsNotifier({
+      webhookUrl: WEBHOOK,
+      timeoutMs: 5,
+      fetchImpl: (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => {
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        }),
+    });
+    await expect(notifier.notify('x')).resolves.toMatchObject({
+      ok: false,
+      reason: 'AbortError',
+      retryable: true,
+    });
   });
 });
 
