@@ -48,6 +48,16 @@
     group: root
     mode: '0750'
 
+- name: Install the preflight check
+  # Checks everything a deploy needs and changes nothing. Run by an operator with their own
+  # sudo — deliberately not in the deploy account's NOPASSWD rule, which stays one script.
+  ansible.builtin.copy:
+    src: '{{ repo_root }}/infra/vps/preflight.sh'
+    dest: '{{ app_root }}/preflight.sh'
+    owner: root
+    group: root
+    mode: '0750'
+
 - name: Check for cosign
   ansible.builtin.stat:
     path: /usr/local/bin/cosign

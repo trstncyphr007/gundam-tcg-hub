@@ -76,9 +76,30 @@ log "starting the new release"
 "${COMPOSE[@]}" --env-file "$RUNTIME_ENV" up -d --wait --remove-orphans
 
 log "smoke test"
+# Through Caddy, the way a visitor arrives. With a real domain Caddy answers plain HTTP with
+# a redirect to HTTPS, so the test has to speak HTTPS to that name, resolved to this box —
+# an earlier version sent plain HTTP with a Host header and would have "failed" (308) and
+# rolled back every deploy on a real domain. A bare `:port` address (no domain yet, reached
+# over Tailscale) is plain HTTP on that port.
+site=$(grep -E '^SITE_ADDRESS=' "$RUNTIME_ENV" | cut -d= -f2- | cut -d, -f1 | tr -d ' ')
+if [[ "$site" == :* ]]; then
+  base="http://127.0.0.1${site}"
+  resolve=()
+else
+  base="https://${site}"
+  resolve=(--resolve "${site}:443:127.0.0.1")
+fi
+# Retried for up to a minute: on a new domain Caddy obtains its first certificate only after
+# the containers are healthy, and a smoke test that ran into that gap would roll back a good
+# release.
 for path in / /v1/games; do
-  code=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1${path}" -H "Host: $(grep -E '^SITE_ADDRESS=' "$RUNTIME_ENV" | cut -d= -f2-)")
-  [ "$code" = "200" ] || { log "smoke test failed: ${path} -> ${code}"; false; }
+  code=000
+  for _ in $(seq 1 12); do
+    code=$(curl -sS "${resolve[@]}" -o /dev/null -w '%{http_code}' "${base}${path}" 2>/dev/null || true)
+    [ "$code" = "200" ] && break
+    sleep 5
+  done
+  [ "$code" = "200" ] || { log "smoke test failed: ${base}${path} -> ${code}"; false; }
 done
 
 trap - ERR

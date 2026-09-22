@@ -27,9 +27,12 @@ docker exec "$NAME" bash -c 'apt-get update -qq && apt-get install -y -qq python
 # check is worth keeping, so the harness provides what it needs instead of dropping it.
 docker exec "$NAME" mkdir -p /run/sshd
 
+# The connection plugin by its full name: ansible-core 2.21 no longer resolves the short
+# `docker`. It comes from community.docker, which only this harness needs — install it with
+#   ansible-galaxy collection install community.docker
 cat > /tmp/gth-smoke-inventory.ini <<EOF
 [vps]
-${NAME} ansible_connection=docker ansible_python_interpreter=/usr/bin/python3
+${NAME} ansible_connection=community.docker.docker ansible_python_interpreter=/usr/bin/python3
 EOF
 
 run() {
