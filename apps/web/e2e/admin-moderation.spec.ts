@@ -36,6 +36,47 @@ async function ageAdminSessions(hours: number): Promise<void> {
   }
 }
 
+// Before the console tests on purpose: the last of those re-signs the admin in with the
+// passkey, moving its signature counter past the cached credential's.
+test.describe('operations dashboard (FR-1.12)', () => {
+  test('is behind the same gates as the console', async ({ page }) => {
+    await signIn(page, CREATOR_EMAIL);
+    await page.goto('/admin/operations');
+    await expect(page.getByTestId('admin-forbidden')).toBeVisible();
+    // A non-admin learns nothing about what is on it.
+    await expect(page.getByTestId('scanner-section')).toHaveCount(0);
+
+    await signIn(page, ADMIN_EMAIL);
+    await page.goto('/admin/operations');
+    await expect(page.getByTestId('step-up-required')).toHaveAttribute(
+      'data-reason',
+      'passkey_required',
+    );
+  });
+
+  test('shows scanner health, restocks and alert delivery to a passkey admin', async ({ page }) => {
+    await signInWithPasskeyOnce(page, ADMIN_EMAIL);
+    await page.goto('/admin/operations');
+
+    await expect(page.getByTestId('operations')).toBeVisible();
+    for (const section of ['scanner-section', 'restocks-section', 'deliveries-section']) {
+      await expect(page.getByTestId(section)).toBeVisible();
+    }
+    await expect(page.getByTestId('backlog')).toContainText('waiting');
+
+    // And the two admin pages lead to each other.
+    await page.getByTestId('admin-nav').getByRole('link', { name: 'Moderation' }).click();
+    await page.waitForURL('**/admin/moderation');
+    await expect(page.getByTestId('held-section')).toBeVisible();
+    await page.getByTestId('admin-nav').getByRole('link', { name: 'Operations' }).click();
+    await page.waitForURL('**/admin/operations');
+
+    // Clean under the strict CSP too (ADR-031): no inline style in what the server sent.
+    const html = await (await page.request.get('/admin/operations')).text();
+    expect(html).not.toMatch(/<[a-z][\w-]*\s[^>]*\bstyle="/i);
+  });
+});
+
 test.describe('moderation console', () => {
   test('is closed to an account that is not an admin', async ({ page }) => {
     // Not `signInOnce`: that cache is shared by every spec, and cookies set here belong to

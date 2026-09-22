@@ -137,14 +137,54 @@ export interface HeldObservation {
  * The answers the console can get, kept distinct because each needs a different page: a
  * sign-in link, a flat refusal, a "sign in again" prompt, or the queue itself.
  */
-export type AdminQueueResult =
-  | { kind: 'ok'; reports: PendingReport[]; flagged: HeldObservation[] }
+export type AdminRefusal =
   | { kind: 'signed_out' }
   | { kind: 'forbidden' }
   /** Signed in, but not with a passkey (ADR-025). The fix is a passkey, not another email. */
   | { kind: 'passkey_required' }
   | { kind: 'step_up' }
   | { kind: 'unavailable' };
+
+export type AdminResult<T> = ({ kind: 'ok' } & T) | AdminRefusal;
+
+export type AdminQueueResult = AdminResult<{
+  reports: PendingReport[];
+  flagged: HeldObservation[];
+}>;
+
+/** The operations dashboard's data (FR-1.12). Dates arrive as ISO strings. */
+export interface OperationsSummary {
+  generatedAt: string;
+  retailers: {
+    id: string;
+    name: string;
+    domain: string;
+    enabled: boolean;
+    minIntervalS: number;
+    listings: number;
+    healthy: number;
+    stale: number;
+    neverChecked: number;
+    lastCheckedAt: string | null;
+  }[];
+  staleListings: {
+    retailer: string;
+    product: string;
+    lastCheckedAt: string | null;
+    overdueSeconds: number | null;
+  }[];
+  restocks: {
+    last24h: number;
+    last7d: number;
+    recent: { product: string; retailer: string; detectedAt: string }[];
+  };
+  deliveries: {
+    byChannel: { channel: string; status: string; count: number }[];
+    pending: number;
+    oldestPendingAt: string | null;
+    failures: { reason: string; count: number; lastAt: string }[];
+  };
+}
 
 export interface CreatorProfile {
   id: string;
@@ -367,6 +407,33 @@ export interface ApiKeySummary {
   createdAt: string;
 }
 
+/**
+ * An admin page's data, with the reason for any refusal preserved.
+ *
+ * Not built on `getAuthed`, which collapses every failure to null — for an admin page the
+ * difference between "not an admin" and "sign in with your passkey" is the whole experience.
+ */
+async function adminGet<T extends object>(path: string): Promise<AdminResult<T>> {
+  const cookie = (await headers()).get('cookie');
+  if (!cookie) return { kind: 'signed_out' };
+  try {
+    const response = await fetch(`${INTERNAL_API}${path}`, {
+      headers: { accept: 'application/json', cookie, ...(await forwardedFor()) },
+      cache: 'no-store',
+    });
+    if (response.status === 401) return { kind: 'signed_out' };
+    if (response.status === 403) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (body?.error === 'passkey_required') return { kind: 'passkey_required' };
+      return body?.error === 'step_up_required' ? { kind: 'step_up' } : { kind: 'forbidden' };
+    }
+    if (!response.ok) return { kind: 'unavailable' };
+    return { kind: 'ok', ...((await response.json()) as T) };
+  } catch {
+    return { kind: 'unavailable' };
+  }
+}
+
 export const api = {
   cards: (query: string) =>
     getPublic<Page<Card>>(`/v1/cards?limit=24${query ? `&q=${encodeURIComponent(query)}` : ''}`),
@@ -459,36 +526,12 @@ export const api = {
     }
   },
   myProfile: () => getAuthed<{ profile: CreatorProfile | null }>('/v1/me/profile'),
-  /**
-   * The moderation queue, with the reason for any refusal preserved.
-   *
-   * Not built on `getAuthed`, which collapses every failure to null — here the difference
-   * between "not an admin" and "sign in again" is the whole user experience.
-   */
-  adminQueue: async (): Promise<AdminQueueResult> => {
-    const cookie = (await headers()).get('cookie');
-    if (!cookie) return { kind: 'signed_out' };
-    try {
-      const response = await fetch(`${INTERNAL_API}/v1/admin/moderation`, {
-        headers: { accept: 'application/json', cookie, ...(await forwardedFor()) },
-        cache: 'no-store',
-      });
-      if (response.status === 401) return { kind: 'signed_out' };
-      if (response.status === 403) {
-        const body = (await response.json().catch(() => null)) as { error?: string } | null;
-        if (body?.error === 'passkey_required') return { kind: 'passkey_required' };
-        return body?.error === 'step_up_required' ? { kind: 'step_up' } : { kind: 'forbidden' };
-      }
-      if (!response.ok) return { kind: 'unavailable' };
-      const queue = (await response.json()) as {
-        reports: PendingReport[];
-        flagged: HeldObservation[];
-      };
-      return { kind: 'ok', ...queue };
-    } catch {
-      return { kind: 'unavailable' };
-    }
-  },
+  /** The moderation queue, with the reason for any refusal preserved. */
+  adminQueue: (): Promise<AdminQueueResult> =>
+    adminGet<{ reports: PendingReport[]; flagged: HeldObservation[] }>('/v1/admin/moderation'),
+  /** Scanner health, restocks and alert delivery (FR-1.12). */
+  adminOperations: (): Promise<AdminResult<OperationsSummary>> =>
+    adminGet<OperationsSummary>('/v1/admin/operations'),
   /** The seller's own log. Carries buyer handles, so it is never cached anywhere. */
   liveSales: () => getAuthed<{ items: LiveSale[] }>('/v1/live-sales'),
   breakers: () => getPublic<{ items: BreakerSummary[] }>('/v1/breakers'),

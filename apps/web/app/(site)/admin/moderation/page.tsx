@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import { type HeldObservation, type PendingReport, api } from '@/lib/api';
+import { AdminGate, AdminNav } from '../admin-gate';
 import { DecisionCard } from './decision-card';
 
 export const metadata = {
@@ -73,77 +73,16 @@ function HeldBody({ held }: { held: HeldObservation }): React.JSX.Element {
  */
 export default async function ModerationPage(): Promise<React.JSX.Element> {
   const result = await api.adminQueue();
-
-  if (result.kind === 'signed_out') {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Moderation</h1>
-        <Link href="/sign-in?next=%2Fadmin%2Fmoderation" className="underline">
-          Sign in
-        </Link>
-      </div>
-    );
-  }
-
-  if (result.kind === 'step_up' || result.kind === 'passkey_required') {
-    // Both are fixed the same way — a fresh sign-in with a passkey — but the reason differs,
-    // and the page says which: an admin signed in by email ten minutes ago is not "too old",
-    // they are missing the second factor (ADR-025).
-    return (
-      <div
-        className="max-w-prose space-y-4"
-        data-testid="step-up-required"
-        data-reason={result.kind}
-      >
-        <h1 className="text-2xl font-semibold tracking-tight">Moderation</h1>
-        <p className="text-sm">
-          {result.kind === 'passkey_required'
-            ? 'This page needs a sign-in with your passkey. An emailed link or Discord is not enough here: decisions change what the price index publishes.'
-            : 'You are signed in, but not recently enough for this page. Decisions here change what the price index publishes, so they need a passkey sign-in from within the last twelve hours.'}
-        </p>
-        <div className="flex flex-wrap items-center gap-4">
-          <Link
-            href="/sign-in?reason=step-up&next=%2Fadmin%2Fmoderation"
-            className="inline-block rounded px-4 py-2 text-sm font-medium bg-accent"
-            data-testid="step-up-link"
-          >
-            Sign in with your passkey
-          </Link>
-          <Link href="/account/security" className="text-sm underline" data-testid="enroll-link">
-            No passkey yet? Add one
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (result.kind === 'forbidden') {
-    // The same page whether or not an admin console exists at this path, as far as the
-    // wording goes: it does not describe what an admin would see.
-    return (
-      <div className="space-y-4" data-testid="admin-forbidden">
-        <h1 className="text-2xl font-semibold tracking-tight">Moderation</h1>
-        <p className="text-sm text-muted">This page is for administrators.</p>
-      </div>
-    );
-  }
-
-  if (result.kind === 'unavailable') {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Moderation</h1>
-        <p className="text-sm text-muted">
-          The queue could not be loaded. Nothing has been decided.
-        </p>
-      </div>
-    );
+  if (result.kind !== 'ok') {
+    return <AdminGate title="Moderation" path="/admin/moderation" refusal={result} />;
   }
 
   const { reports, flagged } = result;
 
   return (
     <div className="space-y-10">
-      <header>
+      <header className="space-y-2">
+        <AdminNav current="moderation" />
         <h1 className="text-2xl font-semibold tracking-tight">Moderation</h1>
         <p className="mt-1 max-w-prose text-sm text-muted">
           Every decision needs a reason and is recorded with your name against it. Nothing here

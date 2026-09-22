@@ -441,6 +441,45 @@ describe('deciding a held sale (SR-4.4)', () => {
   });
 });
 
+describe('the operations dashboard (FR-1.12)', () => {
+  const get = (cookie?: string) =>
+    app.inject({
+      method: 'GET',
+      url: '/v1/admin/operations',
+      ...(cookie ? { headers: { cookie } } : {}),
+    });
+
+  it('is behind the same gates as the console', async () => {
+    expect((await get()).statusCode).toBe(401);
+
+    const notAdmin = await get(creator);
+    expect(notAdmin.statusCode).toBe(403);
+    expect(notAdmin.json<{ error: string }>().error).toBe('forbidden');
+
+    await setAuthMethod(adminId, 'magic_link');
+    const emailAdmin = await get(admin);
+    expect(emailAdmin.statusCode).toBe(403);
+    expect(emailAdmin.json<{ error: string }>().error).toBe('passkey_required');
+  });
+
+  it('gives a passkey admin the summary, uncached, naming nobody', async () => {
+    const res = await get(admin);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    const body = res.json<Record<string, unknown>>();
+    expect(Object.keys(body).sort()).toEqual([
+      'deliveries',
+      'generatedAt',
+      'restocks',
+      'retailers',
+      'staleListings',
+    ]);
+    // Aggregates only — and the web pool can read all of it (no row security on these).
+    expect(res.body).not.toMatch(/@example\./);
+    expect(res.body).not.toContain(adminId);
+  });
+});
+
 describe('the web role still decides nothing (migration 0027)', () => {
   it('cannot mark a price as counting, even for an admin’s own user id', async () => {
     const id = await pendingReport();

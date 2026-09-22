@@ -1256,7 +1256,7 @@ _Not legal advice. Get a lawyer's review before Phase 5 launch._
 - [ ] Auth (Discord OAuth and passkeys), sessions, rate limits.
 - [ ] Watches UI and bot commands.
 - [ ] Alert fan-out (webhook, DM, email, push) with idempotency.
-- [ ] Admin scanner health dashboard.
+- [x] Admin scanner health dashboard. (`/admin/operations`, ADR-033, 2026-09-23)
 - [ ] AC-1.1 to AC-1.6 green.
 
 ### M3: Deploy track (staging over Tailscale)
