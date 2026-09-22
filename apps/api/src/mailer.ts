@@ -1,3 +1,4 @@
+import type { SecurityNotice } from '@gth/auth';
 import { createTransport } from 'nodemailer';
 import type { ApiConfig } from './config.js';
 
@@ -41,13 +42,30 @@ export function createMagicLinkSender(
   };
 }
 
-export interface SecurityNoticeArgs {
-  email: string;
-  event: 'passkey_added' | 'passkey_removed';
-}
+export type SecurityNoticeArgs = SecurityNotice;
 
-function noticeText(event: SecurityNoticeArgs['event']): { subject: string; body: string } {
-  return event === 'passkey_added'
+const METHOD_WORDS = new Map<string, string>([
+  ['passkey', 'with a passkey'],
+  ['magic_link', 'with an emailed sign-in link'],
+  ['discord', 'with Discord'],
+]);
+
+export function noticeText(notice: SecurityNoticeArgs): { subject: string; body: string } {
+  if (notice.event === 'new_sign_in') {
+    const how = METHOD_WORDS.get(notice.method ?? '') ?? '';
+    // UTC and spelled out: the reader may be anywhere, and "3:14" alone is ambiguous.
+    const when = `${notice.at.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+    return {
+      subject: 'New sign-in to your account',
+      body:
+        `Your Gundam TCG Hub account was just signed in to from ${notice.device}` +
+        `${how ? ` ${how}` : ''}, at ${when}. It is a device this account has not used before.\n\n` +
+        'If that was you, there is nothing to do.\n\n' +
+        'If it was not, sign in, open Account → Security, and sign that session out. Then ' +
+        'reply to this email.',
+    };
+  }
+  return notice.event === 'passkey_added'
     ? {
         subject: 'A passkey was added to your account',
         body:
@@ -77,12 +95,12 @@ export function createSecurityNoticeSender(
   logger: Logger,
 ): (args: SecurityNoticeArgs) => Promise<void> {
   const transport = config.SMTP_URL ? createTransport(config.SMTP_URL) : null;
-  return async ({ email, event }) => {
-    const { subject, body } = noticeText(event);
+  return async (notice) => {
+    const { subject, body } = noticeText(notice);
     if (!transport) {
-      logger.info({ event }, 'security notice (dev only, no SMTP configured)');
+      logger.info({ event: notice.event }, 'security notice (dev only, no SMTP configured)');
       return;
     }
-    await transport.sendMail({ to: email, from: config.EMAIL_FROM, subject, text: body });
+    await transport.sendMail({ to: notice.email, from: config.EMAIL_FROM, subject, text: body });
   };
 }

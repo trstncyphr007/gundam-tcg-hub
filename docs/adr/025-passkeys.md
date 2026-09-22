@@ -128,7 +128,8 @@ Local development and the passkey e2e suites use `http://localhost:3000`, not th
 - **Ordinary users are not required to have one.** The control is for privileged accounts.
   Sellers in Phase 5 will be held to the same rule when their money-moving routes exist
   (SR-5.4).
-- **Sign-in from a new device doesn't notify anyone yet** (the rest of SR-X.5).
+- ~~**Sign-in from a new device doesn't notify anyone yet**~~ (the rest of SR-X.5). Done in
+  [ADR-026](026-sessions-and-new-device-notices.md).
 
 ## Consequences
 

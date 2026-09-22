@@ -1,9 +1,10 @@
 import { passkey } from '@better-auth/passkey';
-import { type Database, countPasskeys, schema } from '@gth/db';
+import { type Database, countPasskeys, getSelfProfile, recordSignInDevice, schema } from '@gth/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
 import { magicLink } from 'better-auth/plugins/magic-link';
+import { describeDevice } from './devices.js';
 import {
   PasskeyPolicyError,
   assertionFlags,
@@ -35,15 +36,40 @@ export interface AuthConfig {
    */
   passkey: { rpID: string; rpName: string; origin: string };
   /**
-   * Tell someone their sign-in methods changed (SR-X.5). A passkey added by somebody else is a
-   * new way into the account, and the owner hearing about it at once is the only defence that
-   * still works after the fact. Optional so tests can capture it; a failure is swallowed, not
-   * fatal, because the change itself already happened.
+   * Tell someone their account's ways in changed, or were used from somewhere new (SR-X.5).
+   * A passkey added by somebody else, or a sign-in from a device the owner has never used, is
+   * something only the owner can recognise as wrong — and hearing about it at once is the only
+   * defence that still works after the fact. Optional so tests can capture it; a failure is
+   * swallowed, not fatal, because the thing it reports has already happened.
    */
-  sendSecurityNotice?:
-    | ((args: { email: string; event: 'passkey_added' | 'passkey_removed' }) => Promise<void>)
-    | undefined;
+  sendSecurityNotice?: ((notice: SecurityNotice) => Promise<void>) | undefined;
 }
+
+export type SecurityNotice =
+  | { email: string; event: 'passkey_added' | 'passkey_removed' }
+  | {
+      email: string;
+      event: 'new_sign_in';
+      /** Coarse and server-derived ("Chrome on Windows") — never the raw header (ADR-026). */
+      device: string;
+      method: 'passkey' | 'magic_link' | 'discord' | null;
+      at: Date;
+    };
+
+/**
+ * Better Auth's own session-management endpoints, switched off (ADR-026).
+ *
+ * `/list-sessions` returns every session's **token**, gated only by a recent sign-in — which
+ * an inbox alone provides. And the `/revoke-*` endpoints would let any session end a passkey
+ * session, around the rule in `mayRevoke`. The API's `/v1/account/sessions` routes replace
+ * all four, and answer with nothing that could be replayed.
+ */
+const DISABLED_PATHS = new Set([
+  '/list-sessions',
+  '/revoke-session',
+  '/revoke-sessions',
+  '/revoke-other-sessions',
+]);
 
 /** Session lifetimes (SR-1.7): 30-day absolute, refreshed at most once a day. */
 const SESSION_EXPIRES_IN_S = 60 * 60 * 24 * 30;
@@ -86,6 +112,39 @@ function refuse(error: PasskeyPolicyError): APIError {
       ? 'FORBIDDEN'
       : 'BAD_REQUEST';
   return new APIError(status, { code: error.code.toUpperCase(), message: error.message });
+}
+
+function toAuthMethod(value: unknown): Extract<SecurityNotice, { event: 'new_sign_in' }>['method'] {
+  return value === 'passkey' || value === 'magic_link' || value === 'discord' ? value : null;
+}
+
+/**
+ * Email the owner when a session opens on a device the account has never used (SR-X.5,
+ * ADR-026).
+ *
+ * Not on the account's very first device: a new account, or the first sign-in since this
+ * feature existed, has nothing to compare against, and an email saying "you signed in" to
+ * someone who just did would teach them these emails mean nothing.
+ */
+async function noticeIfNewDevice(
+  db: Database,
+  config: AuthConfig,
+  session: { userId: string; userAgent?: string | null | undefined; authMethod?: unknown },
+): Promise<void> {
+  if (!config.sendSecurityNotice) return;
+  const device = describeDevice(session.userAgent);
+  const { isNew, otherDevices } = await recordSignInDevice(db, session.userId, device);
+  if (!isNew || otherDevices === 0) return;
+
+  const user = await getSelfProfile(db, session.userId);
+  if (!user) return;
+  await config.sendSecurityNotice({
+    email: user.email,
+    event: 'new_sign_in',
+    device,
+    method: toAuthMethod(session.authMethod),
+    at: new Date(),
+  });
 }
 
 export function createAuth(db: Database, config: AuthConfig) {
@@ -173,6 +232,8 @@ export function createAuth(db: Database, config: AuthConfig) {
        * flags are inside signed data — so this only ever says "no" earlier, never "yes".
        */
       before: createAuthMiddleware(async (ctx) => {
+        // As if they did not exist — not "forbidden", which would invite finding a way round.
+        if (DISABLED_PATHS.has(ctx.path)) throw new APIError('NOT_FOUND');
         try {
           if (ctx.path === '/passkey/verify-authentication') {
             requireVerifiedUser(
@@ -310,6 +371,8 @@ export function createAuth(db: Database, config: AuthConfig) {
                 targetId: session.userId,
               })
               .catch(() => undefined);
+            // Never allowed to fail the sign-in it is reporting on.
+            await noticeIfNewDevice(db, config, session).catch(() => undefined);
           },
         },
       },

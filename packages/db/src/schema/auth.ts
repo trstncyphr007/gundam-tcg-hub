@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, index, integer, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 import { app } from './catalog.js';
 
 /**
@@ -92,6 +101,33 @@ export const passkeys = app.table(
     uniqueIndex('passkeys_credential_id_key').on(t.credentialID),
     index('passkeys_user_idx').on(t.userId),
     check('passkeys_counter_non_negative', sql`${t.counter} >= 0`),
+  ],
+);
+
+/**
+ * The devices an account has signed in from, coarsely named: "Chrome on Windows" (ADR-026).
+ *
+ * Exists so a sign-in from somewhere new can be told to the owner (SR-X.5). It cannot be
+ * derived from `sessions`, which forgets: signing out deletes the row, so the next sign-in
+ * from the same laptop would look new every time, and a notice that always fires is one
+ * people learn to ignore.
+ *
+ * The name is a label the owner reads, not a fingerprint: no versions, no IP, nothing that
+ * would identify a device across accounts (SR-X.24).
+ */
+export const signInDevices = app.table(
+  'sign_in_devices',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    device: text('device').notNull(),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.device] }),
+    check('sign_in_devices_device_short', sql`length(${t.device}) between 1 and 64`),
   ],
 );
 

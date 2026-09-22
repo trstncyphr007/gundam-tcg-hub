@@ -44,6 +44,7 @@ const authPluginImpl: FastifyPluginAsync<{ auth: Auth }> = async (app, opts) => 
           authenticatedAt: new Date(session.session.createdAt),
           // Written once, server-side, when the session was created (ADR-025).
           authMethod: toAuthMethod((session.session as { authMethod?: unknown }).authMethod),
+          sessionId: session.session.id,
         }
       : null;
   });

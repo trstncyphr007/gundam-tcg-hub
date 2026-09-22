@@ -4,14 +4,20 @@ const MAILPIT = process.env['MAILPIT_URL'] ?? 'http://127.0.0.1:8025';
 
 interface MailpitMessage {
   ID: string;
+  Subject?: string;
 }
 
-/** Pull the newest sign-in link out of Mailpit (the local mail catcher). */
+/**
+ * Pull the newest sign-in link out of Mailpit (the local mail catcher).
+ *
+ * The newest *sign-in* email, not the newest email: a sign-in from a new device now sends a
+ * security notice of its own (ADR-026), and it can land after the link it followed.
+ */
 export async function fetchLatestMagicLink(page: Page): Promise<string> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const list = await page.request.get(`${MAILPIT}/api/v1/messages?limit=1`);
+    const list = await page.request.get(`${MAILPIT}/api/v1/messages?limit=10`);
     const body = (await list.json()) as { messages?: MailpitMessage[] };
-    const id = body.messages?.[0]?.ID;
+    const id = body.messages?.find((m) => m.Subject === 'Your sign-in link')?.ID;
     if (id) {
       const message = await page.request.get(`${MAILPIT}/api/v1/message/${id}`);
       // The decoded `Text` field, not the raw response. Mailpit's JSON escapes an ampersand

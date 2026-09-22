@@ -25,6 +25,26 @@ async function newCollection(page: import('@playwright/test').Page, name: string
   return String(id);
 }
 
+/**
+ * Change a collection's visibility and wait for the server to have it.
+ *
+ * The select saves in the background, so without waiting, a visitor sent in straight after
+ * can arrive before the change does and get a correct 404 for a collection that is — for
+ * another few milliseconds — still private. That race sat here unnoticed until a change
+ * elsewhere shifted the timing.
+ */
+async function setVisibility(
+  page: import('@playwright/test').Page,
+  id: string,
+  visibility: 'private' | 'unlisted' | 'public',
+): Promise<void> {
+  const saved = page.waitForResponse(
+    (r) => r.url().endsWith(`/v1/collections/${id}`) && r.request().method() === 'PATCH',
+  );
+  await page.getByTestId('visibility').selectOption(visibility);
+  expect((await saved).ok()).toBe(true);
+}
+
 test.describe('collections', () => {
   test('adds a card by searching for it, and counts it', async ({ page }) => {
     await signIn(page, `coll-${randomUUID().slice(0, 8)}@example.com`);
@@ -147,7 +167,7 @@ test.describe('collections', () => {
     await page.getByTestId('add-card').click();
     await expect(page.getByTestId('item-table')).toContainText('$42.00');
 
-    await page.getByTestId('visibility').selectOption('unlisted');
+    await setVisibility(page, id, 'unlisted');
 
     const visitor = await context.browser()?.newContext();
     if (!visitor) throw new Error('no browser context');
@@ -164,7 +184,7 @@ test.describe('collections', () => {
     await expect(stranger.getByRole('link', { name })).toHaveCount(0);
 
     // Made public, it is listed.
-    await page.getByTestId('visibility').selectOption('public');
+    await setVisibility(page, id, 'public');
     await stranger.goto('/collections');
     await expect(stranger.getByRole('link', { name })).toBeVisible();
     await visitor.close();
