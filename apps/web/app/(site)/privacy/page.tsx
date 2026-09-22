@@ -113,9 +113,14 @@ export default function PrivacyPage(): React.JSX.Element {
             <strong>Everything else:</strong> until you delete it, or until you delete your account.
           </li>
           <li>
-            <strong>The security log</strong> outlives the account it refers to, holding an internal
-            id and no email. It is not yet pruned automatically; when that is built, entries will be
-            kept for a year.
+            <strong>Sessions and sign-in links that have expired:</strong> deleted the next night,
+            along with the device names — &ldquo;Chrome on Windows&rdquo; — of devices you have not
+            signed in from for a year.
+          </li>
+          <li>
+            <strong>The security log:</strong> a year. It outlives the account it refers to, holding
+            an internal id and no email, and is then deleted nightly. The deletion records itself in
+            the log, so it is visible that it happened.
           </li>
           <li>
             <strong>Backups</strong> are kept on a rolling schedule and age out. A deletion is
