@@ -31,3 +31,4 @@ New decisions get their own file.
 | 024 | [The admin moderation console, and step-up by freshness](024-admin-moderation-console.md)                       | Accepted, gap closed by 025 |
 | 025 | [Passkeys, and what an admin session has to prove](025-passkeys.md)                                             | Accepted                    |
 | 026 | [Seeing and ending your sessions, and hearing about new devices](026-sessions-and-new-device-notices.md)        | Accepted                    |
+| 027 | [Downloading your data, and deleting your account](027-export-and-deletion.md)                                  | Accepted                    |

@@ -1,0 +1,2 @@
+ALTER TABLE "app"."price_observations" DROP CONSTRAINT "price_observations_reporter_required";--> statement-breakpoint
+ALTER TABLE "app"."price_observations" ADD CONSTRAINT "price_observations_reporter_required" CHECK ("app"."price_observations"."source" <> 'user_report' or "app"."price_observations"."reporter_id" is not null or "app"."price_observations"."approved_at" is not null);

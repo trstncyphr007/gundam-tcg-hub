@@ -225,6 +225,20 @@
       "when": 1790033485121,
       "tag": "0031_sign_in_device_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790036220754,
+      "tag": "0032_reporter_after_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790036223577,
+      "tag": "0033_delete_account_function",
+      "breakpoints": true
     }
   ]
 }

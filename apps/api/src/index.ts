@@ -30,6 +30,8 @@ const log = {
   },
 };
 
+const securityNotices = createSecurityNoticeSender(config, log);
+
 const auth = createAuth(write.db, {
   baseURL: config.API_BASE_URL,
   secret: config.BETTER_AUTH_SECRET,
@@ -42,7 +44,7 @@ const auth = createAuth(write.db, {
     rpName: config.WEBAUTHN_RP_NAME,
     origin: config.WEBAUTHN_ORIGIN,
   },
-  sendSecurityNotice: createSecurityNoticeSender(config, log),
+  sendSecurityNotice: securityNotices,
   production: config.NODE_ENV === 'production',
   trustProxyHeaders: config.API_TRUST_PROXY,
   discord:
@@ -58,6 +60,7 @@ const app = await buildApp(config, {
   db: readonly.db,
   writeDb: write.db,
   auth,
+  notify: securityNotices,
   // API keys are verified on the worker role, the only one with SELECT on `key_hash`
   // (migration 0017). Without this the key plugin is not registered at all and every caller
   // is anonymous — noisy, but never silently trusting an unverified key.

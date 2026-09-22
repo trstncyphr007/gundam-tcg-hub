@@ -65,6 +65,27 @@ export function noticeText(notice: SecurityNoticeArgs): { subject: string; body:
         'reply to this email.',
     };
   }
+  if (notice.event === 'data_exported') {
+    return {
+      subject: 'Your data was downloaded',
+      body:
+        'A copy of everything your Gundam TCG Hub account holds was just downloaded.\n\n' +
+        'If that was you, there is nothing to do.\n\n' +
+        'If it was not, someone signed in to your account recently. Sign in, open ' +
+        'Account → Security, sign out every session you do not recognise, and reply to this email.',
+    };
+  }
+  if (notice.event === 'account_deleted') {
+    return {
+      subject: 'Your account has been deleted',
+      body:
+        'Your Gundam TCG Hub account and everything that was only yours — watches, ' +
+        'collections, breaks, sessions, passkeys — has been permanently deleted.\n\n' +
+        'Prices you reported that already count toward the public index stay in it, with ' +
+        'nothing left that connects them to you.\n\n' +
+        'If you did not ask for this, reply to this email.',
+    };
+  }
   return notice.event === 'passkey_added'
     ? {
         subject: 'A passkey was added to your account',
