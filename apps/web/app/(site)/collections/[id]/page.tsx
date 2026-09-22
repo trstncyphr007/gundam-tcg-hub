@@ -36,7 +36,7 @@ export default async function SharedCollectionPage({
       <header className="flex items-start gap-4">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">{collection.name}</h1>
-          <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
+          <p className="mt-1 text-sm text-muted">
             {collection.items.length} line{collection.items.length === 1 ? '' : 's'}
             {collection.visibility === 'unlisted' ? ' · unlisted' : ''}
           </p>
@@ -54,13 +54,11 @@ export default async function SharedCollectionPage({
       <ValuationSummary valuation={valuation} />
 
       {collection.items.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          Nothing in here yet.
-        </p>
+        <p className="text-sm text-muted">Nothing in here yet.</p>
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-xs" style={{ color: 'var(--muted)' }}>
+            <tr className="text-left text-xs text-muted">
               <th className="py-2">Card</th>
               <th className="py-2">Printing</th>
               <th className="py-2">Cond.</th>
@@ -69,14 +67,14 @@ export default async function SharedCollectionPage({
           </thead>
           <tbody>
             {collection.items.map((item) => (
-              <tr key={item.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
+              <tr key={item.id} className="border-t border-line">
                 <td className="py-2">
                   <span className="font-medium">{item.cardName}</span>
-                  <span className="ml-2 text-xs" style={{ color: 'var(--muted)' }}>
+                  <span className="ml-2 text-xs text-muted">
                     {item.setCode} #{item.cardNumber}
                   </span>
                 </td>
-                <td className="py-2 text-xs" style={{ color: 'var(--muted)' }}>
+                <td className="py-2 text-xs text-muted">
                   {item.finish} · {item.language}
                 </td>
                 <td className="py-2">{CONDITION_LABEL[item.condition] ?? item.condition}</td>
@@ -88,7 +86,7 @@ export default async function SharedCollectionPage({
       )}
 
       {isOwner && (
-        <p className="text-xs" style={{ color: 'var(--muted)' }}>
+        <p className="text-xs text-muted">
           This is close to what a visitor sees — except that what you paid, when you bought it and
           your notes are stripped out for anyone but you, so no gain or loss is shown to them
           either.

@@ -55,14 +55,17 @@ function Badge({ fairness }: { fairness: BreakerProfile['fairness'] }): React.JS
         ? 'Pull log does not verify'
         : 'Not verified';
   const colour =
-    badge === 'verified' ? 'var(--accent)' : badge === 'broken' ? '#f87171' : 'var(--muted)';
+    badge === 'verified'
+      ? 'border-accent text-accent'
+      : badge === 'broken'
+        ? 'border-danger text-danger'
+        : 'border-muted text-muted';
 
   return (
     <span
       data-testid="fairness-badge"
       data-badge={badge}
-      className="rounded border px-2 py-1 text-xs font-medium"
-      style={{ borderColor: colour, color: colour }}
+      className={`rounded border px-2 py-1 text-xs font-medium ${colour}`}
     >
       {text}
     </span>
@@ -100,34 +103,29 @@ export default async function BreakerPage({
           <h1 className="text-2xl font-semibold tracking-tight">{profile.displayName}</h1>
           <Badge fairness={fairness} />
         </div>
-        <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
-          @{profile.handle}
-        </p>
+        <p className="mt-1 text-sm text-muted">@{profile.handle}</p>
         {profile.bio !== null && <p className="mt-3 max-w-prose text-sm">{profile.bio}</p>}
       </header>
 
       <section className="flex flex-wrap gap-6 text-sm" data-testid="breaker-totals">
         <p>
-          <span style={{ color: 'var(--muted)' }}>Breaks</span> <strong>{totals.breaks}</strong>
+          <span className="text-muted">Breaks</span> <strong>{totals.breaks}</strong>
         </p>
         <p>
-          <span style={{ color: 'var(--muted)' }}>Pulls logged</span>{' '}
-          <strong>{totals.pulls}</strong>
+          <span className="text-muted">Pulls logged</span> <strong>{totals.pulls}</strong>
         </p>
         <p>
-          <span style={{ color: 'var(--muted)' }}>Packs opened</span>{' '}
-          <strong>{totals.packsOpened}</strong>
+          <span className="text-muted">Packs opened</span> <strong>{totals.packsOpened}</strong>
         </p>
         <p>
-          <span style={{ color: 'var(--muted)' }}>Total pulled value</span>{' '}
+          <span className="text-muted">Total pulled value</span>{' '}
           <strong>{dollars(totals.totalValueCents)}</strong>
         </p>
       </section>
 
       {/* What the badge actually rests on. A badge nobody can interrogate is a logo. */}
       <section
-        className="space-y-2 rounded border p-4 text-sm"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        className="space-y-2 rounded border p-4 text-sm bg-surface border-line"
         data-testid="fairness-detail"
       >
         <h2 className="font-medium">What that badge means</h2>
@@ -149,7 +147,7 @@ export default async function BreakerPage({
             That is not a criticism: it is a feature a creator has to turn on.
           </p>
         )}
-        <p style={{ color: 'var(--muted)' }}>
+        <p className="text-muted">
           {fairness.chainsChecked} of {fairness.endedBreaks} finished break
           {fairness.endedBreaks === 1 ? '' : 's'} had their pull log re-hashed for this page
           {fairness.chainsUnverifiable > 0 &&
@@ -161,7 +159,7 @@ export default async function BreakerPage({
       <section className="space-y-4">
         <div>
           <h2 className="text-lg font-medium">Hit rates against published odds</h2>
-          <p className="mt-1 max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+          <p className="mt-1 max-w-prose text-sm text-muted">
             Compared per product, never pooled, because odds differ between sets. The interval
             widens for the number of rarities checked at once. Most rows will say{' '}
             <em>too few packs</em> for a long time — the packs needed to tell a real rate from luck
@@ -170,7 +168,7 @@ export default async function BreakerPage({
         </div>
 
         {profile.oddsReports.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+          <p className="text-sm text-muted">
             Nothing to compare yet. A break counts here once it has finished and its pack count has
             been recorded
             {totals.breaksWithoutPackCount > 0 &&
@@ -183,13 +181,12 @@ export default async function BreakerPage({
           profile.oddsReports.map((report) => (
             <div
               key={report.sealedProductId}
-              className="space-y-3 rounded border p-4"
-              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+              className="space-y-3 rounded border p-4 bg-surface border-line"
               data-testid="odds-report"
             >
               <div>
                 <h3 className="font-medium">{report.productName}</h3>
-                <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+                <p className="mt-1 text-xs text-muted">
                   {report.packs} packs across {report.breaks} break
                   {report.breaks === 1 ? '' : 's'}
                   {report.unidentifiedPulls > 0 &&
@@ -202,7 +199,7 @@ export default async function BreakerPage({
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr style={{ color: 'var(--muted)' }}>
+                    <tr className="text-muted">
                       <th className="py-1 text-left font-normal">Rarity</th>
                       <th className="py-1 text-right font-normal">Hits</th>
                       <th className="py-1 text-right font-normal">Observed</th>
@@ -214,8 +211,7 @@ export default async function BreakerPage({
                     {report.rarities.map((row) => (
                       <tr
                         key={row.rarity}
-                        className="border-t"
-                        style={{ borderColor: 'var(--border)' }}
+                        className="border-t border-line"
                         data-testid="rarity-row"
                         data-verdict={row.verdict}
                       >
@@ -229,7 +225,7 @@ export default async function BreakerPage({
                         </td>
                         <td className="py-2">
                           <span className="font-medium">{VERDICTS[row.verdict].label}</span>
-                          <span className="block text-xs" style={{ color: 'var(--muted)' }}>
+                          <span className="block text-xs text-muted">
                             {VERDICTS[row.verdict].note}
                           </span>
                         </td>
@@ -240,7 +236,7 @@ export default async function BreakerPage({
               </div>
 
               {report.sources.length > 0 && (
-                <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                <p className="text-xs text-muted">
                   Published odds from{' '}
                   {/* A citation, not a claim. Anyone arguing with the table can check it. */}
                   {[...new Set(report.sources.map((s) => s.sourceUrl))].map((url, index) => (
@@ -266,13 +262,12 @@ export default async function BreakerPage({
             {profile.recentBreaks.map((entry) => (
               <li
                 key={entry.id}
-                className="flex flex-wrap items-baseline gap-3 rounded border px-3 py-2 text-sm"
-                style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+                className="flex flex-wrap items-baseline gap-3 rounded border px-3 py-2 text-sm bg-surface border-line"
               >
                 <Link href={`/breaks/${entry.id}`} className="font-medium underline">
                   {entry.title}
                 </Link>
-                <span style={{ color: 'var(--muted)' }}>
+                <span className="text-muted">
                   {entry.productName ?? 'Sealed product'} · {entry.pulls} pull
                   {entry.pulls === 1 ? '' : 's'}
                   {entry.packsOpened !== null && ` · ${String(entry.packsOpened)} packs`}
@@ -284,7 +279,7 @@ export default async function BreakerPage({
         </section>
       )}
 
-      <p className="text-xs" style={{ color: 'var(--muted)' }}>
+      <p className="text-xs text-muted">
         Values are what the creator recorded at the moment of each pull. How the index behind them
         is built is written up at{' '}
         <Link href="/methodology" className="underline">

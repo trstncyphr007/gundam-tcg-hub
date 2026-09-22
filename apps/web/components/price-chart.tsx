@@ -46,12 +46,9 @@ export function PriceChart({
 }): React.JSX.Element {
   if (points.length === 0) {
     return (
-      <div
-        className="rounded border p-6 text-sm"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-      >
+      <div className="rounded border p-6 text-sm bg-surface border-line">
         <p className="font-medium">Not enough data to publish a price</p>
-        <p className="mt-1" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 text-muted">
           The index needs at least three observations for a day before it will say anything. That is
           not a price of zero — it is us declining to guess.
         </p>
@@ -95,10 +92,7 @@ export function PriceChart({
 
   return (
     <figure className="m-0 space-y-3">
-      <div
-        className="overflow-x-auto rounded border p-2"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-      >
+      <div className="overflow-x-auto rounded border p-2 bg-surface border-line">
         <svg
           viewBox={`0 0 ${String(WIDTH)} ${String(HEIGHT)}`}
           width="100%"
@@ -181,15 +175,14 @@ export function PriceChart({
       <figcaption className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
         {series.map((entry) => (
           <span key={entry.key} className="flex items-center gap-1.5">
-            <span
-              aria-hidden
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ background: entry.colour }}
-            />
+            {/* An SVG fill, not a style: a presentation attribute the CSP does not block. */}
+            <svg aria-hidden width="8" height="8" viewBox="0 0 8 8" className="inline-block">
+              <circle cx="4" cy="4" r="4" fill={entry.colour} />
+            </svg>
             {entry.label}
           </span>
         ))}
-        <span style={{ color: 'var(--muted)' }}>
+        <span className="text-muted">
           Line is the trimmed median; the band is the 25th–75th percentile. A break in the line is a
           day with too little evidence to publish.
         </span>

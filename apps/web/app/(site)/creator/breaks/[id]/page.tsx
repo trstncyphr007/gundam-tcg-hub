@@ -36,7 +36,7 @@ export default async function RunBreakPage({
       <header className="flex items-start gap-4">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">{entry.title}</h1>
-          <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
+          <p className="mt-1 text-sm text-muted">
             {entry.status === 'draft'
               ? 'Not started yet'
               : entry.status === 'live'

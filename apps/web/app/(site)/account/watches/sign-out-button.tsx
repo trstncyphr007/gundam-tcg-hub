@@ -20,8 +20,7 @@ export function SignOutButton() {
           router.push('/sign-in');
         });
       }}
-      className="rounded border px-3 py-1.5 text-sm disabled:opacity-60"
-      style={{ borderColor: 'var(--border)' }}
+      className="rounded border px-3 py-1.5 text-sm disabled:opacity-60 border-line"
     >
       {busy ? 'Signing out…' : 'Sign out'}
     </button>

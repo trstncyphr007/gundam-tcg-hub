@@ -11,13 +11,10 @@ export default async function WatchesPage() {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight">My watches</h1>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          You need to sign in to see your watches.
-        </p>
+        <p className="text-sm text-muted">You need to sign in to see your watches.</p>
         <Link
           href="/sign-in"
-          className="inline-block rounded px-4 py-2 text-sm font-medium"
-          style={{ background: 'var(--accent)' }}
+          className="inline-block rounded px-4 py-2 text-sm font-medium bg-accent"
         >
           Sign in
         </Link>
@@ -32,7 +29,7 @@ export default async function WatchesPage() {
       <header className="flex items-start gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">My watches</h1>
-          <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
+          <p className="mt-1 text-sm text-muted">
             Signed in as {me.displayName ?? me.email}
             {watches ? ` · ${String(watches.items.length)} of ${String(watches.limit)}` : ''}
           </p>
@@ -43,7 +40,7 @@ export default async function WatchesPage() {
       </header>
 
       {!watches || watches.items.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           No watches yet. Pick something from{' '}
           <Link href="/products" className="underline">
             sealed products
@@ -53,17 +50,11 @@ export default async function WatchesPage() {
       ) : (
         <ul className="space-y-3">
           {watches.items.map((watch) => (
-            <li
-              key={watch.id}
-              className="rounded border p-4 text-sm"
-              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-            >
+            <li key={watch.id} className="rounded border p-4 text-sm bg-surface border-line">
               <p className="font-medium">
                 {watch.sealedProductId ? 'Product watch' : 'Listing watch'}
               </p>
-              <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
-                Alerts via {watch.channels.join(', ')}
-              </p>
+              <p className="mt-1 text-xs text-muted">Alerts via {watch.channels.join(', ')}</p>
             </li>
           ))}
         </ul>

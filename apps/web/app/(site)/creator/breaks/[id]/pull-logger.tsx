@@ -270,8 +270,7 @@ export function PullLogger({
           <button
             type="button"
             onClick={() => void changeStatus('live')}
-            className="rounded px-4 py-2 text-sm font-medium"
-            style={{ background: 'var(--accent)' }}
+            className="rounded px-4 py-2 text-sm font-medium bg-accent"
           >
             Start break
           </button>
@@ -280,8 +279,7 @@ export function PullLogger({
           <button
             type="button"
             onClick={() => void changeStatus('ended')}
-            className="rounded border px-4 py-2 text-sm font-medium"
-            style={{ borderColor: 'var(--border)' }}
+            className="rounded border px-4 py-2 text-sm font-medium border-line"
           >
             End break
           </button>
@@ -289,21 +287,15 @@ export function PullLogger({
         <button
           type="button"
           onClick={() => void rotateToken()}
-          className="rounded border px-4 py-2 text-sm"
-          style={{ borderColor: 'var(--border)' }}
+          className="rounded border px-4 py-2 text-sm border-line"
         >
           Regenerate overlay URL
         </button>
-        <span className="text-xs" style={{ color: 'var(--muted)' }}>
-          overlay v{version}
-        </span>
+        <span className="text-xs text-muted">overlay v{version}</span>
       </div>
 
       {rotated && (
-        <div
-          className="space-y-2 rounded border p-4"
-          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-        >
+        <div className="space-y-2 rounded border p-4 bg-surface border-line">
           <p className="text-sm font-medium">New overlay URL — the previous one is now dead</p>
           <input
             readOnly
@@ -313,8 +305,7 @@ export function PullLogger({
             onFocus={(e) => {
               e.currentTarget.select();
             }}
-            className="w-full rounded border px-3 py-2 font-mono text-xs"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+            className="w-full rounded border px-3 py-2 font-mono text-xs bg-page border-line"
           />
         </div>
       )}
@@ -322,13 +313,12 @@ export function PullLogger({
       {status === 'live' && (
         <form
           onSubmit={(e) => void submitPull(e)}
-          className="space-y-3 rounded border p-4"
-          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+          className="space-y-3 rounded border p-4 bg-surface border-line"
         >
           <div className="flex flex-wrap gap-3">
-            <div className="relative flex-1" style={{ minWidth: '16rem' }}>
+            <div className="relative flex-1 min-w-64">
               <label className="block text-sm">
-                <span style={{ color: 'var(--muted)' }}>Card</span>
+                <span className="text-muted">Card</span>
                 <input
                   ref={labelRef}
                   autoFocus
@@ -346,8 +336,7 @@ export function PullLogger({
                   }}
                   placeholder="Start typing — Enter picks the top match"
                   data-testid="pull-label"
-                  className="mt-1 w-full rounded border px-3 py-2"
-                  style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                  className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
                 />
               </label>
 
@@ -355,21 +344,19 @@ export function PullLogger({
                 <ul
                   id="pull-suggestions"
                   data-testid="pull-suggestions"
-                  className="absolute z-10 mt-1 w-full divide-y rounded border"
-                  style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                  className="absolute z-10 mt-1 w-full divide-y rounded border bg-page border-line"
                 >
                   {hits.map((hit, index) => (
                     <li key={hit.id}>
                       <button
                         type="button"
                         onClick={() => void choose(hit)}
-                        className="flex w-full gap-3 px-3 py-2 text-left text-sm"
-                        style={{
-                          background: index === highlighted ? 'var(--surface)' : 'transparent',
-                        }}
+                        className={`flex w-full gap-3 px-3 py-2 text-left text-sm ${
+                          index === highlighted ? 'bg-surface' : 'bg-transparent'
+                        }`}
                       >
                         <span className="min-w-0 flex-1">{hit.name}</span>
-                        <span style={{ color: 'var(--muted)' }}>#{hit.number}</span>
+                        <span className="text-muted">#{hit.number}</span>
                       </button>
                     </li>
                   ))}
@@ -377,8 +364,8 @@ export function PullLogger({
               )}
             </div>
 
-            <label className="text-sm" style={{ width: '10rem' }}>
-              <span style={{ color: 'var(--muted)' }}>Value (USD)</span>
+            <label className="text-sm w-40">
+              <span className="text-muted">Value (USD)</span>
               <input
                 inputMode="decimal"
                 value={value}
@@ -387,16 +374,14 @@ export function PullLogger({
                 }}
                 placeholder={candidate?.indexCents != null ? dollars(candidate.indexCents) : '0.00'}
                 data-testid="pull-value"
-                className="mt-1 w-full rounded border px-3 py-2"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
               />
             </label>
 
             <button
               type="submit"
               data-testid="log-pull"
-              className="self-end rounded px-4 py-2 text-sm font-medium"
-              style={{ background: 'var(--accent)' }}
+              className="self-end rounded px-4 py-2 text-sm font-medium bg-accent"
             >
               Log pull
             </button>
@@ -404,28 +389,20 @@ export function PullLogger({
 
           {candidate && (
             <p className="flex flex-wrap items-center gap-2 text-xs" data-testid="pull-candidate">
-              <span
-                className="rounded px-2 py-0.5"
-                style={{ background: 'var(--bg)', color: 'var(--accent)' }}
-              >
+              <span className="rounded px-2 py-0.5 bg-page text-accent">
                 {candidate.cardName}
                 {candidate.finish === 'normal' ? '' : ` (${candidate.finish.replace('_', ' ')})`}
               </span>
               {candidate.indexCents === null ? (
-                <span style={{ color: 'var(--muted)' }}>
+                <span className="text-muted">
                   No recent index price — type a value or it logs at $0.00.
                 </span>
               ) : (
-                <span style={{ color: 'var(--muted)' }} data-testid="index-value">
+                <span className="text-muted" data-testid="index-value">
                   Index says {dollars(candidate.indexCents)}. Leave the value blank to use it.
                 </span>
               )}
-              <button
-                type="button"
-                onClick={clearCandidate}
-                className="underline"
-                style={{ color: 'var(--muted)' }}
-              >
+              <button type="button" onClick={clearCandidate} className="underline text-muted">
                 clear
               </button>
             </p>
@@ -434,24 +411,24 @@ export function PullLogger({
       )}
 
       {error && (
-        <p role="alert" className="text-sm" style={{ color: 'var(--danger, #f87171)' }}>
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
 
       <div className="flex gap-6 text-sm">
         <p>
-          <span style={{ color: 'var(--muted)' }}>Pulled</span>{' '}
+          <span className="text-muted">Pulled</span>{' '}
           <strong data-testid="pull-count">{pulls.length}</strong>
         </p>
         <p>
-          <span style={{ color: 'var(--muted)' }}>Value</span>{' '}
+          <span className="text-muted">Value</span>{' '}
           <strong data-testid="running-total">{dollars(total)}</strong>
         </p>
         {costCents !== null && (
           <p>
-            <span style={{ color: 'var(--muted)' }}>vs cost</span>{' '}
-            <strong style={{ color: total >= costCents ? 'var(--accent)' : undefined }}>
+            <span className="text-muted">vs cost</span>{' '}
+            <strong className={total >= costCents ? 'text-accent' : undefined}>
               {total >= costCents ? '+' : ''}
               {dollars(total - costCents)}
             </strong>
@@ -464,19 +441,14 @@ export function PullLogger({
           {[...pulls].reverse().map((pull) => (
             <li
               key={pull.seq}
-              className="flex gap-3 rounded border px-3 py-2 text-sm"
-              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+              className="flex gap-3 rounded border px-3 py-2 text-sm bg-surface border-line"
             >
-              <span style={{ color: 'var(--muted)' }}>#{pull.seq}</span>
+              <span className="text-muted">#{pull.seq}</span>
               <span className="min-w-0 flex-1">{pull.label}</span>
               {/* Marked, because a figure from the index is a different claim from one the
                   creator typed — and only the typed ones feed the index back. */}
               {pull.valueSource === 'index' && (
-                <span
-                  className="text-xs"
-                  style={{ color: 'var(--muted)' }}
-                  title="From the price index"
-                >
+                <span className="text-xs text-muted" title="From the price index">
                   index
                 </span>
               )}

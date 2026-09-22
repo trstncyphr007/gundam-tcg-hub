@@ -108,13 +108,12 @@ export function PasskeyManager(): React.JSX.Element {
 
   return (
     <section
-      className="space-y-4 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      className="space-y-4 rounded border p-4 bg-surface border-line"
       data-testid="passkey-manager"
     >
       <div>
         <h2 className="font-medium">Passkeys</h2>
-        <p className="mt-1 max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 max-w-prose text-sm text-muted">
           A passkey signs you in with your device&rsquo;s own lock — fingerprint, face or PIN —
           instead of an emailed link. Administrators need one: the moderation console only opens for
           a session started with a passkey.
@@ -122,11 +121,9 @@ export function PasskeyManager(): React.JSX.Element {
       </div>
 
       {passkeys === null ? (
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          Loading…
-        </p>
+        <p className="text-sm text-muted">Loading…</p>
       ) : passkeys.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--muted)' }} data-testid="no-passkeys">
+        <p className="text-sm text-muted" data-testid="no-passkeys">
           You have no passkeys yet.
         </p>
       ) : (
@@ -134,12 +131,11 @@ export function PasskeyManager(): React.JSX.Element {
           {passkeys.map((key) => (
             <li
               key={key.id}
-              className="flex flex-wrap items-center gap-3 rounded border px-3 py-2 text-sm"
-              style={{ borderColor: 'var(--border)' }}
+              className="flex flex-wrap items-center gap-3 rounded border px-3 py-2 text-sm border-line"
               data-testid="passkey-row"
             >
               <span className="min-w-0 flex-1 font-medium">{key.name ?? 'Passkey'}</span>
-              <span style={{ color: 'var(--muted)' }}>
+              <span className="text-muted">
                 {key.backedUp ? 'synced' : 'this device only'}
                 {key.createdAt ? ` · added ${new Date(key.createdAt).toLocaleDateString()}` : ''}
               </span>
@@ -148,8 +144,7 @@ export function PasskeyManager(): React.JSX.Element {
                 disabled={busy}
                 onClick={() => void remove(key.id)}
                 data-testid="remove-passkey"
-                className="underline disabled:opacity-50"
-                style={{ color: 'var(--muted)' }}
+                className="underline disabled:opacity-50 text-muted"
               >
                 remove
               </button>
@@ -159,8 +154,8 @@ export function PasskeyManager(): React.JSX.Element {
       )}
 
       <form onSubmit={(e) => void add(e)} className="flex flex-wrap items-end gap-3">
-        <label className="flex-1 text-sm" style={{ minWidth: '14rem' }}>
-          <span style={{ color: 'var(--muted)' }}>Name it</span>
+        <label className="flex-1 text-sm min-w-56">
+          <span className="text-muted">Name it</span>
           <input
             value={name}
             maxLength={60}
@@ -169,16 +164,14 @@ export function PasskeyManager(): React.JSX.Element {
             }}
             placeholder="e.g. MacBook Touch ID"
             data-testid="passkey-name"
-            className="mt-1 w-full rounded border px-3 py-2"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+            className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
           />
         </label>
         <button
           type="submit"
           disabled={busy}
           data-testid="add-passkey"
-          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-          style={{ background: 'var(--accent)' }}
+          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
         >
           Add a passkey
         </button>
@@ -192,12 +185,7 @@ export function PasskeyManager(): React.JSX.Element {
       )}
 
       {problem && (
-        <p
-          role="alert"
-          className="text-sm"
-          style={{ color: '#f87171' }}
-          data-testid="passkey-problem"
-        >
+        <p role="alert" className="text-sm text-danger" data-testid="passkey-problem">
           {problem.message}{' '}
           {problem.reauth && (
             <a

@@ -18,49 +18,39 @@ export function ValuationSummary({
   valuation: CollectionValuation | null;
 }): React.JSX.Element {
   if (!valuation) {
-    return (
-      <p className="text-sm" style={{ color: 'var(--muted)' }}>
-        Could not work out a value right now.
-      </p>
-    );
+    return <p className="text-sm text-muted">Could not work out a value right now.</p>;
   }
 
   const { currency } = valuation;
   const hasGain = valuation.costBasisCents > 0;
 
   return (
-    <div
-      className="space-y-4 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-    >
+    <div className="space-y-4 rounded border p-4 bg-surface border-line">
       <div className="flex flex-wrap gap-x-10 gap-y-4">
         <div>
-          <p className="text-xs" style={{ color: 'var(--muted)' }}>
-            Index value
-          </p>
+          <p className="text-xs text-muted">Index value</p>
           <p className="text-2xl font-semibold tracking-tight" data-testid="collection-value">
             {dollars(valuation.currentValueCents, currency)}
           </p>
-          <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+          <p className="mt-1 text-xs text-muted">
             {valuation.valuedCards} of {valuation.cards} card
             {valuation.cards === 1 ? '' : 's'} priced
           </p>
         </div>
 
         <div>
-          <p className="text-xs" style={{ color: 'var(--muted)' }}>
-            Gain / loss
-          </p>
+          <p className="text-xs text-muted">Gain / loss</p>
           {hasGain ? (
             <>
               <p
-                className="text-2xl font-semibold tracking-tight"
+                className={`text-2xl font-semibold tracking-tight ${
+                  valuation.gainLossCents >= 0 ? 'text-accent' : ''
+                }`}
                 data-testid="collection-gain"
-                style={{ color: valuation.gainLossCents >= 0 ? 'var(--accent)' : undefined }}
               >
                 {signedDollars(valuation.gainLossCents, currency)}
               </p>
-              <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+              <p className="mt-1 text-xs text-muted">
                 {dollars(valuation.comparableValueCents, currency)} against{' '}
                 {dollars(valuation.costBasisCents, currency)} paid
               </p>
@@ -70,27 +60,19 @@ export function ValuationSummary({
               <p className="text-2xl font-semibold tracking-tight" data-testid="collection-gain">
                 —
               </p>
-              <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
-                Record what you paid to see this
-              </p>
+              <p className="mt-1 text-xs text-muted">Record what you paid to see this</p>
             </>
           )}
         </div>
 
         <div>
-          <p className="text-xs" style={{ color: 'var(--muted)' }}>
-            Lines
-          </p>
+          <p className="text-xs text-muted">Lines</p>
           <p className="text-2xl font-semibold tracking-tight">{valuation.lines}</p>
         </div>
       </div>
 
       {(valuation.unpricedCards > 0 || valuation.otherCurrencyLines > 0) && (
-        <ul
-          className="space-y-1 text-xs"
-          style={{ color: 'var(--muted)' }}
-          data-testid="not-valued"
-        >
+        <ul className="space-y-1 text-xs text-muted" data-testid="not-valued">
           {valuation.unpricedCards > 0 && (
             <li>
               <strong>{valuation.unpricedCards}</strong> card
@@ -110,7 +92,7 @@ export function ValuationSummary({
       )}
 
       {valuation.oldestPriceDay !== null && (
-        <p className="text-xs" style={{ color: 'var(--muted)' }}>
+        <p className="text-xs text-muted">
           Oldest price used: {valuation.oldestPriceDay}. Prices over 30 days old are ignored.
         </p>
       )}

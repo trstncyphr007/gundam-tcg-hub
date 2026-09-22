@@ -22,7 +22,7 @@ export function WatchButton({ productId, signedIn, existingWatchId }: Props) {
 
   if (!signedIn) {
     return (
-      <a href="/sign-in" className="text-sm hover:underline" style={{ color: 'var(--muted)' }}>
+      <a href="/sign-in" className="text-sm hover:underline text-muted">
         Sign in to watch
       </a>
     );
@@ -66,16 +66,14 @@ export function WatchButton({ productId, signedIn, existingWatchId }: Props) {
         onClick={() => void toggle()}
         disabled={busy || pending}
         aria-pressed={watching}
-        className="rounded border px-3 py-1.5 text-sm disabled:opacity-60"
-        style={{
-          borderColor: watching ? 'var(--accent)' : 'var(--border)',
-          color: watching ? 'var(--accent)' : 'inherit',
-        }}
+        className={`rounded border px-3 py-1.5 text-sm disabled:opacity-60 ${
+          watching ? 'border-accent text-accent' : 'border-line'
+        }`}
       >
         {busy || pending ? '…' : watching ? 'Watching' : 'Watch'}
       </button>
       {error && (
-        <p className="mt-1 text-xs" role="alert" style={{ color: 'var(--accent)' }}>
+        <p className="mt-1 text-xs text-accent" role="alert">
           {error}
         </p>
       )}

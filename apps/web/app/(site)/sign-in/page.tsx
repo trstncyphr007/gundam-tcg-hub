@@ -16,14 +16,13 @@ export default async function SignInPage({
     <div className="mx-auto max-w-md space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="text-sm text-muted">
           No passwords. Use Discord, or we email you a one-time link.
         </p>
       </header>
       {reason === 'step-up' && (
         <p
-          className="rounded border p-3 text-sm"
-          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+          className="rounded border p-3 text-sm bg-surface border-line"
           data-testid="step-up-notice"
         >
           That page needs a recent sign-in. You are still signed in — this just confirms it is you,

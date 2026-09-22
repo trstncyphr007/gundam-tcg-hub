@@ -24,7 +24,7 @@ export default async function DataPage(): Promise<React.JSX.Element> {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Your data</h1>
-        <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 text-sm text-muted">
           Take a copy of everything this account holds, or delete it.
         </p>
       </header>

@@ -23,7 +23,7 @@ export default async function LiveSalesPage(): Promise<React.JSX.Element> {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight">Live sales</h1>
-        <p className="max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="max-w-prose text-sm text-muted">
           Logging live sales is for seller accounts. It is a role an admin grants.
         </p>
       </div>
@@ -34,7 +34,7 @@ export default async function LiveSalesPage(): Promise<React.JSX.Element> {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Live sales</h1>
-        <p className="mt-1 max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 max-w-prose text-sm text-muted">
           Log each single as it sells. These are the prices nobody else records — a card sold on a
           stream leaves no listing and no sold-price page — so they carry as much weight in the
           index as our own break pulls.
@@ -48,10 +48,8 @@ export default async function LiveSalesPage(): Promise<React.JSX.Element> {
         }))}
       />
 
-      <section className="max-w-prose space-y-2 text-sm" style={{ color: 'var(--muted)' }}>
-        <h2 className="font-medium" style={{ color: 'var(--fg)' }}>
-          What happens to an entry
-        </h2>
+      <section className="max-w-prose space-y-2 text-sm text-muted">
+        <h2 className="font-medium text-fg">What happens to an entry</h2>
         <p>
           It is recorded immediately and counts towards the published price a little later, once it
           has been checked against the current spread for that card. One that sits far outside is{' '}

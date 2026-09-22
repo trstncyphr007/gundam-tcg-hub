@@ -89,12 +89,9 @@ export function KeyManager({
   return (
     <div className="space-y-6">
       {fresh && (
-        <div
-          className="space-y-3 rounded border p-4"
-          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-        >
+        <div className="space-y-3 rounded border p-4 bg-surface border-line">
           <h2 className="font-medium">Copy “{fresh.name}” now — it is shown once</h2>
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+          <p className="text-sm text-muted">
             We store a hash, not the key, so we cannot show it again or recover it for you. If it
             leaks, revoke it here and make another.
           </p>
@@ -106,8 +103,7 @@ export function KeyManager({
             onFocus={(e) => {
               e.currentTarget.select();
             }}
-            className="w-full rounded border px-3 py-2 font-mono text-xs"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+            className="w-full rounded border px-3 py-2 font-mono text-xs bg-page border-line"
           />
           <button
             type="button"
@@ -115,8 +111,7 @@ export function KeyManager({
               setFresh(null);
             }}
             data-testid="dismiss-key"
-            className="rounded px-3 py-1.5 text-sm font-medium"
-            style={{ background: 'var(--accent)' }}
+            className="rounded px-3 py-1.5 text-sm font-medium bg-accent"
           >
             I&rsquo;ve saved it
           </button>
@@ -125,12 +120,11 @@ export function KeyManager({
 
       <form
         onSubmit={(e) => void create(e)}
-        className="space-y-3 rounded border p-4"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        className="space-y-3 rounded border p-4 bg-surface border-line"
       >
         <h2 className="font-medium">New key</h2>
         <label className="block text-sm">
-          <span style={{ color: 'var(--muted)' }}>What is it for?</span>
+          <span className="text-muted">What is it for?</span>
           <input
             required
             maxLength={60}
@@ -140,14 +134,11 @@ export function KeyManager({
             }}
             placeholder="Deck price widget"
             data-testid="key-name"
-            className="mt-1 w-full rounded border px-3 py-2"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+            className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
           />
         </label>
         <fieldset className="flex flex-wrap gap-4 text-sm">
-          <legend className="text-xs" style={{ color: 'var(--muted)' }}>
-            Permissions
-          </legend>
+          <legend className="text-xs text-muted">Permissions</legend>
           {scopes.map((scope) => (
             <label key={scope} className="flex items-center gap-2">
               <input
@@ -165,11 +156,9 @@ export function KeyManager({
             </label>
           ))}
         </fieldset>
-        <p className="text-xs" style={{ color: 'var(--muted)' }}>
-          Keys are read-only. There is nothing a key can change.
-        </p>
+        <p className="text-xs text-muted">Keys are read-only. There is nothing a key can change.</p>
         {error && (
-          <p role="alert" className="text-sm" style={{ color: 'var(--danger, #f87171)' }}>
+          <p role="alert" className="text-sm text-danger">
             {error}
           </p>
         )}
@@ -177,21 +166,18 @@ export function KeyManager({
           type="submit"
           disabled={busy || name.trim().length === 0 || active.length >= limit}
           data-testid="create-key"
-          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-          style={{ background: 'var(--accent)' }}
+          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
         >
           {busy ? 'Creating…' : 'Create key'}
         </button>
       </form>
 
       {keys.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          No keys yet. You can use the API without one.
-        </p>
+        <p className="text-sm text-muted">No keys yet. You can use the API without one.</p>
       ) : (
         <table className="w-full text-sm" data-testid="key-table">
           <thead>
-            <tr className="text-left text-xs" style={{ color: 'var(--muted)' }}>
+            <tr className="text-left text-xs text-muted">
               <th className="py-2">Name</th>
               <th className="py-2">Key</th>
               <th className="py-2">Permissions</th>
@@ -201,33 +187,26 @@ export function KeyManager({
           </thead>
           <tbody>
             {keys.map((key) => (
-              <tr key={key.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
+              <tr key={key.id} className="border-t border-line">
                 <td className="py-2">
                   <span className={key.revokedAt === null ? 'font-medium' : ''}>{key.name}</span>
                   {key.revokedAt !== null && (
-                    <span className="ml-2 text-xs" style={{ color: 'var(--muted)' }}>
-                      revoked {when(key.revokedAt)}
-                    </span>
+                    <span className="ml-2 text-xs text-muted">revoked {when(key.revokedAt)}</span>
                   )}
                 </td>
-                <td className="py-2 font-mono text-xs" style={{ color: 'var(--muted)' }}>
+                <td className="py-2 font-mono text-xs text-muted">
                   {/* The public half only — enough to tell two keys apart, useless on its own. */}
                   gth_…_{key.prefix}_…
                 </td>
-                <td className="py-2 text-xs" style={{ color: 'var(--muted)' }}>
-                  {key.scopes.join(', ')}
-                </td>
-                <td className="py-2 text-xs" style={{ color: 'var(--muted)' }}>
-                  {when(key.lastUsedAt)}
-                </td>
+                <td className="py-2 text-xs text-muted">{key.scopes.join(', ')}</td>
+                <td className="py-2 text-xs text-muted">{when(key.lastUsedAt)}</td>
                 <td className="py-2 text-right">
                   {key.revokedAt === null && (
                     <button
                       type="button"
                       onClick={() => void revoke(key)}
                       data-testid="revoke-key"
-                      className="text-xs underline"
-                      style={{ color: 'var(--muted)' }}
+                      className="text-xs underline text-muted"
                     >
                       revoke
                     </button>

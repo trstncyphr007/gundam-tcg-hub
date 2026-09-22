@@ -131,13 +131,12 @@ export function VodPanel({
 
   return (
     <section
-      className="space-y-4 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      className="space-y-4 rounded border p-4 bg-surface border-line"
       data-testid="vod-panel"
     >
       <div>
         <h2 className="font-medium">VOD timestamps</h2>
-        <p className="mt-1 max-w-prose text-xs" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 max-w-prose text-xs text-muted">
           Paste the VOD once, then mark where each pull happens. Viewers get a link straight to the
           moment. These are not covered by the pull log&rsquo;s hashes — the log is proven, a
           timestamp is you telling people where to look.
@@ -145,8 +144,8 @@ export function VodPanel({
       </div>
 
       <form onSubmit={(e) => void saveVod(e)} className="flex flex-wrap items-end gap-3">
-        <label className="flex-1 text-sm" style={{ minWidth: '16rem' }}>
-          <span style={{ color: 'var(--muted)' }}>VOD link</span>
+        <label className="flex-1 text-sm min-w-64">
+          <span className="text-muted">VOD link</span>
           <input
             type="url"
             value={vodUrl}
@@ -156,27 +155,25 @@ export function VodPanel({
             }}
             placeholder="https://..."
             data-testid="vod-url"
-            className="mt-1 w-full rounded border px-3 py-2"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+            className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
           />
         </label>
         <button
           type="submit"
           disabled={busy}
           data-testid="save-vod"
-          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-          style={{ background: 'var(--accent)' }}
+          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
         >
           Save link
         </button>
       </form>
 
       {savedVodUrl === null ? (
-        <p className="text-xs" style={{ color: 'var(--muted)' }}>
+        <p className="text-xs text-muted">
           Add a link and the timestamps below become clickable for viewers.
         </p>
       ) : (
-        <p className="text-xs" style={{ color: 'var(--muted)' }} data-testid="vod-progress">
+        <p className="text-xs text-muted" data-testid="vod-progress">
           {timestamped} of {pulls.length} pull{pulls.length === 1 ? '' : 's'} timestamped.
         </p>
       )}
@@ -189,7 +186,7 @@ export function VodPanel({
               className="flex flex-wrap items-center gap-3 text-sm"
               data-testid="vod-pull-row"
             >
-              <span style={{ color: 'var(--muted)', width: '2.5rem' }}>#{pull.seq}</span>
+              <span className="text-muted w-10">#{pull.seq}</span>
               <span className="min-w-0 flex-1">{pull.label}</span>
               <input
                 value={drafts[pull.id] ?? ''}
@@ -207,8 +204,7 @@ export function VodPanel({
                 placeholder="1:02:03"
                 aria-label={`Timestamp for pull ${String(pull.seq)}`}
                 data-testid={`vod-offset-${String(pull.seq)}`}
-                className="w-24 rounded border px-2 py-1 text-right"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                className="w-24 rounded border px-2 py-1 text-right bg-page border-line"
               />
             </li>
           ))}
@@ -216,7 +212,7 @@ export function VodPanel({
       )}
 
       {error && (
-        <p role="alert" data-testid="vod-error" className="text-sm" style={{ color: '#f87171' }}>
+        <p role="alert" data-testid="vod-error" className="text-sm text-danger">
           {error}
         </p>
       )}

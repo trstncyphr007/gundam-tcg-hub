@@ -33,7 +33,7 @@ export default async function ManageCollectionPage({
       <header className="flex items-start gap-4">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">{collection.name}</h1>
-          <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
+          <p className="mt-1 text-sm text-muted">
             <Link href="/account/collections" className="underline">
               All collections
             </Link>

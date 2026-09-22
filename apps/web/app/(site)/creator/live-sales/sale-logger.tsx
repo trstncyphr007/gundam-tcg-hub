@@ -187,14 +187,13 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
     <div className="space-y-6">
       <form
         onSubmit={(e) => void submit(e)}
-        className="space-y-3 rounded border p-4"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        className="space-y-3 rounded border p-4 bg-surface border-line"
         data-testid="sale-logger"
       >
         <div className="flex flex-wrap gap-3">
-          <div className="relative flex-1" style={{ minWidth: '16rem' }}>
+          <div className="relative flex-1 min-w-64">
             <label className="block text-sm">
-              <span style={{ color: 'var(--muted)' }}>Card</span>
+              <span className="text-muted">Card</span>
               <input
                 ref={labelRef}
                 autoFocus
@@ -211,8 +210,7 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
                 }}
                 placeholder="Start typing — Enter picks the top match"
                 data-testid="sale-label"
-                className="mt-1 w-full rounded border px-3 py-2"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
               />
             </label>
 
@@ -220,21 +218,19 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
               <ul
                 id="sale-suggestions"
                 data-testid="sale-suggestions"
-                className="absolute z-10 mt-1 w-full divide-y rounded border"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                className="absolute z-10 mt-1 w-full divide-y rounded border bg-page border-line"
               >
                 {hits.map((hit, index) => (
                   <li key={hit.id}>
                     <button
                       type="button"
                       onClick={() => void choose(hit)}
-                      className="flex w-full gap-3 px-3 py-2 text-left text-sm"
-                      style={{
-                        background: index === highlighted ? 'var(--surface)' : 'transparent',
-                      }}
+                      className={`flex w-full gap-3 px-3 py-2 text-left text-sm ${
+                        index === highlighted ? 'bg-surface' : 'bg-transparent'
+                      }`}
                     >
                       <span className="min-w-0 flex-1">{hit.name}</span>
-                      <span style={{ color: 'var(--muted)' }}>#{hit.number}</span>
+                      <span className="text-muted">#{hit.number}</span>
                     </button>
                   </li>
                 ))}
@@ -242,16 +238,15 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
             )}
           </div>
 
-          <label className="text-sm" style={{ width: '7rem' }}>
-            <span style={{ color: 'var(--muted)' }}>Condition</span>
+          <label className="text-sm w-28">
+            <span className="text-muted">Condition</span>
             <select
               value={condition}
               onChange={(e) => {
                 setCondition(e.target.value);
               }}
               data-testid="sale-condition"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
             >
               {CONDITIONS.map((c) => (
                 <option key={c} value={c}>
@@ -261,8 +256,8 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
             </select>
           </label>
 
-          <label className="text-sm" style={{ width: '9rem' }}>
-            <span style={{ color: 'var(--muted)' }}>Price (USD)</span>
+          <label className="text-sm w-36">
+            <span className="text-muted">Price (USD)</span>
             <input
               required
               inputMode="decimal"
@@ -272,8 +267,7 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
               }}
               placeholder="0.00"
               data-testid="sale-price"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
             />
           </label>
 
@@ -281,16 +275,15 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
             type="submit"
             disabled={busy}
             data-testid="log-sale"
-            className="self-end rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-            style={{ background: 'var(--accent)' }}
+            className="self-end rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
           >
             Log sale
           </button>
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <label className="text-sm" style={{ width: '14rem' }}>
-            <span style={{ color: 'var(--muted)' }}>Buyer (optional)</span>
+          <label className="text-sm w-56">
+            <span className="text-muted">Buyer (optional)</span>
             <input
               value={buyer}
               maxLength={80}
@@ -299,13 +292,12 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
               }}
               placeholder="@handle"
               data-testid="sale-buyer"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
             />
           </label>
 
-          <label className="flex-1 text-sm" style={{ minWidth: '14rem' }}>
-            <span style={{ color: 'var(--muted)' }}>VOD link (optional)</span>
+          <label className="flex-1 text-sm min-w-56">
+            <span className="text-muted">VOD link (optional)</span>
             <input
               value={streamRef}
               maxLength={500}
@@ -314,31 +306,30 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
               }}
               placeholder="https://..."
               data-testid="sale-stream"
-              className="mt-1 w-full rounded border px-3 py-2"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+              className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
             />
           </label>
         </div>
 
-        <p className="text-xs" style={{ color: 'var(--muted)' }}>
+        <p className="text-xs text-muted">
           The buyer&rsquo;s handle is encrypted, never shown publicly, and erased 90 days after the
           sale. Leave it blank if you do not need it.
         </p>
       </form>
 
       {error && (
-        <p role="alert" data-testid="sale-error" className="text-sm" style={{ color: '#f87171' }}>
+        <p role="alert" data-testid="sale-error" className="text-sm text-danger">
           {error}
         </p>
       )}
 
       <div className="flex gap-6 text-sm">
         <p>
-          <span style={{ color: 'var(--muted)' }}>Logged</span>{' '}
+          <span className="text-muted">Logged</span>{' '}
           <strong data-testid="sale-count">{sales.length}</strong>
         </p>
         <p>
-          <span style={{ color: 'var(--muted)' }}>Total</span>{' '}
+          <span className="text-muted">Total</span>{' '}
           <strong data-testid="sale-total">{dollars(total)}</strong>
         </p>
       </div>
@@ -348,14 +339,13 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
           {sales.map((sale) => (
             <li
               key={sale.id}
-              className="flex flex-wrap items-center gap-3 rounded border px-3 py-2 text-sm"
-              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+              className="flex flex-wrap items-center gap-3 rounded border px-3 py-2 text-sm bg-surface border-line"
               data-testid="sale-row"
             >
               <span className="min-w-0 flex-1">{sale.label}</span>
-              <span style={{ color: 'var(--muted)' }}>{sale.condition.toUpperCase()}</span>
+              <span className="text-muted">{sale.condition.toUpperCase()}</span>
               {sale.buyerHandle !== null && (
-                <span style={{ color: 'var(--muted)' }} data-testid="sale-buyer-shown">
+                <span className="text-muted" data-testid="sale-buyer-shown">
                   {sale.buyerHandle}
                 </span>
               )}
@@ -365,16 +355,16 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
                 <span
                   data-testid="sale-flagged"
                   title="Far from the published price, so a person looks before it counts"
-                  style={{ color: '#f59e0b' }}
+                  className="text-warning"
                 >
                   held for review
                 </span>
               ) : sale.published ? (
-                <span style={{ color: 'var(--accent)' }} data-testid="sale-published">
+                <span className="text-accent" data-testid="sale-published">
                   in the index
                 </span>
               ) : (
-                <span style={{ color: 'var(--muted)' }}>not yet counted</span>
+                <span className="text-muted">not yet counted</span>
               )}
               <span>{dollars(sale.priceCents)}</span>
               {!sale.published && !sale.flagged && (
@@ -382,8 +372,7 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
                   type="button"
                   onClick={() => void remove(sale.id)}
                   data-testid="delete-sale"
-                  className="underline"
-                  style={{ color: 'var(--muted)' }}
+                  className="underline text-muted"
                 >
                   remove
                 </button>

@@ -24,7 +24,7 @@ export default async function CreatorProfilePage(): Promise<React.JSX.Element> {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight">Your breaker page</h1>
-        <p className="max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="max-w-prose text-sm text-muted">
           Breaker pages are for creator accounts. Running breaks is a role an admin grants.
         </p>
       </div>
@@ -35,7 +35,7 @@ export default async function CreatorProfilePage(): Promise<React.JSX.Element> {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Your breaker page</h1>
-        <p className="mt-1 max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 max-w-prose text-sm text-muted">
           A public page showing your break counts, pull logs and hit rates by rarity against
           published pack odds. It is off until you publish it, and it names only what you type here.
         </p>
@@ -43,10 +43,8 @@ export default async function CreatorProfilePage(): Promise<React.JSX.Element> {
 
       <ProfileForm initial={result.profile} />
 
-      <section className="max-w-prose space-y-2 text-sm" style={{ color: 'var(--muted)' }}>
-        <h2 className="font-medium" style={{ color: 'var(--fg)' }}>
-          Two things worth knowing
-        </h2>
+      <section className="max-w-prose space-y-2 text-sm text-muted">
+        <h2 className="font-medium text-fg">Two things worth knowing</h2>
         <p>
           Hit rates only appear for breaks that have <strong>finished</strong> and recorded a{' '}
           <strong>pack count</strong>. Published odds are stated per pack, so a break without one

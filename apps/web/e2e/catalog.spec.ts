@@ -54,9 +54,7 @@ test.describe('security headers (SR-X.14)', () => {
   test('carries no wildcard fetch sources', async ({ page }) => {
     // `img-src ... https:` is a wildcard: any HTTPS origin, which is an exfiltration
     // channel (the path carries the data) and a tracking one. A ZAP baseline found exactly
-    // that on 2026-09-20. The nightly scan now accepts CSP rule 10055 so it can tolerate
-    // style-src 'unsafe-inline', which would otherwise hide a wildcard regression -- so the
-    // narrower thing is asserted here instead.
+    // that on 2026-09-20, and it is asserted here as well as by the nightly scan.
     const response = await page.goto('/');
     const csp = response?.headers()['content-security-policy'] ?? '';
 
@@ -71,7 +69,14 @@ test.describe('security headers (SR-X.14)', () => {
         }),
     );
 
-    for (const name of ['default-src', 'script-src', 'img-src', 'connect-src', 'font-src']) {
+    for (const name of [
+      'default-src',
+      'script-src',
+      'style-src',
+      'img-src',
+      'connect-src',
+      'font-src',
+    ]) {
       const values = directives.get(name) ?? [];
       for (const value of values) {
         expect(value, `${name} must not allow a whole scheme or every origin`).not.toBe('*');
@@ -95,6 +100,9 @@ test.describe('security headers (SR-X.14)', () => {
     expect(csp).toMatch(/script-src [^;]*'strict-dynamic'/);
     expect(csp).not.toMatch(/script-src [^;]*'unsafe-eval'/);
     expect(csp).not.toMatch(/script-src [^;]*'unsafe-inline'/);
+    // And no inline styles (ADR-031): a style attribute is refused, not merely discouraged.
+    expect(csp).toMatch(/style-src [^;]*'nonce-/);
+    expect(csp).not.toMatch(/style-src [^;]*'unsafe-inline'/);
 
     const unnonced = await page.locator('script:not([nonce]):not([src])').count();
     expect(unnonced).toBe(0);

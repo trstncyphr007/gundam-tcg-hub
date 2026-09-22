@@ -79,8 +79,7 @@ export function DecisionCard({
   if (state.status === 'done') {
     return (
       <li
-        className="rounded border px-4 py-3 text-sm"
-        style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+        className="rounded border px-4 py-3 text-sm border-line text-muted"
         data-testid={`decided-${kind}`}
       >
         {state.decision === 'reject'
@@ -96,14 +95,13 @@ export function DecisionCard({
 
   return (
     <li
-      className="space-y-3 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      className="space-y-3 rounded border p-4 bg-surface border-line"
       data-testid={`queue-${kind}`}
     >
       {children}
 
       <label className="block text-sm">
-        <span style={{ color: 'var(--muted)' }}>Why</span>
+        <span className="text-muted">Why</span>
         <input
           value={reason}
           maxLength={280}
@@ -114,8 +112,7 @@ export function DecisionCard({
             kind === 'flags' ? 'e.g. watched the VOD at 1:02:03' : 'e.g. receipt matches'
           }
           data-testid="decision-reason"
-          className="mt-1 w-full rounded border px-3 py-2"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+          className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
         />
       </label>
 
@@ -125,8 +122,7 @@ export function DecisionCard({
           disabled={state.status === 'busy'}
           onClick={() => void decide(labels.acceptVerb)}
           data-testid="decision-accept"
-          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-          style={{ background: 'var(--accent)' }}
+          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
         >
           {labels.accept}
         </button>
@@ -135,20 +131,14 @@ export function DecisionCard({
           disabled={state.status === 'busy'}
           onClick={() => void decide('reject')}
           data-testid="decision-reject"
-          className="rounded border px-4 py-2 text-sm font-medium disabled:opacity-50"
-          style={{ borderColor: 'var(--border)' }}
+          className="rounded border px-4 py-2 text-sm font-medium disabled:opacity-50 border-line"
         >
           {labels.reject}
         </button>
       </div>
 
       {state.status === 'error' && (
-        <p
-          role="alert"
-          className="text-sm"
-          style={{ color: '#f87171' }}
-          data-testid="decision-error"
-        >
+        <p role="alert" className="text-sm text-danger" data-testid="decision-error">
           {state.message}
         </p>
       )}

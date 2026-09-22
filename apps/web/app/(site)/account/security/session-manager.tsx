@@ -95,34 +95,30 @@ export function SessionManager(): React.JSX.Element {
 
   return (
     <section
-      className="space-y-4 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      className="space-y-4 rounded border p-4 bg-surface border-line"
       data-testid="session-manager"
     >
       <div>
         <h2 className="font-medium">Where you are signed in</h2>
-        <p className="mt-1 max-w-prose text-sm" style={{ color: 'var(--muted)' }}>
+        <p className="mt-1 max-w-prose text-sm text-muted">
           Every browser signed in to this account. If you see one you do not recognise, sign it out.
           We also email you the first time a new device signs in.
         </p>
       </div>
 
       {sessions === null ? (
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          Loading…
-        </p>
+        <p className="text-sm text-muted">Loading…</p>
       ) : (
         <ul className="space-y-2" data-testid="session-list">
           {sessions.map((session) => (
             <li
               key={session.id}
-              className="flex flex-wrap items-center gap-3 rounded border px-3 py-2 text-sm"
-              style={{ borderColor: 'var(--border)' }}
+              className="flex flex-wrap items-center gap-3 rounded border px-3 py-2 text-sm border-line"
               data-testid="session-row"
               data-current={session.current ? 'true' : 'false'}
             >
               <span className="min-w-0 flex-1 font-medium">{session.device}</span>
-              <span style={{ color: 'var(--muted)' }}>
+              <span className="text-muted">
                 {methodLabel(session.method)} · signed in{' '}
                 {new Date(session.signedInAt).toLocaleString()}
               </span>
@@ -136,8 +132,7 @@ export function SessionManager(): React.JSX.Element {
                   disabled={busy}
                   onClick={() => void revoke(session.id)}
                   data-testid="revoke-session"
-                  className="underline disabled:opacity-50"
-                  style={{ color: 'var(--muted)' }}
+                  className="underline disabled:opacity-50 text-muted"
                 >
                   sign out
                 </button>
@@ -153,8 +148,7 @@ export function SessionManager(): React.JSX.Element {
           disabled={busy}
           onClick={() => void revokeOthers()}
           data-testid="revoke-others"
-          className="rounded border px-4 py-2 text-sm font-medium disabled:opacity-50"
-          style={{ borderColor: 'var(--border)' }}
+          className="rounded border px-4 py-2 text-sm font-medium disabled:opacity-50 border-line"
         >
           Sign out everywhere else
         </button>
@@ -163,8 +157,7 @@ export function SessionManager(): React.JSX.Element {
       {message && (
         <p
           role={message.problem ? 'alert' : 'status'}
-          className="text-sm"
-          style={message.problem ? { color: '#f87171' } : undefined}
+          className={message.problem ? 'text-sm text-danger' : 'text-sm'}
           data-testid={message.problem ? 'sessions-problem' : 'sessions-result'}
         >
           {message.text}

@@ -58,12 +58,11 @@ export function ProfileForm({ initial }: { initial: Profile | null }): React.JSX
   return (
     <form
       onSubmit={(e) => void submit(e)}
-      className="space-y-4 rounded border p-4"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      className="space-y-4 rounded border p-4 bg-surface border-line"
       data-testid="profile-form"
     >
       <label className="block text-sm">
-        <span style={{ color: 'var(--muted)' }}>Handle</span>
+        <span className="text-muted">Handle</span>
         <input
           required
           value={handle}
@@ -73,16 +72,15 @@ export function ProfileForm({ initial }: { initial: Profile | null }): React.JSX
           placeholder="gundam-with-trstn"
           pattern="[a-zA-Z0-9][a-zA-Z0-9-]{1,30}[a-zA-Z0-9]"
           data-testid="profile-handle"
-          className="mt-1 w-full rounded border px-3 py-2"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+          className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
         />
-        <span className="mt-1 block text-xs" style={{ color: 'var(--muted)' }}>
+        <span className="mt-1 block text-xs text-muted">
           Your page lives at /breakers/{handle.trim().toLowerCase() || 'your-handle'}
         </span>
       </label>
 
       <label className="block text-sm">
-        <span style={{ color: 'var(--muted)' }}>Display name</span>
+        <span className="text-muted">Display name</span>
         <input
           required
           maxLength={60}
@@ -91,16 +89,15 @@ export function ProfileForm({ initial }: { initial: Profile | null }): React.JSX
             setDisplayName(e.target.value);
           }}
           data-testid="profile-display-name"
-          className="mt-1 w-full rounded border px-3 py-2"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+          className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
         />
-        <span className="mt-1 block text-xs" style={{ color: 'var(--muted)' }}>
+        <span className="mt-1 block text-xs text-muted">
           This is the only name that appears publicly. Your account name and email never do.
         </span>
       </label>
 
       <label className="block text-sm">
-        <span style={{ color: 'var(--muted)' }}>Bio</span>
+        <span className="text-muted">Bio</span>
         <textarea
           maxLength={280}
           rows={3}
@@ -109,8 +106,7 @@ export function ProfileForm({ initial }: { initial: Profile | null }): React.JSX
             setBio(e.target.value);
           }}
           data-testid="profile-bio"
-          className="mt-1 w-full rounded border px-3 py-2"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+          className="mt-1 w-full rounded border px-3 py-2 bg-page border-line"
         />
       </label>
 
@@ -126,7 +122,7 @@ export function ProfileForm({ initial }: { initial: Profile | null }): React.JSX
         />
         <span>
           Publish this page
-          <span className="block text-xs" style={{ color: 'var(--muted)' }}>
+          <span className="block text-xs text-muted">
             Anyone can read it, including your break counts and hit rates. Unchecking hides the page
             again and keeps the handle.
           </span>
@@ -138,8 +134,7 @@ export function ProfileForm({ initial }: { initial: Profile | null }): React.JSX
           type="submit"
           disabled={busy}
           data-testid="profile-save"
-          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-          style={{ background: 'var(--accent)' }}
+          className="rounded px-4 py-2 text-sm font-medium disabled:opacity-50 bg-accent"
         >
           Save
         </button>
@@ -155,12 +150,7 @@ export function ProfileForm({ initial }: { initial: Profile | null }): React.JSX
       </div>
 
       {error && (
-        <p
-          role="alert"
-          data-testid="profile-error"
-          className="text-sm"
-          style={{ color: '#f87171' }}
-        >
+        <p role="alert" data-testid="profile-error" className="text-sm text-danger">
           {error}
         </p>
       )}
