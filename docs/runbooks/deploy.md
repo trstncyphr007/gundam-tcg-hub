@@ -20,10 +20,14 @@ so the images reveal nothing their source does not, and they hold no secrets —
 decrypted on the server at deploy time. The server then pulls and verifies with no registry
 credential at all: nothing to leak, nothing to rotate.
 
-To make it so (once, in GitHub): your profile → **Packages** → `gth-api` → **Package
-settings** → **Change visibility** → **Public**; then the same for `gth-web`. Until then,
-`preflight.sh` reports both as "not publicly readable" and a deploy would fail at its first
-pull.
+**Done 2026-09-23.** Both packages are public, and the whole server-side gate was then proven
+from a machine with no GitHub credentials at all: anonymous `docker pull`, `cosign verify`
+against this repository's `release.yml` on `main`, and the CycloneDX SBOM attestation — every
+check `deploy.sh` makes.
+
+If a package is ever made private again, `preflight.sh` reports it as "not publicly readable"
+and a deploy fails at its first pull. (To set visibility: your profile → **Packages** → the
+package → **Package settings** → **Change visibility**.)
 
 (The alternative was a `read:packages` token in SOPS and a `docker login` in `deploy.sh` —
 one more long-lived secret on the box, for no confidentiality gained.)
