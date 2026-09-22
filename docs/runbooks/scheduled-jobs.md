@@ -3,10 +3,11 @@
 Two things have to run nightly. Both are ordinary commands, run as the **worker** role, whose
 grants are the point: it can do these jobs and nothing else.
 
-| Job            | Command             | When      | If it stops                                                                                                   |
-| -------------- | ------------------- | --------- | ------------------------------------------------------------------------------------------------------------- |
-| Price index    | `pnpm price:rollup` | 03:30 UTC | Prices go stale. Visible, recoverable — the rollup recomputes, so a missed night is picked up by the next run |
-| Data retention | `pnpm db:retention` | 04:30 UTC | **Personal data is kept past its retention period.** Not visible, not recoverable after the fact              |
+| Job            | Command             | When         | If it stops                                                                                                   |
+| -------------- | ------------------- | ------------ | ------------------------------------------------------------------------------------------------------------- |
+| Price index    | `pnpm price:rollup` | 03:30 UTC    | Prices go stale. Visible, recoverable — the rollup recomputes, so a missed night is picked up by the next run |
+| Data retention | `pnpm db:retention` | 04:30 UTC    | **Personal data is kept past its retention period.** Not visible, not recoverable after the fact              |
+| Ops watchdog   | (server only)       | every 15 min | Nothing tells you anything is wrong. Its own daily "all clear" going quiet is the sign it has stopped         |
 
 ## Why retention is its own command
 
@@ -69,9 +70,36 @@ Three details that are deliberate:
 - **`Persistent=true`** on both timers: a host that was off at 04:30 must still delete when it
   comes back, not skip that night.
 
+## The watchdog (ADR-038)
+
+Every quarter of an hour it reads what `/admin/operations` reads and decides whether any of it
+is worth saying. What it will wake you for, and how often it will repeat itself:
+
+| Finding              | When                                           | Repeats after |
+| -------------------- | ---------------------------------------------- | ------------- |
+| Failed sign-in spike | 30+ refused sign-ins in an hour                | 1 hour        |
+| One noisy source     | one source refused 15+ times in a day          | 6 hours       |
+| Rate-limit storm     | 200+ refusals in an hour                       | 6 hours       |
+| Deliveries stuck     | oldest pending alert over 15 minutes old       | 2 hours       |
+| Scanner silent       | an enabled retailer with no report for 2 hours | 6 hours       |
+| **All clear**        | always                                         | 24 hours      |
+
+The last row is the important one. A watchdog that only speaks when something is wrong is
+indistinguishable from one that died on Tuesday, so it says "all clear" once a day. **If that
+daily line stops arriving, the watchdog is what broke.**
+
+Thresholds live in `packages/db/src/queries/ops-alerts.ts` (`DEFAULT_THRESHOLDS`) and are
+exercised directly by unit tests. Repeats are remembered in the database, not in the process,
+so restarting the job does not reset anyone's peace and quiet.
+
+Without `DISCORD_OPS_WEBHOOK_URL` it still runs, prints what it would have said, and exits 0 —
+a host that is not wired up yet should show that in its journal rather than fail a timer every
+fifteen minutes until somebody silences it.
+
 ## Alerting
 
-Both units carry `OnFailure=gth-alert@%n.service`, and so does the backup timer. That one unit
+Both nightly units carry `OnFailure=gth-alert@%n.service`, and so do the watchdog and the
+backup timer. That one unit
 posts `⚠️ <unit> FAILED on <host> at <time>` to `DISCORD_OPS_WEBHOOK_URL`, and deliberately
 includes no log output — "go and look" is the message, and a journal excerpt is the easiest
 way to spill a connection string into a chat room (SR-X.20).

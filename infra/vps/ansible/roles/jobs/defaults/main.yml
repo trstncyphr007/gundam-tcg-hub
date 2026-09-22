@@ -9,3 +9,7 @@ jobs_schedule:
   - name: retention
     description: Gundam TCG Hub data retention
     hour: '04:30:00'
+  # Not nightly: the point of a watchdog is noticing within the quarter-hour, not the day.
+  - name: watchdog
+    description: Gundam TCG Hub ops watchdog
+    hour: '*:0/15:00'

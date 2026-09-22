@@ -1,8 +1,16 @@
 import { BUYER_HANDLE_RETENTION_DAYS } from '@gth/core';
 import type { Database } from './client.js';
 import { ingestLiveSales, purgeExpiredBuyerHandles } from './queries/live-sales.js';
+import {
+  DEFAULT_THRESHOLDS,
+  type WatchdogThresholds,
+  claimAlert,
+  decideAlerts,
+} from './queries/ops-alerts.js';
+import { getOperationsSummary } from './queries/operations.js';
 import { ingestBreakPulls, rollUpDay } from './queries/pricing.js';
 import { runRetention } from './queries/retention.js';
+import { getSecuritySummary } from './queries/security-events.js';
 
 /**
  * The bodies of the two nightly jobs (`docs/runbooks/scheduled-jobs.md`).
@@ -26,6 +34,47 @@ export async function retentionJob(db: Database): Promise<string[]> {
 
   for (const line of await runRetention(db)) {
     lines.push(`deleted ${String(line.deleted)} ${line.what}`);
+  }
+  return lines;
+}
+
+/**
+ * The watchdog (SR-X.22): look at what the operations page looks at, decide whether any of it
+ * is worth saying out loud, and say it once.
+ *
+ * `notify` is optional on purpose. A host with no ops webhook configured still runs this — it
+ * prints what it would have said and exits cleanly — so "nobody is listening" is a visible
+ * state in the journal rather than a job that quietly does nothing.
+ */
+export async function watchdogJob(
+  db: Database,
+  notify: ((text: string) => Promise<{ ok: boolean | 'skipped'; reason?: string }>) | null,
+  now: Date = new Date(),
+  thresholds: WatchdogThresholds = DEFAULT_THRESHOLDS,
+): Promise<string[]> {
+  const [ops, security] = await Promise.all([
+    getOperationsSummary(db, now),
+    getSecuritySummary(db, now),
+  ]);
+
+  const lines: string[] = [];
+  for (const finding of decideAlerts(ops, security, now, thresholds)) {
+    // Claimed first, sent second. The other order would re-send everything whenever a post
+    // failed, which is how a broken webhook becomes a flood the moment it comes back.
+    if (!(await claimAlert(db, finding))) {
+      lines.push(`held back (said recently): ${finding.key}`);
+      continue;
+    }
+    if (notify === null) {
+      lines.push(`WOULD ALERT [${finding.severity}] ${finding.text}`);
+      continue;
+    }
+    const outcome = await notify(`[${finding.severity}] ${finding.text}`);
+    lines.push(
+      outcome.ok === true
+        ? `alerted: ${finding.key}`
+        : `FAILED to alert ${finding.key}: ${outcome.reason ?? 'unknown'}`,
+    );
   }
   return lines;
 }

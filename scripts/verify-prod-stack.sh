@@ -75,12 +75,13 @@ step "seed the sample catalog (local verification only)"
 DATABASE_URL_MIGRATOR="postgres://app_migrator:${PG_MIG}@127.0.0.1:5433/gth" \
   pnpm -s db:seed 2>&1 | tail -n 1
 
-step "run the nightly jobs as one-off jobs"
-# The jobs systemd runs at 03:30 and 04:30, in the production image, on the worker role. They
-# were a pnpm script until now, which the production image has no way to run — so this step
-# exists to prove the thing the server will actually execute, rather than the developer
-# command that resembles it. A grant the worker is missing fails here, not at 04:30.
-for job in rollup retention; do
+step "run the scheduled jobs as one-off jobs"
+# What systemd runs at 03:30, 04:30 and every quarter of an hour, in the production image, on
+# the worker role. These were pnpm scripts until #45, which the production image has no way to
+# run — so this step exists to prove the thing the server will actually execute, rather than
+# the developer command that resembles it. A grant the worker is missing fails here, not at
+# 04:30. The watchdog runs with no webhook configured, which must be a clean exit.
+for job in rollup retention watchdog; do
   "${COMPOSE[@]}" --env-file "$ENV_FILE" --profile jobs run --rm "$job" 2>&1 | sed "s/^/${job}: /" | tail -n 4
 done
 
