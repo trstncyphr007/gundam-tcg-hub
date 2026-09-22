@@ -1,4 +1,4 @@
-import { type SecurityNotice, createAuth } from '@gth/auth';
+import { IP_HASH_PATTERN, type SecurityNotice, createAuth } from '@gth/auth';
 import { createDb, seedSample } from '@gth/db';
 import { type TestDatabase, startTestDatabase } from '@gth/db/test';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
@@ -11,7 +11,14 @@ import { TEST_PASSKEY } from '../test/auth-fixtures.js';
 /**
  * Seeing and ending your own sessions, and hearing about new devices (§16.2, SR-X.5, ADR-026).
  */
-const config: ApiConfig = loadConfig({ LOG_LEVEL: 'silent', NODE_ENV: 'test' });
+// Behind a proxy, as in production (Caddy sets X-Forwarded-For). Without it every request
+// here comes from 127.0.0.1, and a file with this many sign-ins trips the API's own per-IP
+// limit — a real control working, looking like a broken test.
+const config: ApiConfig = loadConfig({
+  LOG_LEVEL: 'silent',
+  NODE_ENV: 'test',
+  API_TRUST_PROXY: 'true',
+});
 const ORIGIN = 'http://127.0.0.1:3000';
 
 const CHROME_WINDOWS =
@@ -39,8 +46,7 @@ function freshEmail(): string {
 }
 
 /** A full magic-link sign-in from a given browser; returns the session cookie. */
-async function signIn(email: string, userAgent = CHROME_WINDOWS): Promise<string> {
-  const ip = nextIp();
+async function signIn(email: string, userAgent = CHROME_WINDOWS, ip = nextIp()): Promise<string> {
   const before = sentLinks.length;
   await app.inject({
     method: 'POST',
@@ -185,6 +191,50 @@ describe('what a leaked session token is worth', () => {
       const res = await app.inject({ method: 'GET', url: '/v1/me', headers });
       expect(res.statusCode).toBe(401);
     }
+  });
+});
+
+describe('where a sign-in came from is kept only as a same-day hash (SR-X.24, ADR-028)', () => {
+  async function storedIps(userId: string): Promise<(string | null)[]> {
+    const rows = await tdb.db.execute<{ ip_address: string | null }>(
+      `select ip_address from app.sessions where user_id = '${userId}' order by created_at`,
+    );
+    return rows.map((r) => r.ip_address);
+  }
+
+  it('never writes the address itself', async () => {
+    const email = freshEmail();
+    await signIn(email, CHROME_WINDOWS, '203.0.113.77');
+    const [stored] = await storedIps(await userIdOf(email));
+    expect(stored).toMatch(IP_HASH_PATTERN);
+    expect(stored).not.toContain('203.0.113');
+  });
+
+  it('can still tell "same network today" from "somewhere else"', async () => {
+    const email = freshEmail();
+    await signIn(email, CHROME_WINDOWS, '203.0.113.80');
+    await signIn(email, FIREFOX_LINUX, '203.0.113.80');
+    await signIn(email, SAFARI_IPHONE, '198.51.100.9');
+    const [a, b, c] = await storedIps(await userIdOf(email));
+    expect(a).toBe(b);
+    expect(c).not.toBe(a);
+  });
+
+  it('refuses a raw address at the database, whoever writes it', async () => {
+    const email = freshEmail();
+    await signIn(email);
+    const userId = await userIdOf(email);
+    let caught: unknown;
+    try {
+      await webPool.db.execute(
+        `update app.sessions set ip_address = '203.0.113.5' where user_id = '${userId}'`,
+      );
+    } catch (e) {
+      caught = e;
+    }
+    const messages: string[] = [];
+    for (let c: unknown = caught; c instanceof Error; c = c.cause) messages.push(c.message);
+    expect(messages.join(' | ')).toMatch(/sessions_ip_hashed/);
   });
 });
 

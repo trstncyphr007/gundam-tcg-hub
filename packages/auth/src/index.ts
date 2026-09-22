@@ -4,5 +4,6 @@ export * from './step-up.js';
 export * from './passkeys.js';
 export * from './devices.js';
 export * from './sessions.js';
+export * from './ip-hash.js';
 // Re-exported so apps integrate without depending on better-auth internals directly.
 export { fromNodeHeaders, toNodeHandler } from 'better-auth/node';

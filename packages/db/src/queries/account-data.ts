@@ -111,14 +111,15 @@ export async function exportAccountData(
       .from(passkeys)
       .where(eq(passkeys.userId, userId));
 
-    // The IP address and user agent are the person's own data and they have a right to see
-    // what is held (SR-X.25). The token is not data about them; it is a key.
+    // What is held about where they signed in from is theirs to see (SR-X.25) — which, since
+    // ADR-028, is a same-day hash rather than an address, and is labelled as one. The token
+    // is not data about them; it is a key.
     const ownSessions = await tx
       .select({
         signedInAt: sessions.createdAt,
         expiresAt: sessions.expiresAt,
         method: sessions.authMethod,
-        ipAddress: sessions.ipAddress,
+        ipHash: sessions.ipAddress,
         userAgent: sessions.userAgent,
       })
       .from(sessions)

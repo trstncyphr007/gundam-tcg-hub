@@ -5,6 +5,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
 import { magicLink } from 'better-auth/plugins/magic-link';
 import { describeDevice } from './devices.js';
+import { hashIp } from './ip-hash.js';
 import {
   PasskeyPolicyError,
   assertionFlags,
@@ -360,9 +361,17 @@ export function createAuth(db: Database, config: AuthConfig) {
         create: {
           // Record how the session was opened, from the endpoint doing the opening. The one
           // place `authMethod` is ever written, and it reads nothing the client sent.
+          //
+          // And the address it came from, hashed before it is ever written (SR-X.24,
+          // ADR-028). This is the only place Better Auth records an IP, so it is the one
+          // place it has to be caught; the database refuses anything that is not a hash.
           before: (session, context) =>
             Promise.resolve({
-              data: { ...session, authMethod: authMethodForPath(context?.path) },
+              data: {
+                ...session,
+                authMethod: authMethodForPath(context?.path),
+                ipAddress: hashIp(session.ipAddress, config.secret),
+              },
             }),
           after: async (session) => {
             await db

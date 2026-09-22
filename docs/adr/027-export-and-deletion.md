@@ -109,7 +109,8 @@ The file lists what it leaves out, under `withheld`:
 Session IP addresses _are_ included, even though ADR-026 keeps them off the sessions page.
 The difference is who's asking and why. The page is a quick view that a thief might also
 look at. The export is the owner's right to see what's held about them, and it's gated by a
-fresh sign-in, rate-limited, and emailed to the owner.
+fresh sign-in, rate-limited, and emailed to the owner. (Since ADR-028, what is held — and so
+what is exported, as `ipHash` — is a same-day hash, not the address.)
 
 The audit activity lists what was done and when, but not _who_ did it when that was an admin.
 An admin's id isn't the requester's data.
