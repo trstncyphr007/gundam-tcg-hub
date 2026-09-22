@@ -20,5 +20,7 @@ export * from './queries/sessions.js';
 export * from './queries/account-data.js';
 export * from './queries/key-rotation.js';
 export * from './queries/operations.js';
+export * from './queries/retention.js';
+export * from './jobs.js';
 export * from './seed/sample.js';
 export * from './seed/prices.js';

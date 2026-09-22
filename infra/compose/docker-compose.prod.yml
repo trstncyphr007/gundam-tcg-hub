@@ -111,6 +111,44 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
+  # The two nightly jobs (docs/runbooks/scheduled-jobs.md), run by systemd timers:
+  #   docker compose --profile jobs run --rm retention
+  #   docker compose --profile jobs run --rm rollup
+  #
+  # Same image as the API, so they are the code that was built, scanned and signed. They run
+  # on the app_worker role, whose grants are the point: it can do these jobs and nothing else.
+  # `restart: 'no'` because a one-off that failed should stay failed and alert, not loop.
+  #
+  # Neither needs the encryption keys: erasing a buyer handle clears the ciphertext column
+  # without reading it, which is the property migration 0024 was built for.
+  retention:
+    <<: *hardening
+    profiles: [jobs]
+    image: ${API_IMAGE:?set API_IMAGE to a signed digest}
+    user: '65532:65532'
+    command: ['dist/job-retention.js']
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_WORKER: ${DATABASE_URL_WORKER:?}
+    networks: [internal]
+    restart: 'no'
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  rollup:
+    <<: *hardening
+    profiles: [jobs]
+    image: ${API_IMAGE:?set API_IMAGE to a signed digest}
+    user: '65532:65532'
+    command: ['dist/job-rollup.js']
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_WORKER: ${DATABASE_URL_WORKER:?}
+    networks: [internal]
+    restart: 'no'
+    depends_on:
+      postgres: { condition: service_healthy }
+
   postgres:
     <<: *hardening
     image: postgres:17-bookworm@sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652

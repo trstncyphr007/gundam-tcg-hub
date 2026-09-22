@@ -75,6 +75,15 @@ step "seed the sample catalog (local verification only)"
 DATABASE_URL_MIGRATOR="postgres://app_migrator:${PG_MIG}@127.0.0.1:5433/gth" \
   pnpm -s db:seed 2>&1 | tail -n 1
 
+step "run the nightly jobs as one-off jobs"
+# The jobs systemd runs at 03:30 and 04:30, in the production image, on the worker role. They
+# were a pnpm script until now, which the production image has no way to run — so this step
+# exists to prove the thing the server will actually execute, rather than the developer
+# command that resembles it. A grant the worker is missing fails here, not at 04:30.
+for job in rollup retention; do
+  "${COMPOSE[@]}" --env-file "$ENV_FILE" --profile jobs run --rm "$job" 2>&1 | sed "s/^/${job}: /" | tail -n 4
+done
+
 step "smoke tests through Caddy"
 base=http://127.0.0.1:8080
 printf 'home            %s\n' "$(curl -s -o /dev/null -w '%{http_code}' $base/)"

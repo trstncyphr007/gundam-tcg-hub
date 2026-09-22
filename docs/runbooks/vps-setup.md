@@ -144,8 +144,13 @@ on disk; only the age key decrypts it, into tmpfs, at deploy time.
 Backups need `/etc/gth/restic.env` as well — see `docs/runbooks/backups.md`. The playbook
 warns rather than fails when it is missing, so a fresh host still converges.
 
-Two nightly jobs also have to be scheduled — see `docs/runbooks/scheduled-jobs.md`. One of
-them deletes personal data on a clock, so it is not optional.
+One more root-only file, mode 0400: `/etc/gth/ops.env`, holding `DISCORD_OPS_WEBHOOK_URL=…`.
+Without it a failed backup or a failed nightly job alerts nobody — the alert unit exits
+quietly rather than failing on top of the failure it was reporting. `preflight.sh` checks
+for it.
+
+The nightly jobs themselves need nothing: the playbook installs their units and timers
+(`roles/jobs`), and one of them deletes personal data on a clock, so it is not optional.
 
 ## 6. GitHub secrets for the deploy workflow
 

@@ -40,3 +40,4 @@ New decisions get their own file.
 | 033 | [The operations dashboard judges the scanner by its reports](033-operations-dashboard.md)                       | Accepted                    |
 | 034 | [The policy pages state only what the code enforces](034-policy-pages-state-facts.md)                           | Accepted                    |
 | 035 | [The retention period is a database rule, not a job parameter](035-retention-the-database-decides.md)           | Accepted                    |
+| 036 | [The nightly jobs ship in the image, and their failures are audible](036-the-nightly-jobs-can-actually-run.md)  | Accepted                    |

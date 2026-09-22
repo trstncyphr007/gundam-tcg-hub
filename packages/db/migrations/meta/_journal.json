@@ -253,6 +253,13 @@
       "when": 1790120400000,
       "tag": "0035_retention_sweep",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790125200000,
+      "tag": "0036_worker_reads_pulls",
+      "breakpoints": true
     }
   ]
 }

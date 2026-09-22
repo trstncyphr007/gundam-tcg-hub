@@ -20,6 +20,7 @@ get it wrong under pressure — so when in doubt, rotate.
 | `DISCORD_CLIENT_SECRET`     | SOPS                                             | Nothing visible                                     | 180d        |
 | `DISCORD_BOT_TOKEN`         | SOPS                                             | Bot reconnects                                      | 180d        |
 | `DISCORD_ALERT_WEBHOOK_URL` | SOPS                                             | Nothing visible                                     | 180d        |
+| `DISCORD_OPS_WEBHOOK_URL`   | `/etc/gth/ops.env` on the host (0400)            | **Failed jobs and backups stop alerting**           | 180d        |
 | `SMTP_URL`                  | SOPS                                             | Nothing visible                                     | 180d        |
 | API keys (`gth_live_…`)     | Hashed in DB; plaintext only with the holder     | That scanner stops until re-keyed                   | on exposure |
 | Overlay tokens              | Hashed in DB                                     | That overlay URL dies                               | on exposure |

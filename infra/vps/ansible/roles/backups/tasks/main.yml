@@ -73,7 +73,7 @@
       Description=Nightly encrypted off-site backup
       After=docker.service
       Requires=docker.service
-      OnFailure=gth-backup-failed.service
+      OnFailure=gth-alert@%n.service
 
       [Service]
       Type=oneshot
@@ -82,28 +82,13 @@
       IOSchedulingClass=idle
   notify: Reload systemd
 
-- name: Install the failure alert unit
-  # A backup that fails silently is worse than no backup, because it is believed. This posts
-  # to the ops webhook the moment a run fails (SR-X.22).
-  ansible.builtin.copy:
-    dest: /etc/systemd/system/gth-backup-failed.service
-    owner: root
-    group: root
-    mode: '0644'
-    content: |
-      # Managed by Ansible (infra/vps/ansible/roles/backups).
-      [Unit]
-      Description=Report a failed backup
-
-      [Service]
-      Type=oneshot
-      # The webhook lives in the same root-only file as the restic credentials.
-      EnvironmentFile=-/etc/gth/restic.env
-      ExecStart=/bin/bash -c '\
-        test -n "$DISCORD_OPS_WEBHOOK_URL" || exit 0; \
-        curl -fsS -X POST -H "content-type: application/json" \
-          -d "{\\"content\\": \\"gth backup FAILED on $(hostname) at $(date -u +%%FT%%TZ)\\"}" \
-          "$DISCORD_OPS_WEBHOOK_URL" >/dev/null'
+- name: Remove the old bespoke failure unit
+  # Replaced by the shared gth-alert@.service (roles/jobs). It read the webhook only from
+  # restic.env, which the runbook's own template never contained — so a by-the-book install
+  # had an alert unit that exited 0 and told nobody. One alert path, one thing to get right.
+  ansible.builtin.file:
+    path: /etc/systemd/system/gth-backup-failed.service
+    state: absent
   notify: Reload systemd
 
 - name: Install the backup timer
