@@ -27,6 +27,7 @@ test.describe('policy pages', () => {
     await expect(keep).toContainText('15 minutes'); // magic links
     await expect(keep).toContainText('30 days'); // sessions
     await expect(keep).toContainText('90 days'); // buyer handles
+    await expect(keep).toContainText('a year'); // the security log (ADR-035)
     // The IP claim is the subtle one: hashed, re-keyed daily, never stored raw (ADR-028).
     await expect(page.getByTestId('privacy-collect')).toContainText('hash');
     await expect(page.getByTestId('privacy-not')).toContainText('no analytics');

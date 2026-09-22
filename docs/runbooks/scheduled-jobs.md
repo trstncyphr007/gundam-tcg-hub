@@ -13,9 +13,20 @@ grants are the point: it can do these jobs and nothing else.
 A deletion job folded into another job is a deletion job that stops silently the first time
 the other job fails. `pnpm db:retention` runs on its own schedule and fails on its own terms.
 
-Today it does one thing: erases buyer handles 90 days after the sale (SR-4.5). It runs on the
-worker role, which **cannot read that column** — erasing a name is the one operation that
-should never require seeing it (ADR-022).
+It does two things.
+
+**Buyer handles**, erased 90 days after the sale (SR-4.5). This runs on the worker role, which
+**cannot read that column** — erasing a name is the one operation that should never require
+seeing it (ADR-022).
+
+**The sweep** (`app.run_retention()`, migration 0035, ADR-035): expired sessions and
+verification tokens, devices nobody has signed in from for a year, and audit entries past the
+year the privacy policy publishes. Those tables are append-only or off-limits to the worker, so
+the deletions live in one database function the worker may call and **cannot steer** — it takes
+no arguments, so a caller chooses when the sweep runs, never how far back it reaches. Pruning
+the audit log writes one `audit_log.pruned` entry saying how much went and from when.
+
+A run prints a line per category, and all zeroes is a normal night.
 
 ## What the rollup does, in order
 
@@ -72,8 +83,10 @@ systemctl list-timers 'gth-*'
 journalctl -u gth-retention.service --since yesterday
 ```
 
-The retention job prints how many handles it erased. A run that erases zero is normal — it
-means nothing crossed 90 days that night, not that it did not run.
+The retention job prints how many handles it erased, then a line per sweep category. A run
+that erases zero is normal — it means nothing crossed its period that night, not that it did
+not run. To tell the difference after the fact, look for the unit's own exit status; a night
+that pruned audit entries also leaves an `audit_log.pruned` row.
 
 ## The review queue
 

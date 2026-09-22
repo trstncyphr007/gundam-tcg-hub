@@ -39,3 +39,4 @@ New decisions get their own file.
 | 032 | [Provenance for every image, verified where it is used](032-provenance-for-every-image.md)                      | Accepted                    |
 | 033 | [The operations dashboard judges the scanner by its reports](033-operations-dashboard.md)                       | Accepted                    |
 | 034 | [The policy pages state only what the code enforces](034-policy-pages-state-facts.md)                           | Accepted                    |
+| 035 | [The retention period is a database rule, not a job parameter](035-retention-the-database-decides.md)           | Accepted                    |
