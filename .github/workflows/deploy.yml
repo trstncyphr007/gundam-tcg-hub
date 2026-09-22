@@ -33,6 +33,10 @@ jobs:
     permissions:
       contents: read
       id-token: write # verify keyless signatures
+      # The images are private packages: without this the gate below could not even read
+      # them, and the first deploy would have failed on its first step (ADR-032).
+      packages: read
+      attestations: read # verify build provenance
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -46,6 +50,12 @@ jobs:
           curl -fsSL -o checksums.txt "${base}/cosign_checksums.txt"
           grep ' cosign-linux-amd64$' checksums.txt | sed 's/cosign-linux-amd64/cosign/' | sha256sum -c -
           chmod +x cosign && sudo mv cosign /usr/local/bin/cosign
+
+      - name: log in to GHCR (read-only, this job's own token)
+        env:
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
 
       # Gate: only images this repository built and signed may be deployed. A digest from
       # anywhere else fails here, before the server is touched at all.
@@ -68,6 +78,27 @@ jobs:
             cosign verify "ghcr.io/${owner}/gth-${name}@${digest}" \
               --certificate-identity-regexp "^https://github.com/${REPOSITORY}/.github/workflows/release.yml@refs/heads/main$" \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          done
+
+      # And where each image came from: SLSA provenance from release.yml, on main, in this
+      # repository (ADR-032). A signature says "we signed this"; provenance says "and it was
+      # built from this commit by this workflow". Both, or no deploy.
+      - name: verify build provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          API_DIGEST: ${{ inputs.api_digest }}
+          WEB_DIGEST: ${{ inputs.web_digest }}
+          REPOSITORY: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          owner=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          for pair in "api:${API_DIGEST}" "web:${WEB_DIGEST}"; do
+            name="${pair%%:*}"; digest="${pair#*:}"
+            gh attestation verify "oci://ghcr.io/${owner}/gth-${name}@${digest}" \
+              --owner "$OWNER" \
+              --signer-workflow "${REPOSITORY}/.github/workflows/release.yml" \
+              --source-ref refs/heads/main
           done
 
       - name: connect to the tailnet

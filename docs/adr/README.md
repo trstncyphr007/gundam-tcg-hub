@@ -18,7 +18,7 @@ New decisions get their own file.
 | 011 | Stripe Connect Express for payments                                                                             | Accepted                    |
 | 012 | [Solo merge model](012-solo-merge-model.md)                                                                     | Accepted                    |
 | 013 | [Scanner stays Python in its own repo](013-scanner-stays-python.md)                                             | Accepted                    |
-| 014 | [GitHub Free/private compensating controls](014-github-free-controls.md)                                        | Accepted                    |
+| 014 | [GitHub Free/private compensating controls](014-github-free-controls.md)                                        | Accepted, amended by 032    |
 | 015 | [TypeScript 6.x until typescript-eslint supports 7](015-typescript-6.md)                                        | Accepted                    |
 | 016 | [The scanner reports product + shop + URL; the platform resolves the listing](016-listing-resolution-by-url.md) | Accepted                    |
 | 017 | [Overlay tokens as a database credential, and SSE without compression](017-overlay-tokens-and-streaming.md)     | Accepted                    |
@@ -36,3 +36,4 @@ New decisions get their own file.
 | 029 | [Retiring an encryption key, not just adding one](029-retiring-encryption-keys.md)                              | Accepted                    |
 | 030 | [The platform makes one outbound request, and CI keeps it that way](030-one-outbound-request.md)                | Accepted                    |
 | 031 | [No inline styles, so the CSP can refuse them](031-no-inline-styles.md)                                         | Accepted                    |
+| 032 | [Provenance for every image, verified where it is used](032-provenance-for-every-image.md)                      | Accepted                    |

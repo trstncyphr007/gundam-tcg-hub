@@ -100,4 +100,31 @@ test.describe('no inline styles (ADR-031)', () => {
     const muted = page.locator('.text-muted').first();
     await expect(muted).toHaveCSS('color', 'rgb(154, 163, 184)'); // --muted: #9aa3b8
   });
+
+  test("a missing page is the site's own 404, not Next's unstyled one", async ({ page }) => {
+    await watchForViolations(page);
+    // One URL nothing matches (the catch-all route), one a page answers with notFound().
+    for (const path of [
+      '/no-such-page/at-all',
+      '/collections/00000000-0000-4000-8000-000000000000',
+    ]) {
+      const response = await page.goto(path);
+      expect(response?.status(), path).toBe(404);
+      await expect(page.getByTestId('not-found')).toBeVisible();
+      // Inside the site's layout, so the visitor still has the navigation.
+      await expect(page.getByRole('link', { name: 'Breakers' })).toBeVisible();
+      await expectClean(page, path);
+    }
+  });
+
+  test('the catch-all never swallows the proxied API paths', async ({ page }) => {
+    // Rewrites run before dynamic routes; this pins that, so a Next upgrade that changed the
+    // order would fail here rather than turn the API into a wall of 404 pages.
+    const games = await page.request.get('/v1/games');
+    expect(games.status()).toBe(200);
+    expect(games.headers()['content-type']).toMatch(/application\/json/);
+    const auth = await page.request.get('/api/auth/ok');
+    expect(auth.status()).toBe(200);
+    expect(await auth.json()).toMatchObject({ ok: true });
+  });
 });
