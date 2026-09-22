@@ -43,6 +43,9 @@ const nextConfig: NextConfig = {
       // hostname to use.
       { source: '/docs', destination: `${apiUrl}/docs` },
       { source: '/docs/:path*', destination: `${apiUrl}/docs/:path*` },
+      // Next will not route a directory whose name starts with a dot, so the RFC 9116 path
+      // is served by app/well-known/security.txt.
+      { source: '/.well-known/security.txt', destination: '/well-known/security.txt' },
     ]),
 
   // CSP is set per-request in middleware.ts (it carries a nonce); these are static.

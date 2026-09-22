@@ -61,6 +61,8 @@ test.describe('no inline styles (ADR-031)', () => {
       '/breakers',
       '/collections',
       '/methodology',
+      '/privacy',
+      '/terms',
       '/sign-in',
     ]) {
       await expectClean(page, path);

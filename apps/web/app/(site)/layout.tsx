@@ -55,6 +55,23 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </nav>
         </header>
         <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+        <footer className="mt-8 border-t border-line">
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-4 px-4 py-6 text-sm text-muted">
+            <Link href="/methodology" className="underline">
+              Methodology
+            </Link>
+            <Link href="/privacy" className="underline">
+              Privacy
+            </Link>
+            <Link href="/terms" className="underline">
+              Terms
+            </Link>
+            <Link href="/docs" className="underline">
+              API docs
+            </Link>
+            <span className="ml-auto">Not affiliated with Bandai. Prices are community data.</span>
+          </div>
+        </footer>
       </body>
     </html>
   );
