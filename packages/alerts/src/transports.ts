@@ -122,6 +122,65 @@ export function createDiscordWebhookTransport(options: {
   };
 }
 
+/**
+ * Posting a line to the ops channel (SR-X.22).
+ *
+ * It lives in this file rather than beside the watchdog that uses it, because this file is the
+ * one place in the platform allowed to make an outbound request — Semgrep rule
+ * `gth-no-outbound-http` fails CI on a second one (ADR-030). Keeping the exception singular is
+ * worth more than keeping the code next to its caller.
+ *
+ * Plain text, no embeds, no mentions: an alert that pings a phone at 4am should say what broke
+ * and nothing else. Discord renders no HTML, and `flags: 4` suppresses link previews, so a URL
+ * in a message cannot unfurl something unexpected into the channel.
+ */
+export interface OpsNotifier {
+  notify: (text: string) => Promise<DeliveryOutcome>;
+}
+
+export function createOpsNotifier(options: {
+  webhookUrl: string;
+  fetchImpl?: FetchLike;
+  timeoutMs?: number;
+}): OpsNotifier {
+  const { webhookUrl, fetchImpl, timeoutMs = 5000 } = options;
+  const doFetch: FetchLike = fetchImpl ?? globalThis.fetch;
+
+  return {
+    notify: async (text) => {
+      if (!isAllowedDiscordWebhook(webhookUrl)) {
+        return { ok: false, reason: 'webhook url rejected by allowlist', retryable: false };
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => {
+        controller.abort();
+      }, timeoutMs);
+      try {
+        const response = await doFetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          // Discord refuses anything over 2000 characters; a truncated alert still says what
+          // broke, whereas a refused one says nothing at all.
+          body: JSON.stringify({ content: text.slice(0, 1900), flags: 4 }),
+          signal: controller.signal,
+          redirect: 'error',
+        });
+        if (response.ok) return { ok: true };
+        const retryable = response.status === 429 || response.status >= 500;
+        return { ok: false, reason: `discord responded ${String(response.status)}`, retryable };
+      } catch (error) {
+        return {
+          ok: false,
+          reason: error instanceof Error ? error.name : 'discord request failed',
+          retryable: true,
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  };
+}
+
 export interface MailSender {
   sendMail: (mail: {
     to: string;

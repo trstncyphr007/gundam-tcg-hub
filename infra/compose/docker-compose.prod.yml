@@ -149,6 +149,24 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
+  # Every quarter of an hour: is anything worth waking somebody for? Needs `egress` as well,
+  # because unlike the other two it talks to Discord. Unset webhook is not an error — it
+  # prints what it would have said (ADR-038).
+  watchdog:
+    <<: *hardening
+    profiles: [jobs]
+    image: ${API_IMAGE:?set API_IMAGE to a signed digest}
+    user: '65532:65532'
+    command: ['dist/job-watchdog.js']
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_WORKER: ${DATABASE_URL_WORKER:?}
+      DISCORD_OPS_WEBHOOK_URL: ${DISCORD_OPS_WEBHOOK_URL:-}
+    networks: [internal, egress]
+    restart: 'no'
+    depends_on:
+      postgres: { condition: service_healthy }
+
   postgres:
     <<: *hardening
     image: postgres:17-bookworm@sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652

@@ -3,6 +3,7 @@ import {
   buildPlainText,
   createDiscordWebhookTransport,
   createEmailTransport,
+  createOpsNotifier,
   createUnsupportedTransport,
   formatPrice,
   isAllowedDiscordWebhook,
@@ -120,6 +121,86 @@ describe('discord webhook transport', () => {
       fetchImpl: vi.fn().mockRejectedValue(new Error('network down')),
     });
     await expect(transport.send(message, recipient)).resolves.toMatchObject({ ok: false });
+  });
+});
+
+describe('the ops notifier', () => {
+  const WEBHOOK = 'https://discord.com/api/webhooks/1/abc';
+  const ok = { ok: true, status: 204 };
+
+  it('posts plain text with previews suppressed, and follows no redirect', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(ok);
+    const notifier = createOpsNotifier({ webhookUrl: WEBHOOK, fetchImpl });
+    await expect(notifier.notify('[critical] the scanner has stopped')).resolves.toEqual({
+      ok: true,
+    });
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, { body: string; redirect: string }];
+    expect(JSON.parse(init.body)).toEqual({
+      content: '[critical] the scanner has stopped',
+      flags: 4,
+    });
+    // A redirect would decide where the request ends, unchecked (SR-1.1, ADR-030).
+    expect(init.redirect).toBe('error');
+  });
+
+  it('truncates rather than being refused for length', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(ok);
+    await createOpsNotifier({ webhookUrl: WEBHOOK, fetchImpl }).notify('x'.repeat(5000));
+    const [, init] = fetchImpl.mock.calls[0] as [string, { body: string }];
+    const posted = JSON.parse(init.body) as { content: string };
+    // Discord refuses anything over 2000 characters, and a truncated alert still says what
+    // broke — whereas a refused one says nothing at all.
+    expect(posted.content).toHaveLength(1900);
+  });
+
+  it('refuses a webhook that is not Discord, without sending anything', async () => {
+    const fetchImpl = vi.fn();
+    const notifier = createOpsNotifier({
+      webhookUrl: 'https://example.invalid/api/webhooks/1/2',
+      fetchImpl,
+    });
+    await expect(notifier.notify('hello')).resolves.toMatchObject({ ok: false, retryable: false });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('calls a 5xx retryable and a 404 not', async () => {
+    const notifier = (status: number) =>
+      createOpsNotifier({
+        webhookUrl: WEBHOOK,
+        fetchImpl: vi.fn().mockResolvedValue({ ok: false, status }),
+      });
+    await expect(notifier(503).notify('x')).resolves.toMatchObject({ retryable: true });
+    await expect(notifier(404).notify('x')).resolves.toMatchObject({ retryable: false });
+    await expect(notifier(429).notify('x')).resolves.toMatchObject({ retryable: true });
+  });
+
+  it('survives the network being down, and says it is worth trying again', async () => {
+    const notifier = createOpsNotifier({
+      webhookUrl: WEBHOOK,
+      fetchImpl: vi.fn().mockRejectedValue(new Error('network down')),
+    });
+    // An alert that throws takes the watchdog down with it, which would be a fine way to
+    // lose alerting entirely the first time Discord has a bad afternoon.
+    await expect(notifier.notify('x')).resolves.toMatchObject({ ok: false, retryable: true });
+  });
+
+  it('gives up on a webhook that never answers', async () => {
+    const notifier = createOpsNotifier({
+      webhookUrl: WEBHOOK,
+      timeoutMs: 5,
+      fetchImpl: (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => {
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        }),
+    });
+    await expect(notifier.notify('x')).resolves.toMatchObject({
+      ok: false,
+      reason: 'AbortError',
+      retryable: true,
+    });
   });
 });
 

@@ -267,6 +267,13 @@
       "when": 1790128800000,
       "tag": "0037_audit_action_index",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790132400000,
+      "tag": "0038_ops_alert_state",
+      "breakpoints": true
     }
   ]
 }

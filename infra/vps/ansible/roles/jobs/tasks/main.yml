@@ -80,7 +80,7 @@
       job="${2:?}"
 
       case "$environment" in staging|production) ;; *) echo "unknown environment: $environment" >&2; exit 1 ;; esac
-      case "$job" in retention|rollup) ;; *) echo "unknown job: $job" >&2; exit 1 ;; esac
+      case "$job" in retention|rollup|watchdog) ;; *) echo "unknown job: $job" >&2; exit 1 ;; esac
 
       root="{{ app_root }}/${environment}"
       runtime_env="/run/gth/job-${environment}.env"
@@ -96,6 +96,10 @@
       SOPS_AGE_KEY_FILE=/root/.config/sops/age/keys.txt \
         sops -d "${root}/secrets.sops.env" > "$runtime_env"
       grep -E '^(API_IMAGE|WEB_IMAGE)=' "${root}/last-good.env" >> "$runtime_env"
+      # The watchdog posts to the ops channel, and that webhook lives with the other host-side
+      # alerting configuration rather than in the application's secrets — one place to set it,
+      # shared with the unit that reports a failed job.
+      [ -r /etc/gth/ops.env ] && grep -E '^DISCORD_OPS_WEBHOOK_URL=' /etc/gth/ops.env >> "$runtime_env" || true
       chmod 0400 "$runtime_env"
 
       docker compose -p "gth-${environment}" -f "${root}/docker-compose.prod.yml" \
