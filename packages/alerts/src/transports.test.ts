@@ -68,6 +68,30 @@ describe('discord webhook transport', () => {
     expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
+  it('never follows a redirect, so the allowlist decides where the request ends (SR-1.1)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    const transport = createDiscordWebhookTransport({
+      webhookUrl: 'https://discord.com/api/webhooks/1/abc',
+      fetchImpl,
+    });
+    await transport.send(message, recipient);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://discord.com/api/webhooks/1/abc',
+      expect.objectContaining({ redirect: 'error' }),
+    );
+  });
+
+  it('treats a refused redirect as a failure, not a delivery', async () => {
+    // What real fetch does with `redirect: 'error'` when the server answers 3xx.
+    const fetchImpl = vi.fn().mockRejectedValue(new TypeError('fetch failed: redirect'));
+    const transport = createDiscordWebhookTransport({
+      webhookUrl: 'https://discord.com/api/webhooks/1/abc',
+      fetchImpl,
+    });
+    const outcome = await transport.send(message, recipient);
+    expect(outcome.ok).toBe(false);
+  });
+
   it('refuses a url outside the allowlist without calling out', async () => {
     const fetchImpl = vi.fn();
     const transport = createDiscordWebhookTransport({

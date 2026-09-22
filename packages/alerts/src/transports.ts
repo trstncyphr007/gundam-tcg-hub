@@ -27,6 +27,11 @@ const DISCORD_WEBHOOK_HOSTS = new Set(['discord.com', 'discordapp.com', 'ptb.dis
 /**
  * Webhook URLs are attacker-influenced input once users can supply them, so this is an
  * SSRF guard (SR-1.1): https only, and only Discord's own hosts.
+ *
+ * This is the only place in the platform that makes an outbound HTTP request, and Semgrep
+ * rule `gth-no-outbound-http` keeps it that way. An exact-host allowlist of a domain nobody
+ * but Discord controls is why DNS rebinding does not apply here: there is no attacker-chosen
+ * name to re-resolve (ADR-030).
  */
 export function isAllowedDiscordWebhook(rawUrl: string): boolean {
   let url: URL;
@@ -59,7 +64,13 @@ export function buildPlainText(message: RestockMessage): string {
 export interface FetchLike {
   (
     input: string,
-    init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal },
+    init: {
+      method: string;
+      headers: Record<string, string>;
+      body: string;
+      signal: AbortSignal;
+      redirect: 'error';
+    },
   ): Promise<{
     ok: boolean;
     status: number;
@@ -90,6 +101,9 @@ export function createDiscordWebhookTransport(options: {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ content: buildPlainText(message), flags: 4 }),
           signal: controller.signal,
+          // The allowlist checks where the request *starts*. A redirect would decide where it
+          // ends, unchecked — so none are followed (SR-1.1). A webhook never needs one.
+          redirect: 'error',
         });
         if (response.ok) return { ok: true };
         // 4xx (except 429) means the webhook is gone or malformed: do not retry forever.
