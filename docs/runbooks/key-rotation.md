@@ -14,6 +14,7 @@ get it wrong under pressure — so when in doubt, rotate.
 | --------------------------- | ------------------------------------------------ | --------------------------------------------------- | ----------- |
 | `BETTER_AUTH_SECRET`        | SOPS / `.env`                                    | **Every session ends.** Users sign in again         | 180d        |
 | `TOKEN_PEPPER`              | SOPS / `.env`                                    | **Every API key and overlay token dies.** See below | 180d        |
+| `DATA_ENCRYPTION_KEYS`      | SOPS / `.env`                                    | Nothing, if done in order. See below                | 365d        |
 | `DATABASE_URL_*` (4 roles)  | SOPS / `.env`                                    | A restart                                           | 180d        |
 | `VALKEY_URL`                | SOPS / `.env`                                    | Cache and rate-limit counters reset                 | 180d        |
 | `DISCORD_CLIENT_SECRET`     | SOPS                                             | Nothing visible                                     | 180d        |
@@ -47,6 +48,43 @@ Before rotating:
 For a _routine_ rotation, prefer doing this between streams rather than mid-break.
 
 ---
+
+## `DATA_ENCRYPTION_KEYS` — add, switch, re-encrypt, then remove
+
+This key ring encrypts fields that must stay secret even in a backup: break server seeds
+before reveal, and live-sale buyer handles (ADR-029). Every value records which key wrote
+it, so rotation has an order, and skipping ahead makes data unreadable.
+
+1. **Add** a new key next to the old one, and make it active:
+
+   ```
+   DATA_ENCRYPTION_KEYS='{"k1":"<old>","k2":"<openssl rand -base64 32>"}'
+   DATA_ENCRYPTION_ACTIVE_KID=k2
+   ```
+
+2. **Deploy.** New writes now use `k2`; old values still read with `k1`.
+3. **Re-encrypt** everything written with the old key. Dry run first:
+
+   ```bash
+   pnpm keys:rotate --dry-run    # counts per key, and which keys are still needed
+   pnpm keys:rotate              # does it; safe to run again
+   ```
+
+   It ends by saying which keys are **safe to remove**. If it reports any `FAILED` values,
+   stop: those were written with a key that is not in the ring, and removing anything now
+   loses them for good. It exits non-zero in that case.
+
+4. **Remove** the old key only when that line names it, and deploy again.
+
+**What to do with the removed key depends on why it was removed.**
+
+- **Routine rotation:** keep the old key **offline** (password manager, not SOPS) until the
+  oldest backup written before the rotation has aged out, which is 12 months on the
+  schedule in `backups.md`. A restored backup needs it to reveal a break it holds.
+- **Suspected exposure:** destroy it once step 3 is clean. Old backups then hold seeds and
+  handles nobody can read. For buyer handles that's the right outcome. For an unrevealed
+  seed in an old backup, it means that break could never be revealed from the backup. That's
+  a smaller loss than a leaked key that still unlocks every backup.
 
 ## Rotating a SOPS-managed secret
 
@@ -105,10 +143,13 @@ When something is known-exposed, order matters — start with what grants the mo
 1. **age key** — if this leaked, every other secret is readable. Rotate it first, then
    everything it protects
 2. **Database passwords** — direct data access
-3. **`BETTER_AUTH_SECRET`** — ends every session, including an attacker's
-4. **`TOKEN_PEPPER`** — kills every API key and overlay token
-5. **Third-party tokens** — Discord, SMTP
-6. **SSH and Tailscale** — remove the old keys from GitHub and the tailnet, do not merely
+3. **`DATA_ENCRYPTION_KEYS`** — the full add → re-encrypt → remove sequence above, then
+   destroy the old key. With the database _and_ this key leaked, every seed and handle is
+   readable, backups included
+4. **`BETTER_AUTH_SECRET`** — ends every session, including an attacker's
+5. **`TOKEN_PEPPER`** — kills every API key and overlay token
+6. **Third-party tokens** — Discord, SMTP
+7. **SSH and Tailscale** — remove the old keys from GitHub and the tailnet, do not merely
    add new ones
 
 Then go back to [`incident.md`](incident.md) §6 and notify.

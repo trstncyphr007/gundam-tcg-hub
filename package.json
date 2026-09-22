@@ -34,7 +34,8 @@
     "role:set": "pnpm --filter @gth/db role",
     "price:rollup": "pnpm --filter @gth/db price-rollup",
     "db:seed-prices": "pnpm --filter @gth/db seed-prices",
-    "db:retention": "pnpm --filter @gth/db retention"
+    "db:retention": "pnpm --filter @gth/db retention",
+    "keys:rotate": "pnpm --filter @gth/db rotate-keys"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
