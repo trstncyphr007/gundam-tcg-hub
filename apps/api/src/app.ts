@@ -11,6 +11,7 @@ import type { ApiConfig } from './config.js';
 import { ApiKeyError, apiKeyPlugin } from './plugins/api-key.js';
 import { authPlugin } from './plugins/auth.js';
 import { QuotaStore, quotaPlugin } from './plugins/quota.js';
+import { createRateLimitRecorder } from './plugins/rate-limit-audit.js';
 import { registerAccountRoutes } from './routes/account.js';
 import { registerAccountDataRoutes } from './routes/account-data.js';
 import { registerAdminRoutes } from './routes/admin.js';
@@ -179,9 +180,21 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
   }
 
   // In-memory limiter for now; moves to Valkey when there is more than one instance (SR-X.27).
+  // A refusal used to be answered and forgotten, so "this caller has been refused two
+  // thousand times this hour" was not a fact anything could state (SR-X.22). Recorded only
+  // when there is a pool to record it on, and throttled per caller so being refused cannot
+  // become a way to write to the audit log at will.
+  const rateLimitRecorder = deps.writeDb
+    ? createRateLimitRecorder(deps.writeDb, {
+        secret: config.BETTER_AUTH_SECRET,
+        trustProxy: config.API_TRUST_PROXY,
+      })
+    : null;
+
   await app.register(rateLimit, {
     max: config.API_RATE_LIMIT_MAX,
     timeWindow: '1 minute',
+    ...(rateLimitRecorder ? { onExceeded: rateLimitRecorder.onExceeded } : {}),
     // A request carrying a valid key is counted against that key's quota instead, which is
     // fairer (a whole office shares one address) and attributable (we know whose it was).
     // Boolean(), not `!== null`: when no key plugin is registered the property is undefined,

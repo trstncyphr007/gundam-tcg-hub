@@ -1,4 +1,4 @@
-import { type OperationsSummary, api } from '@/lib/api';
+import { type OperationsSummary, type SecuritySummary, api } from '@/lib/api';
 import { AdminGate, AdminNav } from '../admin-gate';
 
 export const metadata = {
@@ -212,15 +212,96 @@ function Deliveries({ data, now }: { data: OperationsSummary; now: Date }): Reac
   );
 }
 
+/** How an action reads to someone who did not write the constant. */
+const ACTION_LABELS = new Map([
+  ['auth.sign_in_failed', 'Failed sign-ins'],
+  ['auth.rate_limited', 'Auth rate limits hit'],
+  ['api.rate_limited', 'API rate limits hit'],
+]);
+
+function Security({ data, now }: { data: SecuritySummary; now: Date }): React.JSX.Element {
+  const quiet = data.counts.every((c) => c.last7d === 0);
+  return (
+    <section className="space-y-3" data-testid="security-section">
+      <div>
+        <h2 className="text-lg font-medium">Refused attempts</h2>
+        <p className="mt-1 max-w-prose text-sm text-muted">
+          One failed sign-in is a typo; two hundred is somebody working through a list. Sources are
+          counted by that day&rsquo;s hash, so a run of attempts from one place is visible without
+          anyone being followed from one day to the next — and no address that was tried is recorded
+          anywhere.
+        </p>
+      </div>
+
+      <table className="w-full max-w-lg text-sm" data-testid="security-counts">
+        <thead className="text-left text-muted">
+          <tr>
+            <th className="py-1 font-normal">Event</th>
+            <th className="py-1 font-normal">Last hour</th>
+            <th className="py-1 font-normal">24 hours</th>
+            <th className="py-1 font-normal">7 days</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.counts.map((c) => (
+            <tr key={c.action} className="border-t border-line" data-testid="security-row">
+              <td className="py-1.5">{ACTION_LABELS.get(c.action) ?? c.action}</td>
+              <td className={c.lastHour > 0 ? 'py-1.5 font-medium text-warning' : 'py-1.5'}>
+                {c.lastHour}
+              </td>
+              <td className="py-1.5">{c.last24h}</td>
+              <td className="py-1.5">{c.last7d}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {quiet ? (
+        <p className="text-sm text-muted">Nothing refused in the last week.</p>
+      ) : (
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div>
+            <h3 className="font-medium">Busiest sources (24 h)</h3>
+            {data.noisySources.length === 0 ? (
+              <p className="text-sm text-muted">None recorded.</p>
+            ) : (
+              <ul className="space-y-1 text-sm" data-testid="noisy-sources">
+                {data.noisySources.map((s) => (
+                  <li key={s.source}>
+                    <code>…{s.source}</code>{' '}
+                    <span className="text-muted">
+                      × {s.attempts} · last {ago(s.lastAt, now)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <h3 className="font-medium">Where (24 h)</h3>
+            <ul className="space-y-1 text-sm" data-testid="security-endpoints">
+              {data.endpoints.map((e) => (
+                <li key={e.endpoint}>
+                  <code>{e.endpoint}</code> <span className="text-muted">× {e.attempts}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /**
  * The operations dashboard (FR-1.12): is the scanner reporting, are restocks being found,
- * are alerts going out. Aggregates only — no user appears on it.
+ * are alerts going out, and is anything being refused. Aggregates only — no user appears on it.
  *
  * Every age is measured from the summary's own `generatedAt`, so the page is consistent with
  * itself and states exactly when it was taken.
  */
 export default async function OperationsPage(): Promise<React.JSX.Element> {
-  const result = await api.adminOperations();
+  const [result, security] = await Promise.all([api.adminOperations(), api.adminSecurity()]);
   if (result.kind !== 'ok') {
     return <AdminGate title="Operations" path="/admin/operations" refusal={result} />;
   }
@@ -238,6 +319,15 @@ export default async function OperationsPage(): Promise<React.JSX.Element> {
       <Scanner data={result} now={now} />
       <Restocks data={result} now={now} />
       <Deliveries data={result} now={now} />
+      {/* The gate above already passed, so a refusal here is a fault, not a permission
+          problem — say so rather than leaving a blank space that looks like "all quiet". */}
+      {security.kind === 'ok' ? (
+        <Security data={security} now={now} />
+      ) : (
+        <p className="text-sm text-danger" data-testid="security-unavailable">
+          Refused attempts could not be read.
+        </p>
+      )}
     </div>
   );
 }
