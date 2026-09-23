@@ -38,6 +38,19 @@
       - name: Caddyfile
         src: "{{ repo_root }}/infra/caddy/Caddyfile"
 
+- name: Ship the database init scripts to each environment
+  # Postgres runs these once, on an empty data directory, to create the least-privilege roles.
+  # Without them the database comes up with no application roles at all and the first
+  # migration fails with "password authentication failed" — which is exactly what happened the
+  # first time the deploy was rehearsed end to end.
+  ansible.builtin.copy:
+    src: '{{ repo_root }}/packages/db/init/'
+    dest: '{{ app_root }}/{{ item }}/db-init/'
+    owner: root
+    group: root
+    mode: '0755'
+  loop: ['production', 'staging']
+
 - name: Install the deploy script
   # Root-owned and not writable by the deploy account, which can only *run* it. Otherwise
   # "CI may run one command as root" would mean "CI may run anything as root, eventually".

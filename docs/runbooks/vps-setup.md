@@ -10,16 +10,16 @@ reviewable, lintable and re-runnable — a second run reports no changes.
 
 ## Status
 
-| Step                                                    | State                                                                   |
-| ------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Production compose stack, Caddy config, hardened images | ✅ built and **verified locally** (`bash scripts/verify-prod-stack.sh`) |
-| Release pipeline (build, scan, SBOM, sign, push)        | ✅ written; runs on merge to `main`                                     |
-| Deploy workflow + server-side deploy script             | ✅ written; **not yet exercised** (needs a server)                      |
-| Preflight check (`infra/vps/preflight.sh`)              | ✅ written; exercised against fake `/srv/gth` trees, not a real host    |
-| Image packages public (ADR-032)                         | ✅ done 2026-09-23; anonymous pull + signature + SBOM verified          |
-| Host hardening playbook                                 | ✅ written; lint + syntax clean, **container-smoked**, not host-tested  |
-| VPS provisioned and hardened                            | ⬜ waiting on the VPS                                                   |
-| Domain, TLS, backups                                    | ⬜ waiting on the domain                                                |
+| Step                                                    | State                                                                                                                                                           |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Production compose stack, Caddy config, hardened images | ✅ built and **verified locally** (`bash scripts/verify-prod-stack.sh`)                                                                                         |
+| Release pipeline (build, scan, SBOM, sign, push)        | ✅ written; runs on merge to `main`                                                                                                                             |
+| Deploy workflow + server-side deploy script             | ✅ **rehearsed end to end** on a workstation against the real signed images (`scripts/deploy-rehearsal.sh`, 2026-09-23); the workflow half still needs a server |
+| Preflight check (`infra/vps/preflight.sh`)              | ✅ written; exercised against fake `/srv/gth` trees, not a real host                                                                                            |
+| Image packages public (ADR-032)                         | ✅ done 2026-09-23; anonymous pull + signature + SBOM verified                                                                                                  |
+| Host hardening playbook                                 | ✅ written; lint + syntax clean, **container-smoked**, not host-tested                                                                                          |
+| VPS provisioned and hardened                            | ⬜ waiting on the VPS                                                                                                                                           |
+| Domain, TLS, backups                                    | ⬜ waiting on the domain                                                                                                                                        |
 
 **What "container-smoked" means.** `infra/vps/ansible/smoke.sh` runs the playbook twice
 against a throwaway Ubuntu 24.04 container and fails if the second run changes anything. That
@@ -108,7 +108,7 @@ On your workstation, create `infra/secrets/production.sops.env` (encrypted to yo
 **and** the server's), containing the variables from `.env.example` plus:
 
 ```
-SITE_ADDRESS=<domain>
+SITE_ADDRESS=<domain>          # or :80 before there is one — see below
 ACME_EMAIL=<you@domain>
 API_BASE_URL=https://<domain>
 APP_BASE_URL=https://<domain>
@@ -118,6 +118,12 @@ DATA_ENCRYPTION_ACTIVE_KID=k1
 WEBAUTHN_RP_ID=<domain>
 WEBAUTHN_ORIGIN=https://<domain>
 ```
+
+**`SITE_ADDRESS` must be a domain or `:80`.** Caddy publishes ports 80 and 443 and nothing
+else, so a bare port like `:8088` produces a stack that starts, reports every container
+healthy, and cannot be reached — the deploy then fails its own smoke test and rolls back a
+release that was fine. Found by rehearsing the deploy (`scripts/deploy-rehearsal.sh`), which is
+exactly the sort of thing that is obvious afterwards.
 
 `WEBAUTHN_RP_ID` is the domain every passkey is bound to (ADR-025). The API refuses to
 start if it is an IP address or if `WEBAUTHN_ORIGIN` is not on it, and compose refuses to

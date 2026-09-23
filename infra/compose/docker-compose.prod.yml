@@ -30,7 +30,9 @@ services:
       ACME_EMAIL: ${ACME_EMAIL:?set an ACME contact address}
       CADDY_GLOBAL_EXTRA: ${CADDY_GLOBAL_EXTRA:-}
     volumes:
-      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Same story as the database's init directory below: ../caddy/Caddyfile is right in the
+      # repository and wrong on the server, where the Caddyfile is shipped alongside this file.
+      - ${CADDYFILE:-../caddy/Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     networks: [edge]
@@ -185,7 +187,13 @@ services:
       PG_READONLY_PASSWORD: ${PG_READONLY_PASSWORD:?}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ../../packages/db/init:/docker-entrypoint-initdb.d:ro
+      # Relative paths in a compose file resolve against the file's own directory. In the
+      # repository that is `infra/compose`; on the server the file sits alone in
+      # /srv/gth/<env>, where `../../packages/db/init` does not exist — Docker would create an
+      # empty directory, Postgres would start with **no roles**, and the first migration would
+      # fail with "password authentication failed". deploy.sh sets these to the shipped copies;
+      # the defaults keep `scripts/verify-prod-stack.sh` working from the repository.
+      - ${DB_INIT_DIR:-../../packages/db/init}:/docker-entrypoint-initdb.d:ro
     # No ports: reachable only from the internal network.
     networks: [internal]
     healthcheck:
