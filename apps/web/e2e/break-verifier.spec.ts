@@ -85,17 +85,22 @@ test.describe('verifiable breaks', () => {
     await page.getByTestId('log-pull').click();
     await expect(page.getByTestId('pull-count')).toHaveText('1');
 
+    const TAMPERED_HEAD = 'f'.repeat(64);
     const viewer = await context.newPage();
     // Intercept the page's own data and tamper with it in flight.
     await viewer.route(`**/v1/breaks/${breakId}/public`, async (route) => {
       const response = await route.fetch();
       const body = (await response.json()) as {
-        verification: { rows: { valueCentsAtPull: number }[]; chain: { state: string } };
+        verification: {
+          rows: { valueCentsAtPull: number }[];
+          chain: { state: string; head: string | null };
+        };
       };
       const first = body.verification.rows[0];
       if (first) first.valueCentsAtPull = 999_999;
       // ...while the server keeps insisting the log is fine.
       body.verification.chain.state = 'valid';
+      body.verification.chain.head = TAMPERED_HEAD;
       await route.fulfill({ response, json: body });
     });
 
@@ -103,11 +108,19 @@ test.describe('verifiable breaks', () => {
     // The page arrives server-rendered, so the tampering only reaches the component when the
     // reader asks for the evidence themselves — which is the button that exists for exactly
     // this reason.
+    const headBefore = await viewer.getByTestId('chain-head').textContent();
+    expect(headBefore).not.toBe(TAMPERED_HEAD);
+
     await viewer.getByTestId('verifier-refetch').click();
 
     await expect(viewer.getByTestId('verifier')).toContainText('The log was altered at pull #1');
     await expect(viewer.getByTestId('verifier-disagrees')).toBeVisible();
     await expect(viewer.getByTestId('verifier-disagrees')).toContainText('Trust your browser');
+
+    // Every displayed value must come from the evidence that was just checked, not from the
+    // page load. The chain head is the one a reader copies down to compare elsewhere, so a
+    // stale one beside a fresh verdict is the worst of both.
+    await expect(viewer.getByTestId('chain-head')).toHaveText(TAMPERED_HEAD);
     await viewer.close();
   });
 

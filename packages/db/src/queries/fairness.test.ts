@@ -119,13 +119,22 @@ describe('commit–reveal (FR-4.2)', () => {
     ).rejects.toBeInstanceOf(CommitmentError);
   });
 
-  it('will not commit twice', async () => {
+  it('will not commit twice, and keeps the first commitment', async () => {
     const breakId = await newBreak();
-    await commitBreak(web, CREATOR, breakId, { slotCount: 8, keyRing });
-    await expectDbError(
+    const first = await commitBreak(web, CREATOR, breakId, { slotCount: 8, keyRing });
+
+    // A refusal, not a database error. This used to surface the raw duplicate-key failure,
+    // which the API turned into a 500 — reporting a double-clicked button as our fault.
+    await expect(
       commitBreak(web, CREATOR, breakId, { slotCount: 8, keyRing }),
-      /duplicate key|unique/i,
+    ).rejects.toBeInstanceOf(CommitmentError);
+
+    // And the point of refusing: the published commitment is still the original one. A second
+    // attempt must not be able to swap in a seed chosen later.
+    const [row] = await superuser.execute<{ commitment: string }>(
+      `select commitment from app.break_commitments where break_id = '${breakId}'`,
     );
+    expect(row?.commitment).toBe(first.commitment);
   });
 
   it('refuses a commitment on someone else’s break', async () => {

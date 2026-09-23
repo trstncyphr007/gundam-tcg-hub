@@ -297,9 +297,19 @@ export function BreakVerifier({
         </dl>
       )}
 
+      {/*
+        `evidence.chain`, not the `chain` prop. The prop is what the server rendered; the state
+        is what was last fetched, and the refetch button exists precisely so a sceptic can
+        replace one with the other. Reading the prop here showed the head from page load beside
+        a verdict reached from newer evidence — the one value on the panel a reader is meant to
+        copy down and compare, quietly stale.
+      */}
       {evidence.chain.head !== null && (
         <p className="text-xs text-muted">
-          Chain head: <span className="break-all font-mono">{chain.head}</span>
+          Chain head:{' '}
+          <span className="break-all font-mono" data-testid="chain-head">
+            {evidence.chain.head}
+          </span>
         </p>
       )}
 
