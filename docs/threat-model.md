@@ -1,29 +1,38 @@
-# Threat Model: v0 (Phase 0)
+# Threat Model
 
-Method: STRIDE over trust boundaries. Reviewed at the start of every phase (plan §17). The full
-risk register is in the build plan (§17); this file tracks **current state**.
+**Reviewed 2026-09-23, covering Phases 0–4 and the deploy track.** Method: STRIDE over trust
+boundaries, reviewed at the start of every phase (plan §17). The full risk register is in the
+build plan; this file tracks **current state**, and a control is listed only when something in
+the repository enforces it.
+
+Sections are dated, and the older ones are left as written: what was true in Phase 0 is part of
+how this got here. Each section says what it added.
 
 ## Trust boundaries in scope now
 
-| ID                | Boundary                                  | Exists in Phase 0?                |
-| ----------------- | ----------------------------------------- | --------------------------------- |
-| TB2               | HTTP client → `apps/api`                  | Yes (localhost only)              |
-| TB3               | App → Postgres / Valkey                   | Yes (dev stack, 127.0.0.1)        |
-| TB7               | Developer / CI → GitHub → images          | Yes                               |
-| TB1, TB4–TB6, TB8 | Internet edge, third parties, Stripe, VPS | Not yet (Phase 1+ / deploy track) |
+| ID  | Boundary                         | State                                                                                         |
+| --- | -------------------------------- | --------------------------------------------------------------------------------------------- |
+| TB1 | Internet → edge (Caddy)          | Built and verified locally; **unexercised** until the VPS exists                              |
+| TB2 | HTTP client → `apps/api`         | Yes                                                                                           |
+| TB3 | App → Postgres / Valkey          | Yes, with per-service roles and row-level security                                            |
+| TB4 | Platform → third-party sites     | **Outbound is one request**: the Discord webhook. Retailer fetching lives in the scanner repo |
+| TB5 | Platform ↔ Discord               | Outbound webhook only; no bot yet                                                             |
+| TB6 | Platform ↔ Stripe                | Not yet (Phase 5)                                                                             |
+| TB7 | Developer / CI → GitHub → images | Yes, signed with provenance and verified twice                                                |
+| TB8 | Admin → VPS                      | Written (Tailscale-only); **unexercised** until the VPS exists                                |
 
 ## Active threats and controls
 
-| #   | Threat                                            | Controls in place (Phase 0)                                                                                                                                            | Gaps / next                                                      |
-| --- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| T12 | Malicious or compromised npm dependency           | Exact pins + lockfile; `minimumReleaseAge` 7d; install scripts blocked (`onlyBuiltDependencies`); OSV + `pnpm audit` + license gate in CI; Dependabot with 7d cooldown | Review each new dependency via the PR checklist                  |
-| T13 | CI/CD compromise (malicious action, token misuse) | Actions pinned by SHA; `permissions: {}` default; `persist-credentials: false`; tool images pinned by digest; actionlint + zizmor gates                                | No signing/deploy yet (deploy track adds cosign)                 |
-| T15 | Secret leakage (git, logs)                        | gitleaks pre-commit + CI full history; `.env` generated per machine (mode 600) and gitignored; env errors never echo values; pino redaction of auth/cookie headers     | No GitHub push protection on Free/private (ADR-014)              |
-| T16 | API abuse / DoS                                   | Rate limit (in-memory); 1 MB body limit; 15 s request timeout                                                                                                          | Move limiter to Valkey; Cloudflare at deploy                     |
-| —   | Info disclosure via errors                        | 5xx responses return `internal_error` only; tested                                                                                                                     | —                                                                |
-| —   | Browser-side attacks on API responses             | CSP `default-src 'none'`, HSTS, nosniff, no-referrer, CORP same-site; tested                                                                                           | CORS policy lands with the first browser client                  |
-| —   | DB privilege escalation / blast radius            | Per-service roles, no superuser; web can't run DDL; read-only role is read-only; statement timeouts; verified 2026-09-20                                               | RLS arrives with the first user-owned tables (Phase 1)           |
-| —   | Container escape / tampering                      | Distroless, non-root 65532, root-owned app files; verified running `--read-only --cap-drop ALL --security-opt no-new-privileges`                                       | Apply the same flags in `docker-compose.prod.yml` (deploy track) |
+| #   | Threat                                            | Controls in place (Phase 0)                                                                                                                                            | Gaps / next                                                                                                           |
+| --- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| T12 | Malicious or compromised npm dependency           | Exact pins + lockfile; `minimumReleaseAge` 7d; install scripts blocked (`onlyBuiltDependencies`); OSV + `pnpm audit` + license gate in CI; Dependabot with 7d cooldown | Review each new dependency via the PR checklist                                                                       |
+| T13 | CI/CD compromise (malicious action, token misuse) | Actions pinned by SHA; `permissions: {}` default; `persist-credentials: false`; tool images pinned by digest; actionlint + zizmor gates                                | Closed: keyless signatures, SBOM and SLSA provenance on both images, verified in CI and again on the server (ADR-032) |
+| T15 | Secret leakage (git, logs)                        | gitleaks pre-commit + CI full history; `.env` generated per machine (mode 600) and gitignored; env errors never echo values; pino redaction of auth/cookie headers     | No GitHub push protection on Free/private (ADR-014)                                                                   |
+| T16 | API abuse / DoS                                   | Rate limit (in-memory); 1 MB body limit; 15 s request timeout. Refusals are now **recorded** and alerted on (ADR-037/038)                                              | Move limiter to Valkey; Cloudflare at deploy                                                                          |
+| —   | Info disclosure via errors                        | 5xx responses return `internal_error` only; tested                                                                                                                     | —                                                                                                                     |
+| —   | Browser-side attacks on API responses             | CSP `default-src 'none'`, HSTS, nosniff, no-referrer, CORP same-site; tested                                                                                           | CORS policy lands with the first browser client                                                                       |
+| —   | DB privilege escalation / blast radius            | Per-service roles, no superuser; web can't run DDL; read-only role is read-only; statement timeouts; verified 2026-09-20                                               | Closed: row-level security on every user-owned table, forced for the owner too                                        |
+| —   | Container escape / tampering                      | Distroless, non-root 65532, root-owned app files; verified running `--read-only --cap-drop ALL --security-opt no-new-privileges`                                       | Closed: the same flags are in `docker-compose.prod.yml`, asserted by `scripts/verify-prod-stack.sh`                   |
 
 ## Phase 1 additions (catalog + public reads, 2026-09-20)
 
@@ -128,9 +137,91 @@ credential, and the display is public by construction.**
 | Overlay connections exhausting the server                | 5 concurrent streams per token, heartbeats, and a server-side idle timeout                                                                                                      |
 | Self-granting the creator role                           | `role` is `input: false`; grants are CLI-only and write the previous and new value to the audit log                                                                             |
 
+## Prices, collections and the public API (Phase 3, 2026-09-21)
+
+The index is the thing worth attacking: it is a number other people will make decisions with.
+
+| Threat                                              | Controls                                                                                                                                                                       |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Moving the published price by submitting fake sales | A report never counts until a person approves it; the index needs at least 3 observations; the nightly rollup takes a **trimmed** median, so a single outlier cannot move it   |
+| A seller pricing their own card into the index      | Live-sale entries are checked against the published spread and held for review when far outside it (SR-4.4); a held entry never reaches a published price                      |
+| Leaking an API key from the database                | Stored as `prefix` + HMAC; **`app_web` cannot SELECT `key_hash` at all** (migration 0017) — the pool that serves the developer page physically cannot read the secret it wrote |
+| A leaked key being used indefinitely                | Revocation is immediate and the key is matched by prefix then constant-time compare; `gth_live_` has its own gitleaks rule, proven by guardrail proof 1b                       |
+| Reading another person's collection (IDOR)          | `authorize()` plus row-level security; a shared collection nulls the owner's cost, purchase date and notes **in SQL**, so no route can leak them                               |
+| A CSV import as a denial of service                 | 2 MB body cap, row cap, streaming parse, per-row zod validation                                                                                                                |
+| A spreadsheet executing an imported cell            | Formula prefixes are escaped on export; nothing is ever evaluated on import, so a payload survives as text and leaves as text (AC-3.5)                                         |
+| Scraping the whole index through the public API     | Cursor pagination with a hard page cap, per-key and per-IP quotas, `max-age=300` caching. The index is published under CC BY 4.0 anyway — attribution, not secrecy, is the ask |
+
+## Live sales and provable fairness (Phase 4, 2026-09-22)
+
+| Threat                                                  | Controls                                                                                                                                                                 |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A creator re-rolling a break until they like the result | Commit–reveal: the server seed is committed as a hash **before** the break and revealed after; the shuffle is deterministic, versioned and covered by known-answer tests |
+| The server seed leaking before the reveal               | Encrypted at rest with a key id, and only the **worker** role may read `server_seed_encrypted` — the web tier cannot, so a compromised page cannot expose it             |
+| Rewriting a pull log after the fact                     | Append-only grants, plus a hash chain: each row carries the previous row's hash, and the head is published when the break closes                                         |
+| A buyer's name from the live-sale logger leaking        | Encrypted, never shown publicly, and erased after 90 days by a job running on a role that **cannot read the column it clears** (ADR-022)                                 |
+| A breaker profile making unverifiable claims            | Profiles report only what the logs contain; pull rates are computed from recorded pulls, and a "verified randomisation" badge requires a revealed seed                   |
+
+## Account security (2026-09-22 → 23)
+
+| Threat                                          | Controls                                                                                                                                                                        |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An inbox alone taking over an admin account     | Admin pages need a session opened **with a passkey**, within twelve hours. Adding a second passkey, or removing one, also needs a passkey session (ADR-025)                     |
+| A stolen or cloned authenticator                | User verification and presence are enforced from the signed authenticator data, not from anything the client says; signature counters are checked                               |
+| Session tokens leaking through the account page | Better Auth's own `/list-sessions` and `/revoke-*` endpoints are switched off; ours return an opaque id and never a token (ADR-026)                                             |
+| A weaker session ending a stronger one          | A non-passkey session cannot revoke a passkey session                                                                                                                           |
+| Sign-in from somewhere new going unnoticed      | The owner is emailed, with a coarse device description ("Chrome on Windows") derived on the server — never the raw header                                                       |
+| Deleting an account leaving data behind         | One `SECURITY DEFINER` function: cascades what was only theirs, deletes unpublished reports, anonymises approved ones. The web role lost `DELETE` on `users` entirely (ADR-027) |
+| An export handing over working credentials      | The export selects no tokens, no hashes and no other person's name; withheld fields are named in the file rather than silently dropped                                          |
+
+## Data protection (2026-09-23)
+
+| Threat                                                | Controls                                                                                                                                                               |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A database copy revealing where people connect from   | IP addresses are stored only as `iph1:<day>:<hmac>`, re-keyed daily, and a CHECK refuses a raw address from any writer (ADR-028)                                       |
+| An old encryption key staying valid for ever          | `pnpm keys:rotate` re-encrypts every value under the active key and reports which old keys are now unused, so a rotation **retires** a key rather than adding one      |
+| Personal data kept past its purpose                   | Nightly retention in one database function that takes no arguments: the caller chooses when it runs, never how far back it reaches. The prune records itself (ADR-035) |
+| Suppressing the "new device" notice by deleting a row | A table policy allows deleting a device row **only** once it is a year old — the floor holds for every caller, including the retention job itself                      |
+
+## The platform's own surface (2026-09-23)
+
+| Threat                                           | Controls                                                                                                                                                              |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A new outbound request becoming an SSRF hole     | The platform makes **exactly one** outbound request, to an exact-host allowlist with redirects refused; Semgrep fails CI on a second one, proven by guardrail proof 8 |
+| An inline style or script slipping past the CSP  | Production refuses both; a style prop is banned by lint (proof 9) and the e2e suite reads the **served HTML** rather than the live DOM, where the CSSOM would hide it |
+| A researcher's report going to an unread address | `security.txt` is served only once a real contact exists, with an `Expires` generated per request so it cannot rot (ADR-034)                                          |
+| A published claim quietly becoming untrue        | The privacy page's retention periods come from the same constants the server enforces, and the e2e suite asserts them in the served HTML                              |
+
+## Operations (2026-09-23)
+
+| Threat                                                   | Controls                                                                                                                                                                             |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| An attack in progress looking like an ordinary quiet day | Refused sign-ins and rate-limit refusals are recorded — endpoint, short code and that day's source hash, never an address that was tried (ADR-037) — and a watchdog alerts on spikes |
+| The audit log being pruned to hide an intrusion          | Application roles have no `DELETE` on it; pruning is a fixed-period function that writes its own footprint into the log it pruned                                                    |
+| A rate-limit flood becoming an audit-log flood           | One row per caller per ten minutes, carrying the count; the throttle is bounded and "full" means stop counting, never stop limiting                                                  |
+| A failure nobody hears about                             | Job and backup failures report through one `gth-alert@` unit; the watchdog posts spikes and a daily "all clear", so silence means working rather than dead (ADR-038)                 |
+| An incident with no way to stop the bleeding             | Kill switches exist and are reachable at `/admin/switches`; switching off the public API deliberately leaves sign-in, the console and `/healthz` up (ADR-039)                        |
+| A switch left off and forgotten                          | The watchdog names anything still off once a day, quoting the reason typed when it was pulled                                                                                        |
+
 ## Accepted risks
 
 - Local hooks can be skipped with `--no-verify`; CI re-runs every gate (ADR-014).
 - Solo maintainer self-merges after green CI (ADR-012).
 - The deploy workflow and server script are written but **unexercised** until the VPS exists;
   the production stack itself is verified locally (`scripts/verify-prod-stack.sh`).
+
+### Still open, stated plainly (2026-09-23)
+
+- **Nothing has ever alerted for real.** The watchdog, the failure units and the post path are
+  built and tested against a fake `fetch`, but no message has reached a Discord channel,
+  because there is no webhook yet. The first real one is a thing to watch for.
+- **The resolved-address (DNS rebinding) check is owed by the scanner repository.** This
+  repository fetches nothing from retailers, so it cannot hold that control; the checklist says
+  so rather than implying the whole system is covered.
+- **CrowdSec bans and a refused deploy signature reach the ops channel from the host**, and
+  nothing correlates them with the application's own view of an attack.
+- **The policy pages are accurate, not lawyered.** §23 requires a review before Phase 5.
+- **Phase 5 has no threat coverage here yet** — payments, uploads and disputes (T9–T11) arrive
+  with the feature, not before it.
+- **The limiter is in-memory**, so it is per-process. That is correct for one instance and
+  wrong the moment there are two; SR-X.27 moves it to Valkey then.
