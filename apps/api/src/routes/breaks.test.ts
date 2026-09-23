@@ -2,7 +2,8 @@ import { createDb, seedSample } from '@gth/db';
 import { type TestDatabase, startTestDatabase } from '@gth/db/test';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildApp, maskOverlayToken } from '../app.js';
+import { buildApp } from '../app.js';
+import { logUrl } from '../log-url.js';
 import { type ApiConfig, loadConfig } from '../config.js';
 import { MAX_OVERLAY_CONNECTIONS } from './breaks.js';
 
@@ -170,11 +171,13 @@ describe('the overlay token (SR-2.1)', () => {
 
   it('is never written to the request log (SR-2.2)', () => {
     const token = 'SECRET-OVERLAY-TOKEN-VALUE';
-    expect(maskOverlayToken(`/v1/overlay/${token}/stream`)).toBe('/v1/overlay/[REDACTED]/stream');
-    expect(maskOverlayToken(`/v1/overlay/${token}`)).toBe('/v1/overlay/[REDACTED]');
-    expect(maskOverlayToken(`/v1/overlay/${token}?x=1`)).toBe('/v1/overlay/[REDACTED]?x=1');
-    // Other routes are untouched.
-    expect(maskOverlayToken('/v1/breaks/abc/pulls')).toBe('/v1/breaks/abc/pulls');
+    expect(logUrl(`/v1/overlay/${token}/stream`)).toBe('/v1/overlay/[REDACTED]/stream');
+    expect(logUrl(`/v1/overlay/${token}`)).toBe('/v1/overlay/[REDACTED]');
+    // The query goes too. This line used to assert `?x=1` survived, which was true and was
+    // the bug: the same code logs `/api/auth/magic-link/verify?token=…` (log-redaction.test.ts).
+    expect(logUrl(`/v1/overlay/${token}?x=1`)).toBe('/v1/overlay/[REDACTED]?[REDACTED]');
+    // Other routes keep their path.
+    expect(logUrl('/v1/breaks/abc/pulls')).toBe('/v1/breaks/abc/pulls');
   });
 
   it('serves the overlay with no-store and no-referrer (SR-2.2)', async () => {
