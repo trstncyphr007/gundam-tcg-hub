@@ -42,14 +42,29 @@
       . /etc/gth/restic.env
       set +a
 
+      # The database superuser is NOT a restic credential: it lives in the encrypted
+      # production secrets, like every other database setting. Reading it from restic.env is
+      # what this script used to do, and with `set -u` that meant it died on an unbound
+      # variable before taking a single backup — every night, for ever.
+      RUNTIME_ENV="/run/gth/backup.env"
+      install -d -m 0700 /run/gth
+      trap 'rm -f "$RUNTIME_ENV" "${DUMP:-}"' EXIT
+      SOPS_AGE_KEY_FILE=/root/.config/sops/age/keys.txt \
+        sops -d "{{ app_root }}/production/secrets.sops.env" > "$RUNTIME_ENV"
+      chmod 0400 "$RUNTIME_ENV"
+      # Only the two settings this needs, so a stray value in the secrets file cannot change
+      # what gets dumped or where it goes.
+      PG_SUPERUSER=$(grep -E '^PG_SUPERUSER=' "$RUNTIME_ENV" | cut -d= -f2-)
+      PG_DATABASE=$(grep -E '^PG_DATABASE=' "$RUNTIME_ENV" | cut -d= -f2-)
+      PG_DATABASE="${PG_DATABASE:-gth}"
+      [ -n "$PG_SUPERUSER" ] || { echo "PG_SUPERUSER missing from the production secrets" >&2; exit 1; }
+
       STAMP=$(date -u +%Y%m%dT%H%M%SZ)
       DUMP="/var/backups/gth-${STAMP}.dump"
       install -d -m 0700 /var/backups
-      # Whatever happens, the plaintext dump does not outlive this script.
-      trap 'rm -f "$DUMP"' EXIT
 
       docker exec "gth-production-postgres-1" \
-        pg_dump -Fc -U "$PG_SUPERUSER" gth > "$DUMP"
+        pg_dump -Fc -U "$PG_SUPERUSER" "$PG_DATABASE" > "$DUMP"
 
       restic backup --tag postgres --host gth-production "$DUMP"
       restic forget --tag postgres \

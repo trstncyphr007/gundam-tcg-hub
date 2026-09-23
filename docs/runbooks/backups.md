@@ -51,10 +51,21 @@ backups it can write to. Enable object lock/versioning on the bucket if availabl
 
 `/usr/local/bin/gth-backup.sh` (0750, root):
 
+Installed by Ansible (`roles/backups`); this is what it contains.
+
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 set -a; . /etc/gth/restic.env; set +a
+
+# The database superuser is not a restic credential: it comes from the encrypted production
+# secrets, decrypted to tmpfs for the length of this script. See "What went wrong" below.
+install -d -m 0700 /run/gth
+trap 'rm -f /run/gth/backup.env "${DUMP:-}"' EXIT
+SOPS_AGE_KEY_FILE=/root/.config/sops/age/keys.txt \
+  sops -d /srv/gth/production/secrets.sops.env > /run/gth/backup.env
+PG_SUPERUSER=$(grep -E '^PG_SUPERUSER=' /run/gth/backup.env | cut -d= -f2-)
+
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 DUMP=/var/backups/gth-${STAMP}.dump
 install -d -m 0700 /var/backups
@@ -92,10 +103,47 @@ systemctl list-timers gth-backup
 Alert on failure: the deploy/ops Discord webhook receives a message from an `OnFailure=` unit
 (see §20 alerting).
 
-## Restore drill — run monthly, record the result here
+## What went wrong (found 2026-09-23, fixed)
+
+The script above used to read `$PG_SUPERUSER` straight from `/etc/gth/restic.env`, which has
+never contained it — it is a database setting and lives in the encrypted production secrets.
+With `set -u`, that meant **the nightly backup died on an unbound variable before dumping
+anything**. Every night. For ever. The failure would at least have been audible since ADR-036,
+but a host that had been "backing up" for a month would have had nothing to restore.
+
+It is the same shape as the nightly jobs in ADR-036: a script that had never been run,
+describing something that could not work. The fix decrypts the production secrets the same way
+the job runner does, and the rehearsal below is how it stops being theoretical.
+
+## Rehearse it here first
+
+```bash
+bash scripts/restore-drill.sh
+```
+
+Runs the whole cycle against the development stack: dump, back up, prune, verify the
+repository, restore from it, load into a **scratch** database, and compare row counts with the
+live one. The live database is only ever read.
+
+It also checks something easy to miss: that the **row-level security policies and grants**
+came back. A database restored without them looks perfectly healthy and leaks everything.
+
+| Date       | Where       | Dump | Restore | Row counts | Policies / grants | Result     |
+| ---------- | ----------- | ---- | ------- | ---------- | ----------------- | ---------- |
+| 2026-09-23 | workstation | 0 s  | 2 s     | identical  | 53 / 91           | **PASSED** |
+
+A workstation with three cards is not a server with real data — what this proves is that the
+**procedure** works, not how long it takes with a real database.
+
+## Restore drill on the server — run monthly, record the result here
 
 ```bash
 set -a; . /etc/gth/restic.env; set +a
+# PG_SUPERUSER comes from the production secrets, as in the backup script:
+SOPS_AGE_KEY_FILE=/root/.config/sops/age/keys.txt \
+  sops -d /srv/gth/production/secrets.sops.env > /run/gth/drill.env
+PG_SUPERUSER=$(grep -E '^PG_SUPERUSER=' /run/gth/drill.env | cut -d= -f2-)
+trap 'rm -f /run/gth/drill.env' EXIT
 restic snapshots --tag postgres | tail -5
 restic restore latest --target /tmp/restore
 
