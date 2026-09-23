@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
+import type { FlagState } from './flags.js';
 import type { OperationsSummary } from './operations.js';
 import type { SecuritySummary } from './security-events.js';
 
@@ -67,6 +68,7 @@ export function decideAlerts(
   security: SecuritySummary,
   now: Date,
   thresholds: WatchdogThresholds = DEFAULT_THRESHOLDS,
+  flagsOff: FlagState[] = [],
 ): Finding[] {
   const findings: Finding[] = [];
   const count = (action: string): { lastHour: number; last24h: number } => {
@@ -125,6 +127,18 @@ export function decideAlerts(
       severity: 'critical',
       text: `The scanner has reported nothing for ${silent.length === 1 ? '' : `${String(silent.length)} retailers, including `}${String(silent[0]?.name)} in over ${String(Math.round(thresholds.scannerSilentS / 3600))} hours.`,
       repeatAfterS: 6 * HOUR_S,
+    });
+  }
+
+  // A kill switch is pulled in a hurry and turned back on when someone remembers. Saying so
+  // daily is what makes "we switched alerts off during the incident on Tuesday" a thing that
+  // gets noticed on Wednesday rather than in three weeks (ADR-039).
+  for (const flag of flagsOff) {
+    findings.push({
+      key: `flag.off.${flag.key}`,
+      severity: 'warning',
+      text: `${flag.key} is still switched off (since ${flag.updatedAt.toISOString().slice(0, 16).replace('T', ' ')} UTC — ${flag.reason}).`,
+      repeatAfterS: DAY_S,
     });
   }
 

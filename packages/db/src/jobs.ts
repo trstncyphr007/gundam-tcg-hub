@@ -1,5 +1,6 @@
 import { BUYER_HANDLE_RETENTION_DAYS } from '@gth/core';
 import type { Database } from './client.js';
+import { listFlagOverrides } from './queries/flags.js';
 import { ingestLiveSales, purgeExpiredBuyerHandles } from './queries/live-sales.js';
 import {
   DEFAULT_THRESHOLDS,
@@ -52,13 +53,15 @@ export async function watchdogJob(
   now: Date = new Date(),
   thresholds: WatchdogThresholds = DEFAULT_THRESHOLDS,
 ): Promise<string[]> {
-  const [ops, security] = await Promise.all([
+  const [ops, security, overrides] = await Promise.all([
     getOperationsSummary(db, now),
     getSecuritySummary(db, now),
+    listFlagOverrides(db),
   ]);
+  const flagsOff = overrides.filter((flag) => !flag.enabled);
 
   const lines: string[] = [];
-  for (const finding of decideAlerts(ops, security, now, thresholds)) {
+  for (const finding of decideAlerts(ops, security, now, thresholds, flagsOff)) {
     // Claimed first, sent second. The other order would re-send everything whenever a post
     // failed, which is how a broken webhook becomes a flood the moment it comes back.
     if (!(await claimAlert(db, finding))) {

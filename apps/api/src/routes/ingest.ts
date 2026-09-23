@@ -1,5 +1,12 @@
 import { type RestockMessage, dispatchRestockEvent } from '@gth/alerts';
-import { type Database, recordStockReport, resolveListing, writeAuditLog } from '@gth/db';
+import {
+  type Database,
+  FLAGS,
+  type FlagReader,
+  recordStockReport,
+  resolveListing,
+  writeAuditLog,
+} from '@gth/db';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ApiKeyError, authenticateApiKey } from '../plugins/api-key.js';
@@ -39,6 +46,11 @@ export interface IngestDeps {
   /** app_worker pool: may append stock data, but cannot edit the catalog (least privilege). */
   workerDb: Database;
   tokenPepper: string;
+  /**
+   * Kill switches (§22, ADR-039). `alerts.enabled` stops delivery without stopping the record
+   * of what happened; `scanner.ingest.enabled` refuses new reports without revoking a key.
+   */
+  flags?: FlagReader | undefined;
   transports: Parameters<typeof dispatchRestockEvent>[0]['transports'];
   buildMessage: (
     db: Database,
@@ -95,6 +107,12 @@ export function registerIngestRoutes(app: FastifyInstance, deps: IngestDeps): vo
         });
       }
 
+      // Refusing ingestion outright, without revoking the scanner's key (§22). 503, not 403:
+      // the scanner should back off and come back, not decide its credentials are bad.
+      if (deps.flags && !(await deps.flags.isEnabled(FLAGS.scannerIngestEnabled))) {
+        return reply.code(503).header('retry-after', '300').send({ error: 'temporarily_disabled' });
+      }
+
       const results: {
         retailerProductId: string;
         restock: boolean;
@@ -140,12 +158,18 @@ export function registerIngestRoutes(app: FastifyInstance, deps: IngestDeps): vo
 
         let deliveries = 0;
         if (outcome.event) {
-          const message = await deps.buildMessage(
-            deps.workerDb,
-            retailerProductId,
-            report.priceCents ?? null,
-            report.currency ?? 'USD',
-          );
+          // The restock is recorded either way. Only the *sending* is switched off (§22): the
+          // event and its audit entry are history, and turning alerting off during an incident
+          // must not also make the shop's stock history wrong.
+          const sending = deps.flags ? await deps.flags.isEnabled(FLAGS.alertsEnabled) : true;
+          const message = sending
+            ? await deps.buildMessage(
+                deps.workerDb,
+                retailerProductId,
+                report.priceCents ?? null,
+                report.currency ?? 'USD',
+              )
+            : null;
           if (message) {
             const dispatched = await dispatchRestockEvent(
               { db: deps.workerDb, transports: deps.transports, logger: request.log },

@@ -23,6 +23,7 @@ export * from './queries/operations.js';
 export * from './queries/retention.js';
 export * from './queries/security-events.js';
 export * from './queries/ops-alerts.js';
+export * from './queries/flags.js';
 export * from './jobs.js';
 export * from './seed/sample.js';
 export * from './seed/prices.js';

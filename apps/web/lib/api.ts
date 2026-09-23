@@ -186,6 +186,15 @@ export interface OperationsSummary {
   };
 }
 
+/** A kill switch and why it is where it is (§22, ADR-039). */
+export interface FlagState {
+  key: string;
+  enabled: boolean;
+  reason: string;
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
 /** Failed attempts, counted (SR-X.22). Aggregates only — nobody is named. */
 export interface SecuritySummary {
   generatedAt: string;
@@ -543,6 +552,9 @@ export const api = {
   /** Failed sign-ins and rate-limit refusals, counted (SR-X.22). */
   adminSecurity: (): Promise<AdminResult<SecuritySummary>> =>
     adminGet<SecuritySummary>('/v1/admin/security'),
+  /** The kill switches (§22, ADR-039). */
+  adminFlags: (): Promise<AdminResult<{ flags: FlagState[] }>> =>
+    adminGet<{ flags: FlagState[] }>('/v1/admin/flags'),
   /** The seller's own log. Carries buyer handles, so it is never cached anywhere. */
   liveSales: () => getAuthed<{ items: LiveSale[] }>('/v1/live-sales'),
   breakers: () => getPublic<{ items: BreakerSummary[] }>('/v1/breakers'),

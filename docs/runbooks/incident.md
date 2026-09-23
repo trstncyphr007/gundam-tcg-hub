@@ -22,13 +22,23 @@ If you are unsure between two, take the higher one. Downgrading later is free.
 The instinct is to understand it first. Resist that — stop the bleeding, then investigate
 with the clock stopped.
 
-**Kill switches** (DB-backed flags, cached in Valkey for 10s):
+**Kill switches** — go to **`/admin/switches`** and flip one. Each needs a reason, is written
+to the audit log, and takes effect everywhere within ten seconds (ADR-039).
 
-| Flag                         | Stops                   |
-| ---------------------------- | ----------------------- |
-| `alerts.enabled`             | All alert delivery      |
-| `api.public.enabled`         | The public API          |
-| `scanner.<retailer>.enabled` | One retailer's scanning |
+| Switch                   | Stops                                  | Still works                       |
+| ------------------------ | -------------------------------------- | --------------------------------- |
+| `alerts.enabled`         | Alerts being **sent**                  | Restocks are still recorded       |
+| `api.public.enabled`     | The public catalog and price API (503) | Sign-in, this console, `/healthz` |
+| `scanner.ingest.enabled` | New stock reports (503)                | Nobody's API key is revoked       |
+
+**You cannot lock yourself out.** Switching off the public API deliberately leaves sign-in and
+the console up: a switch that shuts the door on the room it lives in is a trap, not a control.
+
+**To stop one shop only**, disable that retailer in the catalog instead — these three are
+all-or-nothing by design.
+
+**Nothing turns itself back on.** The watchdog reminds you once a day that something is still
+off, quoting the reason you typed when you pulled it.
 
 **Revoke sessions globally** — rotate `BETTER_AUTH_SECRET` and redeploy. Every session
 becomes invalid immediately. Users sign in again; that is a small price.

@@ -5,11 +5,12 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import type { Auth, SecurityNotice } from '@gth/auth';
 import { ForbiddenError, PasskeyRequiredError, StepUpRequiredError } from '@gth/auth';
-import { type Database, pingDatabase } from '@gth/db';
+import { type Database, type FlagReader, createFlagReader, pingDatabase } from '@gth/db';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import type { ApiConfig } from './config.js';
 import { ApiKeyError, apiKeyPlugin } from './plugins/api-key.js';
 import { authPlugin } from './plugins/auth.js';
+import { killSwitchPlugin } from './plugins/kill-switch.js';
 import { QuotaStore, quotaPlugin } from './plugins/quota.js';
 import { createRateLimitRecorder } from './plugins/rate-limit-audit.js';
 import { registerAccountRoutes } from './routes/account.js';
@@ -53,6 +54,11 @@ export interface AppDeps {
   moderationDb?: Database | undefined;
   /** Security emails sent outside a Better Auth flow: export and deletion (ADR-027). */
   notify?: ((notice: SecurityNotice) => Promise<void>) | undefined;
+  /**
+   * Kill switches (§22, ADR-039). Built from `db` when not supplied; injectable so a test can
+   * hand in one with no cache and watch a flip take effect immediately.
+   */
+  flags?: FlagReader | undefined;
 }
 
 /** Never log credentials or session material (SR-X.20). */
@@ -170,6 +176,19 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
       maxAge: 86_400,
     });
   });
+
+  // The kill switch the incident runbook promises (§22, ADR-039). Registered before the key
+  // and quota plugins: a switched-off API should not spend a caller's quota telling them so.
+  const flags = deps.flags ?? (deps.db ? createFlagReader(deps.db) : null);
+  if (flags) {
+    await app.register(killSwitchPlugin, {
+      flags,
+      // The public surface only. The console, auth and /healthz stay up, so an admin can sign
+      // in and turn it back on — and so the orchestrator does not restart a container that is
+      // being held closed on purpose.
+      applies: (request) => isPublicPath(request.url),
+    });
+  }
 
   if (deps.keysDb) {
     await app.register(apiKeyPlugin, {
@@ -303,7 +322,11 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     registerCollectionRoutes(app, deps.writeDb);
     registerProfileRoutes(app, deps.writeDb);
     if (deps.moderationDb) {
-      registerAdminRoutes(app, { db: deps.writeDb, workerDb: deps.moderationDb });
+      registerAdminRoutes(app, {
+        db: deps.writeDb,
+        workerDb: deps.moderationDb,
+        ...(flags ? { flags } : {}),
+      });
     }
     registerDeveloperRoutes(app, deps.writeDb, {
       tokenPepper: config.TOKEN_PEPPER,
@@ -311,7 +334,9 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     });
   }
   if (deps.liveSales) registerLiveSaleRoutes(app, deps.liveSales);
-  if (deps.ingest) registerIngestRoutes(app, deps.ingest);
+  if (deps.ingest) {
+    registerIngestRoutes(app, { ...deps.ingest, ...(flags ? { flags } : {}) });
+  }
   if (deps.breaks) registerBreakRoutes(app, deps.breaks);
 
   return app;

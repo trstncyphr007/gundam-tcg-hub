@@ -43,3 +43,4 @@ New decisions get their own file.
 | 036 | [The nightly jobs ship in the image, and their failures are audible](036-the-nightly-jobs-can-actually-run.md)  | Accepted                    |
 | 037 | [The attempts that failed are written down, without naming anyone](037-writing-down-what-failed.md)             | Accepted                    |
 | 038 | [A watchdog that also says "all clear"](038-a-watchdog-that-says-all-clear.md)                                  | Accepted                    |
+| 039 | [The kill switches the runbook already promised](039-kill-switches-that-exist.md)                               | Accepted                    |
