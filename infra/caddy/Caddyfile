@@ -65,6 +65,18 @@
 			import proxy_client_ip
 		}
 	}
+	# The API documents itself, and /docs is part of the public surface (FR-3.6). It is routed
+	# here for the same reason /v1 is, and because the alternative was not working: Next's own
+	# rewrite reads API_INTERNAL_URL when the config is evaluated, and `output: 'standalone'`
+	# bakes that in at *build* time, where the variable is unset. In production the web
+	# container was therefore proxying /docs to 127.0.0.1:4000 — itself — and returning 500.
+	# Nothing noticed, because the smoke test only asked for / and /v1/games. It asks for
+	# /docs now too.
+	handle /docs* {
+		reverse_proxy api:4000 {
+			import proxy_client_ip
+		}
+	}
 	handle {
 		reverse_proxy web:3000 {
 			import proxy_client_ip

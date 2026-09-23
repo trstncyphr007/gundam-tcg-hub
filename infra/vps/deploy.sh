@@ -113,7 +113,9 @@ fi
 # Retried for up to a minute: on a new domain Caddy obtains its first certificate only after
 # the containers are healthy, and a smoke test that ran into that gap would roll back a good
 # release.
-for path in / /v1/games; do
+# /docs is in this list because it was broken in production for weeks and two checks that
+# only asked for / and /v1/games both said the deploy was fine.
+for path in / /v1/games /docs; do
   code=000
   for _ in $(seq 1 12); do
     code=$(curl -sS "${resolve[@]}" -o /dev/null -w '%{http_code}' "${base}${path}" 2>/dev/null || true)

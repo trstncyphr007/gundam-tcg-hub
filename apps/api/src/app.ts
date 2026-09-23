@@ -152,6 +152,19 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
   });
 
   /**
+   * Permissions-Policy, which helmet does not set (SR-X.14).
+   *
+   * The web app has carried this since Phase 1; the API never did, and nobody noticed because
+   * the API serves JSON — until `/docs`, which is a **page**, proxied under the web origin.
+   * The nightly scan found it there. The same list as the web app, so a browser sees one
+   * answer whichever half of the site served it.
+   */
+  app.addHook('onSend', async (_request, reply, payload) => {
+    void reply.header('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+    return payload;
+  });
+
+  /**
    * CORS for the public API only (SR-3.7).
    *
    * Any origin, `GET` only, **no credentials**. That combination is what makes a wildcard
