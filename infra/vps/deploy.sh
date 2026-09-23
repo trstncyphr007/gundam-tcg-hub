@@ -19,10 +19,17 @@ for d in "$API_DIGEST" "$WEB_DIGEST"; do
   [[ "$d" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "not a digest: $d" >&2; exit 1; }
 done
 
-ROOT="/srv/gth/${ENVIRONMENT}"
+# The three paths below are overridable **only** so the deploy can be rehearsed end to end on
+# a workstation (`scripts/deploy-rehearsal.sh`) without root. Nothing sets them in production:
+# the workflow calls `sudo /srv/gth/deploy.sh`, and these defaults are what it gets.
+GTH_ROOT="${GTH_ROOT:-/srv/gth}"
+GTH_RUNTIME_DIR="${GTH_RUNTIME_DIR:-/run/gth}"
+AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-/root/.config/sops/age/keys.txt}"
+
+ROOT="${GTH_ROOT}/${ENVIRONMENT}"
 OWNER="trstncyphr007"
 REPO="trstncyphr007/gundam-tcg-hub"
-RUNTIME_ENV="/run/gth/${ENVIRONMENT}.env"
+RUNTIME_ENV="${GTH_RUNTIME_DIR}/${ENVIRONMENT}.env"
 LAST_GOOD="${ROOT}/last-good.env"
 COMPOSE=(docker compose -p "gth-${ENVIRONMENT}" -f "${ROOT}/docker-compose.prod.yml")
 
@@ -36,22 +43,34 @@ for pair in "api:${API_DIGEST}" "web:${WEB_DIGEST}"; do
     --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
 done
 
-log "decrypting secrets to tmpfs"
-install -d -m 0700 /run/gth
-SOPS_AGE_KEY_FILE=/root/.config/sops/age/keys.txt \
-  sops -d "${ROOT}/secrets.sops.env" > "$RUNTIME_ENV"
-chmod 0400 "$RUNTIME_ENV"
-
 # Remember what is currently running so a failure can roll straight back.
 PREVIOUS_API=$(grep -E '^API_IMAGE=' "$LAST_GOOD" 2>/dev/null | cut -d= -f2- || true)
 PREVIOUS_WEB=$(grep -E '^WEB_IMAGE=' "$LAST_GOOD" 2>/dev/null | cut -d= -f2- || true)
 
 NEW_API="ghcr.io/${OWNER}/gth-api@${API_DIGEST}"
 NEW_WEB="ghcr.io/${OWNER}/gth-web@${WEB_DIGEST}"
-{
-  echo "API_IMAGE=${NEW_API}"
-  echo "WEB_IMAGE=${NEW_WEB}"
-} >> "$RUNTIME_ENV"
+
+# The secrets and the two image references are written in one pass and the file is sealed
+# afterwards. It used to be sealed at 0400 first and appended to twice — which works only
+# because this runs as root, and root ignores the permissions it just set. Writing it once
+# means the file is never half-built, and the script stops depending on that.
+write_runtime_env() {
+  install -d -m 0700 "$GTH_RUNTIME_DIR"
+  rm -f "$RUNTIME_ENV"
+  {
+    SOPS_AGE_KEY_FILE="$AGE_KEY_FILE" sops -d "${ROOT}/secrets.sops.env"
+    echo "API_IMAGE=$1"
+    echo "WEB_IMAGE=$2"
+    # Where the shipped files actually are. The compose file's own relative paths are correct
+    # inside the repository and wrong here, where it sits alone in this directory.
+    echo "CADDYFILE=${ROOT}/Caddyfile"
+    echo "DB_INIT_DIR=${ROOT}/db-init"
+  } > "$RUNTIME_ENV"
+  chmod 0400 "$RUNTIME_ENV"
+}
+
+log "decrypting secrets to tmpfs"
+write_runtime_env "$NEW_API" "$NEW_WEB"
 
 log "pulling images"
 docker pull -q "$NEW_API" >/dev/null
@@ -66,7 +85,9 @@ rollback() {
     exit 1
   fi
   log "FAILED - rolling back to ${PREVIOUS_API}"
-  sed -i "s|^API_IMAGE=.*|API_IMAGE=${PREVIOUS_API}|; s|^WEB_IMAGE=.*|WEB_IMAGE=${PREVIOUS_WEB}|" "$RUNTIME_ENV"
+  # Rewritten, not edited in place: the file is read-only by then, and `sed -i` on it worked
+  # only by virtue of running as root.
+  write_runtime_env "$PREVIOUS_API" "$PREVIOUS_WEB"
   "${COMPOSE[@]}" --env-file "$RUNTIME_ENV" up -d --wait || true
   exit 1
 }
