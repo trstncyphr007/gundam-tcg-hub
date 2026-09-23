@@ -36,7 +36,8 @@
     "db:seed-prices": "pnpm --filter @gth/db seed-prices",
     "db:retention": "pnpm --filter @gth/db retention",
     "keys:rotate": "pnpm --filter @gth/db rotate-keys",
-    "db:seed-scale": "pnpm --filter @gth/db seed-scale"
+    "db:seed-scale": "pnpm --filter @gth/db seed-scale",
+    "db:reapply-deletions": "pnpm --filter @gth/db reapply-deletions"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",

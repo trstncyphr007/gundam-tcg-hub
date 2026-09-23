@@ -91,23 +91,33 @@ promoted to live, anything — brings deleted people back unless this step is ru
 themselves age out on the retention schedule in `backups.md`; that is what bounds how long a
 deleted account survives _in a backup_, and it is why a restore must not undo the deletion.
 
-Every deletion leaves one row in the audit log, which is append-only and holds no email.
-Before serving traffic, from the **live** database's audit log (or the newest one you have):
+Every deletion leaves one row in the audit log, which is append-only and holds no email —
+exactly enough to repeat the deletion and nothing more. There is a command for this:
 
-```sql
--- Accounts deleted after the snapshot you restored. :snapshot_time is the dump's timestamp.
-select target_id from app.audit_log
- where action = 'account.deleted' and at >= :snapshot_time;
+```bash
+# What it would do. --since is the timestamp of the dump you restored.
+pnpm db:reapply-deletions --since 2026-09-20T03:00:00Z
+
+# Do it.
+pnpm db:reapply-deletions --since 2026-09-20T03:00:00Z --apply
 ```
 
-and for each id, in the restored database:
+**Dry run by default**, because during an incident the first thing anyone wants is to see what
+a command will do before it does it. It prints a line per account and ends with how many were
+re-applied and how many were not in the snapshot at all.
 
-```sql
-begin;
-select set_config('app.user_id', '<id>', true);
-select app.delete_account('<id>');   -- no-op if it was never in the snapshot
-commit;
+By default it reads the list of deletions from the database it is repairing. When the newer
+audit log is somewhere else — the usual case, since the restored one predates the deletions —
+point it there:
+
+```bash
+pnpm db:reapply-deletions --since <dump time> --audit-url "postgres://..." --apply
 ```
+
+Each account goes out through `app.delete_account`, the same function the account page uses, so
+the cascade, the unpublished reports and the anonymised ones are all handled. A hand-written
+`DELETE` under pressure would do the first and forget the rest — which is why this used to be
+four lines of SQL in this runbook and is now a command with tests.
 
 Then record in the incident notes how many were re-applied. If the live audit log is lost
 too, say so there — it is the one case where a deletion cannot be honoured automatically,
