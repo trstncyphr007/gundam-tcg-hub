@@ -48,13 +48,21 @@ export function createRateLimitRecorder(
         return;
       }
 
-      // Drop anything past its window before adding, and if the map is still at its ceiling,
-      // drop the oldest entry. Full means "stop counting", never "stop limiting": the limiter
-      // itself is unaffected by any of this.
-      for (const [k, v] of seen) if (at - v.at >= WINDOW_MS) seen.delete(k);
+      // At the ceiling, drop the entry that has been there longest. A Map iterates in
+      // insertion order, so that is the first key — O(1).
+      //
+      // This used to sweep the whole map for expired entries and then scan a copy of it to
+      // find the oldest, on every refused request from a caller it had not just seen. Ten
+      // thousand operations and an allocation, caused by one cheap request, in the component
+      // whose entire job is to stop a refused request from costing anything. Writing the test
+      // for the ceiling is what made it obvious.
+      //
+      // Stale entries are no longer swept: they are evicted in turn, and one that is revisited
+      // is handled by the window check above. Full means "stop counting", never "stop
+      // limiting" — the limiter does not consult any of this.
       if (seen.size >= MAX_TRACKED) {
-        const oldest = [...seen.entries()].reduce((a, b) => (a[1].at <= b[1].at ? a : b));
-        seen.delete(oldest[0]);
+        const oldest = seen.keys().next().value;
+        if (oldest !== undefined) seen.delete(oldest);
       }
 
       const refusedSince = previous?.count ?? 0;
