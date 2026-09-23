@@ -155,6 +155,11 @@ Without it a failed backup or a failed nightly job alerts nobody — the alert u
 quietly rather than failing on top of the failure it was reporting. `preflight.sh` checks
 for it.
 
+**The same webhook belongs in GitHub**, as a repository secret of the same name
+(`DISCORD_OPS_WEBHOOK_URL`). Without it a failed nightly scan or a failed release tells nobody,
+which is precisely what happened for three nights in September before anyone thought to look.
+The workflows run either way and log that no webhook is set.
+
 The nightly jobs themselves need nothing: the playbook installs their units and timers
 (`roles/jobs`), and one of them deletes personal data on a clock, so it is not optional.
 
