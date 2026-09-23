@@ -155,5 +155,70 @@ proof_push_main() {
 blocked "the pre-push hook refuses a push to main" proof_push_main
 
 # --------------------------------------------------------------------------- #
+head2 "8. A second outbound request is rejected (SR-1.1, ADR-030)"
+# The platform makes exactly one outbound call, and that singularity is the SSRF story: one
+# place with an allowlist, a timeout and no redirects. The rule only applies under the real
+# source paths, so the planted file goes where a real one would.
+mkdir -p "$WORK/outbound/packages/watches/src"
+cat > "$WORK/outbound/packages/watches/src/notify.ts" <<'TS'
+export async function ping(url: string): Promise<void> {
+  await fetch(url, { method: 'POST' });
+}
+TS
+blocked "semgrep rejects a new outbound fetch in server code" \
+  semgrep scan --metrics=off --error --quiet \
+    --config "$REPO_ROOT/.semgrep.yml" "$WORK/outbound"
+
+# And the file that *is* allowed one must stay allowed, or the rule gets switched off by the
+# next person who hits it.
+mkdir -p "$WORK/allowed/packages/alerts/src"
+cp "$REPO_ROOT/packages/alerts/src/transports.ts" "$WORK/allowed/packages/alerts/src/"
+if semgrep scan --metrics=off --error --quiet \
+     --config "$REPO_ROOT/.semgrep.yml" "$WORK/allowed" > "$WORK/out.txt" 2>&1; then
+  ok "the one allowed outbound module still passes (targeted rule, not a blanket ban)"
+else
+  bad "the allowed outbound module is rejected -- the exclusion no longer matches"
+  sed 's/^/        /' "$WORK/out.txt" | head -n 6
+fi
+
+# --------------------------------------------------------------------------- #
+head2 "9. An inline style is rejected (ADR-031)"
+# Production's CSP refuses inline styles, and a style prop is dropped silently rather than
+# erroring: the page passes every functional test and merely looks wrong. The lint rule is
+# what stands between that and a broken page.
+proof_inline_style() {
+  local planted="$REPO_ROOT/apps/web/app/guardrail-proof-badge.tsx"
+  cat > "$planted" <<'TSX'
+export function Badge(): React.JSX.Element {
+  return <span style={{ color: 'red' }}>overdue</span>;
+}
+TSX
+  local status=0
+  (cd "$REPO_ROOT/apps/web" && npx eslint --max-warnings=0 app/guardrail-proof-badge.tsx) \
+    > "$WORK/eslint.txt" 2>&1 || status=$?
+  rm -f "$planted"
+  return "$status"
+}
+blocked "eslint rejects a style prop in a component" proof_inline_style
+
+# --------------------------------------------------------------------------- #
+head2 "10. A script that will not run on the server is rejected (ADR-039)"
+# A shell script edited from a Windows editor comes back as mode 100644, and nothing notices
+# until it fails to run on the VPS. This gate is why that is now impossible rather than
+# repeatedly fixed by hand.
+git init -q "$WORK/modes"
+cd "$WORK/modes" || exit 1
+git config user.email proof@example.invalid && git config user.name proof
+git config commit.gpgsign false
+mkdir -p scripts
+cp "$REPO_ROOT/scripts/check-exec-bits.sh" scripts/
+printf '#!/usr/bin/env bash\necho deploying\n' > deploy.sh
+chmod 644 deploy.sh
+git add -A && git commit -q -m "add a script the wrong way"
+blocked "the exec-bit check rejects a non-executable shebang script" \
+  bash scripts/check-exec-bits.sh
+cd "$REPO_ROOT" || exit 1
+
+# --------------------------------------------------------------------------- #
 printf '\n\033[1m%d passed, %d failed, %d skipped\033[0m\n' "$pass" "$fail" "$skip"
 [ "$fail" -eq 0 ] || exit 1
