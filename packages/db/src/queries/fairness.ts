@@ -68,6 +68,14 @@ export async function commitBreak(
       throw new CommitmentError('commit before the break starts, not after');
     }
 
+    // One commitment per break is enforced by a unique index, which is the right place for it
+    // — but letting that surface as a raw duplicate-key error made an ordinary, expected act
+    // (a double-clicked button, or a retry after a lost response) come back as a 500. The
+    // route maps CommitmentError onto 409 and everything else onto "we broke", so a second
+    // commit was being reported as our fault instead of as a refusal with a reason.
+    //
+    // Narrowly targeted: only the one-per-break conflict is absorbed, so any other constraint
+    // still fails loudly rather than being silently swallowed here.
     const [row] = await tx
       .insert(breakCommitments)
       .values({
@@ -77,8 +85,11 @@ export async function commitBreak(
         slotCount: input.slotCount,
         algorithmVersion: SHUFFLE_ALGORITHM,
       })
+      .onConflictDoNothing({ target: breakCommitments.breakId })
       .returning(publicColumns);
-    if (!row) throw new CommitmentError('commitment insert returned no row');
+    // The seed just generated is discarded unwritten, and the original commitment stands.
+    // Replacing it is exactly what this scheme exists to prevent.
+    if (!row) throw new CommitmentError('this break already has a commitment');
     return row;
   });
 }
