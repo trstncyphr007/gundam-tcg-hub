@@ -46,6 +46,24 @@ test.describe('policy pages', () => {
     await expect(page.getByTestId('terms-data')).toContainText('CC BY 4.0');
   });
 
+  test('the site is closed to crawlers until it is launched', async ({ page }) => {
+    // One switch does both, so the site cannot end up telling crawlers "noindex" in the HTML
+    // while robots.txt invites them in (lib/site.ts, SITE_IS_PUBLIC).
+    const robots = await page.request.get('/robots.txt');
+    expect(robots.status()).toBe(200);
+    expect(await robots.text()).toContain('Disallow: /');
+
+    const home = await (await page.request.get('/')).text();
+    expect(home).toMatch(/<meta name="robots" content="noindex/i);
+
+    // And the pages that must never be indexed say so on their own account, so that flipping
+    // the switch at launch cannot reach them.
+    for (const path of ['/admin/operations', '/account/security']) {
+      const html = await (await page.request.get(path)).text();
+      expect(html, path).toMatch(/<meta name="robots" content="noindex/i);
+    }
+  });
+
   test('security.txt is not served while there is no contact address', async ({ page }) => {
     // RFC 9116 with an address nobody reads is worse than none: it tells a finder they have
     // reported something when they have not. It starts serving when lib/site.ts has one.
