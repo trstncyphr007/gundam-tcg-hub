@@ -30,11 +30,37 @@
 # nightly run after the change, so an informational note ZAP raises about some other
 # directive is read before it can fail the build — promote to FAIL once a run is clean.
 # The e2e suite asserts the policy directly either way ("uses a strict nonce policy").
-# Reviewed: 2026-09-22.
-10055	WARN	style-src 'unsafe-inline' removed (ADR-031); WARN for one clean nightly, then FAIL
+# Reviewed: 2026-09-22. **Promoted to FAIL on 2026-09-24**, the condition this entry set for
+# itself: a baseline run with WARN-NEW: 0. Anything the CSP family raises now fails the build.
+10055	FAIL	CSP is strict since ADR-031; a clean run on 2026-09-24 earned this promotion
 
 # Absence of Anti-CSRF Tokens. A heuristic that looks for a hidden token field in a form.
 # Ours is submitted by script to the auth API, which checks the Origin header -- verified
 # by accident during Phase 2, when a request without an Origin was rejected with 403.
 # Session cookies are also SameSite=Lax. A hidden field would add nothing.
 10202	IGNORE	CSRF is handled by Origin checks + SameSite=Lax cookies, not by a form token
+
+# --------------------------------------------------------------------------------------- #
+# Added 2026-09-24, after the nightly run had been red for three nights and nobody had
+# looked. Four new warnings; one was a real gap and is fixed, three are stated below.
+
+# Cross-Domain Misconfiguration. ZAP sees `access-control-allow-origin: *` on /v1 and /docs
+# and flags it, correctly, as "anyone can read this". That is the design (SR-3.7): the public
+# catalog and price API is GET-only, carries no credentials, and its index is published under
+# CC BY 4.0. The wildcard is safe *because* of the second part -- no cookie is ever attached
+# to a cross-origin request, so another site can read public data and nothing else.
+# Session-authenticated routes send no CORS headers at all, which a test asserts.
+10098	IGNORE	Public API is deliberately world-readable: GET only, no credentials (SR-3.7)
+
+# Content-Type missing, on `/v1/cards/` and `/v1/breakers/` -- Next's 308 redirect from a
+# trailing slash to the canonical path. A bodyless redirect has nothing to describe. Every
+# response that carries a body sets one, which the API's own tests assert.
+10019	IGNORE	Only on bodyless 308 trailing-slash redirects; responses with a body set it
+
+# User Controllable HTML Element Attribute. The `next` parameter on /sign-in reaches an
+# attribute, which is the exact shape of a reflected-XSS bug -- so this entry states the
+# control rather than waving the rule away. `next` goes through `safeNextPath` on the server
+# before the page renders: anything that is not a same-origin relative path becomes the
+# default destination (SR-X.13). It has unit tests, and an e2e test tries to send someone
+# off-site after signing in and cannot.
+10031	IGNORE	`next` is validated to a same-origin relative path by safeNextPath before render

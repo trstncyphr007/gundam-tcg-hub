@@ -47,10 +47,21 @@ services:
     <<: *hardening
     image: ${WEB_IMAGE:?set WEB_IMAGE to a signed digest}
     user: '65532:65532'
+    # Next writes its rendered-page cache under .next/cache, and the filesystem is read-only
+    # by design. Without somewhere to put it every render logs an ENOENT, which is noise that
+    # would hide a real error — and the noise is what a log nobody trusts is made of. In
+    # memory, so it is still gone when the container is.
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /app/apps/web/.next/cache:size=64m,mode=0700,uid=65532,gid=65532
     environment:
       NODE_ENV: production
       PORT: '3000'
       HOSTNAME: 0.0.0.0
+      # Read by next.config.ts, which `output: 'standalone'` evaluates at build time — so this
+      # does NOT reach the rewrites. It stays because it is right, and because anything added
+      # later that reads it at runtime will need it. Production routing is Caddy's job
+      # (infra/caddy/Caddyfile), which is why /docs is routed there rather than through Next.
       API_INTERNAL_URL: http://api:4000
     networks: [edge, internal]
     deploy:

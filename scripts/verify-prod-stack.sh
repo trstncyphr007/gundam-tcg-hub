@@ -89,6 +89,10 @@ step "smoke tests through Caddy"
 base=http://127.0.0.1:8080
 printf 'home            %s\n' "$(curl -s -o /dev/null -w '%{http_code}' $base/)"
 printf 'catalog api     %s\n' "$(curl -s -o /dev/null -w '%{http_code}' $base/v1/games)"
+# The public API documentation (FR-3.6). It returned 500 in production until 2026-09-24 —
+# Caddy sent it to Next, whose rewrite had a build-time address baked into it.
+printf 'api docs        %s\n' "$(curl -s -o /dev/null -w '%{http_code}' $base/docs)"
+printf 'openapi doc     %s\n' "$(curl -s -o /dev/null -w '%{http_code}' $base/docs/openapi.json)"
 printf 'me (anonymous)  %s\n' "$(curl -s -o /dev/null -w '%{http_code}' $base/v1/me)"
 printf 'rate limit hdrs %s\n' "$(curl -s -D - -o /dev/null $base/v1/games | grep -ci 'ratelimit')"
 printf 'security hdrs   %s\n' "$(curl -s -D - -o /dev/null $base/ | grep -ciE '^(strict-transport-security|x-content-type-options|content-security-policy|referrer-policy)') of 4"
