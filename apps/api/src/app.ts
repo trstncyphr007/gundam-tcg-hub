@@ -15,6 +15,7 @@ import {
 } from '@gth/db';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import type { ApiConfig } from './config.js';
+import { serialiseError } from './log-error.js';
 import { logUrl } from './log-url.js';
 import { ApiKeyError, apiKeyPlugin } from './plugins/api-key.js';
 import { authPlugin } from './plugins/auth.js';
@@ -139,6 +140,9 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
                 method: request.method,
                 url: logUrl(request.url),
               }),
+              // pino's default copies an error's own properties, which for a driver error
+              // means the failing statement and everything bound to it (see log-error.ts).
+              err: serialiseError,
             },
           },
     trustProxy: config.API_TRUST_PROXY,
