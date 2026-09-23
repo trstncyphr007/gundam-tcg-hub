@@ -82,20 +82,27 @@ sops --encrypt --age "$RECIPIENT" --input-type dotenv --output-type dotenv \
 rm -f "${WORK}/plain.env"
 echo "encrypted to ${RECIPIENT}"
 
-step "find the newest published release"
-API_DIGEST=""; WEB_DIGEST=""
-for sha in $(git log --format=%H -20 main); do
-  API_DIGEST=$(docker buildx imagetools inspect "ghcr.io/trstncyphr007/gth-api:sha-${sha}" 2>/dev/null | awk '/^Digest:/ {print $2}')
-  [ -n "$API_DIGEST" ] || continue
-  WEB_DIGEST=$(docker buildx imagetools inspect "ghcr.io/trstncyphr007/gth-web:sha-${sha}" 2>/dev/null | awk '/^Digest:/ {print $2}')
-  [ -n "$WEB_DIGEST" ] && { echo "release for ${sha:0:12}"; break; }
+step "find two published releases"
+# Two, because rolling back to the release you are already running proves nothing.
+RELEASES=()
+for sha in $(git log --format=%H -25 main); do
+  api=$(docker buildx imagetools inspect "ghcr.io/trstncyphr007/gth-api:sha-${sha}" 2>/dev/null | awk '/^Digest:/ {print $2}')
+  [ -n "$api" ] || continue
+  web=$(docker buildx imagetools inspect "ghcr.io/trstncyphr007/gth-web:sha-${sha}" 2>/dev/null | awk '/^Digest:/ {print $2}')
+  [ -n "$web" ] || continue
+  RELEASES+=("${sha} ${api} ${web}")
+  echo "release ${sha:0:12}"
+  [ "${#RELEASES[@]}" -eq 2 ] && break
 done
-[ -n "$API_DIGEST" ] && [ -n "$WEB_DIGEST" ] || { echo "no published release found" >&2; exit 1; }
-echo "api ${API_DIGEST}"
-echo "web ${WEB_DIGEST}"
+[ "${#RELEASES[@]}" -ge 1 ] || { echo "no published release found" >&2; exit 1; }
 
-step "run the deploy script, unmodified"
-bash infra/vps/deploy.sh "$ENVIRONMENT" "$API_DIGEST" "$WEB_DIGEST"
+# shellcheck disable=SC2206  # deliberately splitting the three fields
+NEWER=(${RELEASES[0]})
+OLDER=("${NEWER[@]}")
+[ "${#RELEASES[@]}" -eq 2 ] && { read -ra OLDER <<< "${RELEASES[1]}"; }
+
+step "deploy the older release (this is the one a rollback must return to)"
+bash infra/vps/deploy.sh "$ENVIRONMENT" "${OLDER[1]}" "${OLDER[2]}"
 
 step "what a visitor gets"
 for path in / /v1/games; do
@@ -105,7 +112,45 @@ done
 step "what the deploy recorded"
 cat "${ROOT}/last-good.env"
 
-printf '\n\033[1;32mREHEARSAL PASSED\033[0m — the deploy path works end to end\n'
+# --------------------------------------------------------------------------- #
+# The half that only ever runs when something is already wrong.
+#
+# Breaking it realistically matters: a release that cannot start would be caught by the
+# healthcheck, but a release that starts perfectly and cannot be *reached* is the nastier
+# case, and it is the one this project has already walked into once (SITE_ADDRESS must be a
+# domain or :80 — see runbooks/vps-setup.md).
+step "break the next release the way a bad setting does, and deploy it"
+sops -d "${ROOT}/secrets.sops.env" > "${WORK}/broken.env"
+sed -i 's|^SITE_ADDRESS=.*|SITE_ADDRESS=:8088|' "${WORK}/broken.env"
+sops --encrypt --age "$RECIPIENT" --input-type dotenv --output-type dotenv \
+  "${WORK}/broken.env" > "${ROOT}/secrets.sops.env"
+rm -f "${WORK}/broken.env"
+
+set +e
+bash infra/vps/deploy.sh "$ENVIRONMENT" "${NEWER[1]}" "${NEWER[2]}"
+DEPLOY_STATUS=$?
+set -e
+
+step "did it roll back?"
+[ "$DEPLOY_STATUS" -ne 0 ] || { echo "the deploy reported success on a broken release" >&2; exit 1; }
+echo "deploy exited ${DEPLOY_STATUS} (non-zero, as it must)"
+
+recorded=$(grep -E '^API_IMAGE=' "${ROOT}/last-good.env" | cut -d= -f2-)
+running=$(docker inspect "gth-${ENVIRONMENT}-api-1" --format '{{.Config.Image}}')
+echo "last-good still: ${recorded##*@}"
+echo "actually running: ${running##*@}"
+[ "$recorded" = "ghcr.io/trstncyphr007/gth-api@${OLDER[1]}" ] || {
+  echo "last-good.env was overwritten by a failed deploy" >&2; exit 1; }
+[ "$running" = "$recorded" ] || { echo "the running image is not the rolled-back one" >&2; exit 1; }
+
+printf '\n\033[1;32mREHEARSAL PASSED\033[0m — deploy works, and a failed release rolls back\n'
+cat <<'NOTE'
+
+One thing the rollback deliberately does not do: it restores the previous *images*, not the
+previous *secrets*. The broken setting above is still in place afterwards, so the site is
+still unreachable until somebody fixes it — which is correct (nobody wants a deploy silently
+reverting a secret) but is worth knowing at the moment it happens.
+NOTE
 echo "Run with KEEP=1 to leave the stack up for inspection."
 [ "${KEEP:-0}" = "1" ] && trap - EXIT && echo "left in ${WORK}"
 exit 0
