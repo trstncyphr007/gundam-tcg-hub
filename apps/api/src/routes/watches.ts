@@ -70,6 +70,8 @@ export function registerWatchRoutes(app: FastifyInstance, db: Database): void {
       if (error instanceof DuplicateWatchError) {
         return reply.code(409).send({ error: 'watch_exists' });
       }
+      // A MissingReferenceError falls through to the app's handler, which answers 404 for
+      // every route at once — the id came from a page that outlived the row behind it.
       throw error;
     }
 

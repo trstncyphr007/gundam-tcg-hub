@@ -8,6 +8,7 @@ import { ForbiddenError, PasskeyRequiredError, StepUpRequiredError } from '@gth/
 import {
   type Database,
   type FlagReader,
+  MissingReferenceError,
   consumeApiKeyQuota,
   createFlagReader,
   pingDatabase,
@@ -279,6 +280,14 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     // A rejected key is the caller's problem, not ours, and must never log the key itself.
     if (error instanceof ApiKeyError) {
       return reply.code(error.status).send({ error: error.message });
+    }
+    // A request naming a row that is not there. Handled here rather than at each call site
+    // because it arrives the same way from every one of them: a page open in a tab while the
+    // catalogue changed underneath it. Answered as 404 without a message — which row is
+    // missing is the caller's own id echoed back, and 404 for both "gone" and "never yours"
+    // is what keeps the two indistinguishable (SR-3.3).
+    if (error instanceof MissingReferenceError) {
+      return reply.code(404).send({ error: 'not_found' });
     }
     const { status, code, message } = describeError(error);
     if (status >= 500) {

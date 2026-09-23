@@ -7,6 +7,7 @@ import {
 import { and, asc, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { type cardCondition, priceIndexDaily, priceObservations } from '../schema/pricing.js';
+import { MissingReferenceError, isForeignKeyViolation } from './pg-errors.js';
 import { asUser } from './watches.js';
 
 export type PriceObservation = typeof priceObservations.$inferSelect;
@@ -57,20 +58,26 @@ export async function reportPrice(
       );
     if (n >= MAX_PENDING_REPORTS_PER_USER) throw new ReportLimitError();
 
-    const [row] = await tx
-      .insert(priceObservations)
-      .values({
-        cardVariantId: input.cardVariantId,
-        source: 'user_report',
-        saleType: input.saleType ?? 'sold',
-        condition: input.condition,
-        priceCents: input.priceCents,
-        currency: input.currency ?? 'USD',
-        observedAt: input.observedAt ?? new Date(),
-        evidenceRef: input.evidenceRef,
-        reporterId,
-      })
-      .returning();
+    let row;
+    try {
+      [row] = await tx
+        .insert(priceObservations)
+        .values({
+          cardVariantId: input.cardVariantId,
+          source: 'user_report',
+          saleType: input.saleType ?? 'sold',
+          condition: input.condition,
+          priceCents: input.priceCents,
+          currency: input.currency ?? 'USD',
+          observedAt: input.observedAt ?? new Date(),
+          evidenceRef: input.evidenceRef,
+          reporterId,
+        })
+        .returning();
+    } catch (error) {
+      if (isForeignKeyViolation(error)) throw new MissingReferenceError('card');
+      throw error;
+    }
     if (!row) throw new Error('observation insert failed');
     return row;
   });

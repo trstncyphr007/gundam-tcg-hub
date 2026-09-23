@@ -9,6 +9,7 @@ import type { Database } from '../client.js';
 import { breaks } from '../schema/breaks.js';
 import { creatorProfiles } from '../schema/profiles.js';
 import { checkChains } from './fairness.js';
+import { isUniqueViolation } from './pg-errors.js';
 import { asUser } from './watches.js';
 
 export type CreatorProfile = typeof creatorProfiles.$inferSelect;
@@ -102,23 +103,6 @@ export async function upsertProfile(
       throw error;
     }
   });
-}
-
-/**
- * Is this a unique-constraint violation on the named index?
- *
- * Walks the `cause` chain, because Drizzle wraps the driver's error in one of its own: the
- * `23505` and the constraint name live on the original, and a check of only the outer error
- * quietly never matches. The wrapping is also why the constraint is named rather than the
- * message pattern-matched — one is a contract with Postgres, the other with a string.
- */
-function isUniqueViolation(error: unknown, constraint: string): boolean {
-  for (let current: unknown = error; current != null;) {
-    const fields = current as { code?: unknown; constraint_name?: unknown; cause?: unknown };
-    if (fields.code === '23505' && fields.constraint_name === constraint) return true;
-    current = fields.cause;
-  }
-  return false;
 }
 
 export async function getMyProfile(db: Database, userId: string): Promise<CreatorProfile | null> {

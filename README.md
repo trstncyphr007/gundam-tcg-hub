@@ -69,6 +69,12 @@ pnpm e2e              # Playwright (Chromium) against the running stack
 They drive a real browser: catalog search, a full magic-link sign-in read out of Mailpit,
 watch/unwatch, link replay, cross-user isolation, and the CSP headers.
 
+> **After `pnpm stack:reset` or `db:reset`, restart the web app** (or delete `apps/web/.next`).
+> The public API sends `Cache-Control: max-age=300`, which Next caches, so for five minutes
+> after a reseed the pages keep serving ids from the database you just destroyed. Clicking one
+> then fails against a row that no longer exists — and until now that came back as a 500, so
+> the hunt started in the wrong place entirely. (It did. Hence this note, and the 404s.)
+
 ## Public API (v1)
 
 | Endpoint            | Notes                                                    |

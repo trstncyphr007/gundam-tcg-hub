@@ -9,6 +9,7 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { breakPulls, breaks, pullEvidence } from '../schema/breaks.js';
 import { cardVariants, cards, sealedProducts } from '../schema/catalog.js';
+import { MissingReferenceError, isForeignKeyViolation } from './pg-errors.js';
 import { asUser } from './watches.js';
 
 export type Break = typeof breaks.$inferSelect;
@@ -55,16 +56,24 @@ export async function createBreak(
       throw new BreakLimitError(`break limit reached (${String(MAX_BREAKS_PER_CREATOR)})`);
     }
 
-    const [row] = await tx
-      .insert(breaks)
-      .values({
-        creatorId,
-        title: input.title,
-        sealedProductId: input.sealedProductId,
-        costCents: input.costCents,
-        overlayTokenHash: input.overlayTokenHash,
-      })
-      .returning();
+    // A sealed product that is not there is a 404, not a 500 — the id comes from a catalogue
+    // page that may have been open a while.
+    let row;
+    try {
+      [row] = await tx
+        .insert(breaks)
+        .values({
+          creatorId,
+          title: input.title,
+          sealedProductId: input.sealedProductId,
+          costCents: input.costCents,
+          overlayTokenHash: input.overlayTokenHash,
+        })
+        .returning();
+    } catch (error) {
+      if (isForeignKeyViolation(error)) throw new MissingReferenceError('product');
+      throw error;
+    }
     if (!row) throw new Error('break insert failed');
     return row;
   });
@@ -295,20 +304,28 @@ export async function logPull(
       pulledAt: pulledAt.toISOString(),
     });
 
-    const [row] = await tx
-      .insert(breakPulls)
-      .values({
-        breakId,
-        cardVariantId: input.cardVariantId,
-        label: input.label,
-        valueCentsAtPull,
-        valueSource,
-        seq,
-        pulledAt,
-        prevHash,
-        rowHash,
-      })
-      .returning();
+    let row;
+    try {
+      [row] = await tx
+        .insert(breakPulls)
+        .values({
+          breakId,
+          cardVariantId: input.cardVariantId,
+          label: input.label,
+          valueCentsAtPull,
+          valueSource,
+          seq,
+          pulledAt,
+          prevHash,
+          rowHash,
+        })
+        .returning();
+    } catch (error) {
+      // Logged live, mid-stream, from a card search that may be stale. A 500 here is the
+      // worst possible moment for one.
+      if (isForeignKeyViolation(error)) throw new MissingReferenceError('card');
+      throw error;
+    }
     if (!row) throw new Error('pull insert failed');
     return row;
   });

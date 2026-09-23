@@ -144,6 +144,16 @@ describe('logging a live sale (FR-4.1)', () => {
     expect(res.statusCode).toBe(403);
   });
 
+  it('answers 404 for a card that is not there, not 500', async () => {
+    // Logged live, one entry at a time, against a card search that can be stale. A 500 is the
+    // worst possible answer mid-stream, and a 5xx the API fuzzing gate exists to catch.
+    const res = await log(seller, {
+      cardVariantId: '00000000-0000-4000-8000-000000000000',
+      priceCents: 1500,
+    });
+    expect(res.statusCode, res.body).toBe(404);
+  });
+
   it('records a sale and reads it back', async () => {
     const created = await log(seller, {
       cardVariantId: variantId,

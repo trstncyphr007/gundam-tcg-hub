@@ -149,6 +149,23 @@ describe('collection endpoints (FR-3.4)', () => {
   });
 });
 
+describe('a card that is not there', () => {
+  it('is a 404, not a 500', async () => {
+    // The same shape as the watches case: a well-formed id for a row that has gone. The
+    // foreign key is the right guard, but its error must not reach the caller as
+    // `internal_error` — that says we broke, tells them nothing, and is a 5xx the API
+    // fuzzing gate exists to catch (AC-3.4).
+    const id = await newCollection(alice, 'Missing card');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/collections/${id}/items`,
+      headers: { cookie: alice },
+      payload: { cardVariantId: '00000000-0000-4000-8000-000000000000' },
+    });
+    expect(res.statusCode, res.body).toBe(404);
+  });
+});
+
 describe('the two-user IDOR matrix over HTTP (AC-3.2, SR-3.3)', () => {
   it('answers 404 for someone else’s private collection, on every route', async () => {
     const id = await newCollection(alice, 'Alice private');
