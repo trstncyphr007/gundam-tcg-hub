@@ -45,3 +45,4 @@ New decisions get their own file.
 | 038 | [A watchdog that also says "all clear"](038-a-watchdog-that-says-all-clear.md)                                  | Accepted                    |
 | 039 | [The kill switches the runbook already promised](039-kill-switches-that-exist.md)                               | Accepted                    |
 | 040 | [Measure the speed promises, and leave the index alone](040-measure-before-optimising.md)                       | Accepted                    |
+| 041 | [The overlay keeps polling, and here is what that costs](041-the-overlay-polls.md)                              | Accepted                    |
