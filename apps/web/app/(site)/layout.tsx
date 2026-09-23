@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { PUBLIC_ROBOTS } from '@/lib/site';
 import type { ReactNode } from 'react';
 import '../globals.css';
 
@@ -13,7 +14,9 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   title: 'Gundam TCG Hub',
   description: 'Restock alerts, prices and collection tools for the Gundam Card Game.',
-  robots: { index: false, follow: false },
+  // One switch, in one file (lib/site.ts). The pages that must never be indexed set their own
+  // `noindex` and are not affected by flipping it.
+  robots: PUBLIC_ROBOTS,
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

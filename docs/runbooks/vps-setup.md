@@ -195,6 +195,8 @@ did not build and sign cannot be deployed even by someone with SSH access.
 - [ ] Restrict inbound 80/443 to Cloudflare IP ranges, or switch to a Cloudflare Tunnel.
 - [ ] Run a restore drill (`docs/runbooks/backups.md`) and record the time.
 - [ ] Record the Lynis score and `nmap` output in the table above.
+- [ ] **Follow [`launch.md`](launch.md)** from here — it is the ordered version of the rest of
+      this list, including the two switches that must be flipped last.
 - [ ] **Publish the contact address** (see below).
 - [ ] Add a **CAA** record so only your certificate issuer can issue for the domain, and set up
       SPF, DKIM and DMARC for the role mailbox before any mail is sent from it.
