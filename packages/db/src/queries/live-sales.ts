@@ -10,6 +10,7 @@ import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { liveSales } from '../schema/live-sales.js';
 import { priceObservations } from '../schema/pricing.js';
+import { MissingReferenceError, isForeignKeyViolation } from './pg-errors.js';
 import type { CardCondition } from './pricing.js';
 import { asUser } from './watches.js';
 
@@ -102,21 +103,28 @@ export async function logLiveSale(
       throw new LiveSaleLimitError(`daily entry limit reached (${String(MAX_LIVE_SALES_PER_DAY)})`);
     }
 
-    const [row] = await tx
-      .insert(liveSales)
-      .values({
-        sellerId,
-        cardVariantId: input.cardVariantId,
-        label: input.label,
-        condition: input.condition ?? 'nm',
-        priceCents: input.priceCents,
-        currency: input.currency ?? 'USD',
-        soldAt: input.soldAt ?? new Date(),
-        streamRef: input.streamRef,
-        buyerHandleEncrypted: handle === null ? null : encryptField(keyRing as KeyRing, handle),
-        hasBuyerHandle: handle !== null,
-      })
-      .returning();
+    let row;
+    try {
+      [row] = await tx
+        .insert(liveSales)
+        .values({
+          sellerId,
+          cardVariantId: input.cardVariantId,
+          label: input.label,
+          condition: input.condition ?? 'nm',
+          priceCents: input.priceCents,
+          currency: input.currency ?? 'USD',
+          soldAt: input.soldAt ?? new Date(),
+          streamRef: input.streamRef,
+          buyerHandleEncrypted: handle === null ? null : encryptField(keyRing as KeyRing, handle),
+          hasBuyerHandle: handle !== null,
+        })
+        .returning();
+    } catch (error) {
+      // Also logged live, one entry at a time, against a card search. 404 rather than 500.
+      if (isForeignKeyViolation(error)) throw new MissingReferenceError('card');
+      throw error;
+    }
     if (!row) throw new Error('live sale insert failed');
     return row;
   });

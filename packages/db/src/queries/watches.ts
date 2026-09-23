@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { watchSubscriptions } from '../schema/watches.js';
+import { MissingReferenceError, isForeignKeyViolation, isUniqueViolation } from './pg-errors.js';
 
 export type AlertChannel = 'email' | 'discord_dm' | 'discord_webhook' | 'web_push';
 
@@ -86,6 +87,9 @@ export async function createWatch(db: Database, userId: string, input: WatchInpu
       return created;
     } catch (error) {
       if (isUniqueViolation(error)) throw new DuplicateWatchError();
+      // A well-formed id for a product or listing that is not there — a page open in a tab
+      // while the catalogue moved on. Ordinary, and previously a 500.
+      if (isForeignKeyViolation(error)) throw new MissingReferenceError('product or listing');
       throw error;
     }
   });
@@ -100,13 +104,4 @@ export async function deleteWatch(db: Database, userId: string, id: string): Pro
       .returning({ id: watchSubscriptions.id });
     return deleted.length > 0;
   });
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  for (let e: unknown = error; e != null; e = (e as { cause?: unknown }).cause) {
-    if (typeof e === 'object' && 'code' in e && (e as { code?: unknown }).code === '23505') {
-      return true;
-    }
-  }
-  return false;
 }

@@ -16,6 +16,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { cardVariants, cards, sets } from '../schema/catalog.js';
 import { collectionItems, collections } from '../schema/collections.js';
+import { MissingReferenceError, isForeignKeyViolation } from './pg-errors.js';
 import type { CardCondition } from './pricing.js';
 import { asUser } from './watches.js';
 
@@ -229,13 +230,22 @@ async function upsertItem(
       acquiredAt: input.acquiredAt ?? null,
       notes: input.notes ?? null,
     };
-    const [row] = existing
-      ? await tx
-          .update(collectionItems)
-          .set({ ...values, updatedAt: new Date() })
-          .where(eq(collectionItems.id, existing.id))
-          .returning()
-      : await tx.insert(collectionItems).values(values).returning();
+    // A card variant that is not there is a 404, not a 500: an id from a page that has been
+    // open while the catalogue changed is ordinary traffic, and the foreign key's own error
+    // would otherwise travel all the way up as `internal_error`.
+    let row;
+    try {
+      [row] = existing
+        ? await tx
+            .update(collectionItems)
+            .set({ ...values, updatedAt: new Date() })
+            .where(eq(collectionItems.id, existing.id))
+            .returning()
+        : await tx.insert(collectionItems).values(values).returning();
+    } catch (error) {
+      if (isForeignKeyViolation(error)) throw new MissingReferenceError('card');
+      throw error;
+    }
     if (!row) throw new Error('collection item write returned no row');
     return row;
   }

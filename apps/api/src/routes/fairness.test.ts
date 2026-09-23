@@ -284,6 +284,23 @@ describe('what comes back, and what is written down', () => {
   });
 });
 
+describe('ids that name nothing', () => {
+  it('answers 404 for a product that is not there, rather than 500', async () => {
+    // The same shape as the watches and collections cases: a well-formed id for a row that
+    // has gone. A creator page open while the catalogue changes is ordinary traffic, and a
+    // foreign key's own error must not reach the caller as `internal_error` (AC-3.4).
+    const res = await call('POST', '/v1/breaks', {
+      user: creator,
+      payload: {
+        title: 'Break on a ghost',
+        sealedProductId: '00000000-0000-4000-8000-000000000000',
+        costCents: 100,
+      },
+    });
+    expect(res.statusCode, res.body).toBe(404);
+  });
+});
+
 describe('when field encryption is not configured', () => {
   it('has no fairness routes at all, rather than half of them', async () => {
     // Deliberate (BreakDeps): a deployment that cannot protect a seed must not offer to keep

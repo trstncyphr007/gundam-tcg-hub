@@ -146,6 +146,27 @@ describe('watch endpoints', () => {
     expect(again.json<{ error: string }>().error).toBe('watch_exists');
   });
 
+  it('answers 404 for a product that is not there, not 500', async () => {
+    // A catalogue page open in a tab outlives the product behind it, so a well-formed id for
+    // a row that has gone is ordinary traffic — not a server fault. The foreign key used to
+    // reach the route as a driver error and come back as `internal_error`, which says we
+    // broke, tells the caller nothing, and is a 5xx the API fuzzing gate exists to catch.
+    const cookie = await signIn('gone-product@example.com');
+    for (const payload of [
+      { sealedProductId: '00000000-0000-4000-8000-000000000000', channels: ['email'] },
+      { retailerProductId: '00000000-0000-4000-8000-000000000001', channels: ['email'] },
+    ]) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/v1/watches',
+        headers: { cookie },
+        payload,
+      });
+      expect(res.statusCode, JSON.stringify(payload)).toBe(404);
+      expect(res.json<{ error: string }>().error).toBe('not_found');
+    }
+  });
+
   it('validates the payload', async () => {
     const cookie = await signIn('validate-watch@example.com');
     const bad: Record<string, unknown>[] = [
