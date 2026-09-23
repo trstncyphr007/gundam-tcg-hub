@@ -54,6 +54,32 @@
 		max_size 1MB
 	}
 
+	# No access log, deliberately — and read this before adding one.
+	#
+	# Caddy does not log requests unless told to, and the obvious `log { output stdout }` would
+	# write every URL in full. `/api/auth/magic-link/verify?token=…` carries a single-use
+	# credential good for fifteen minutes and a whole account, so turning access logging on
+	# naively publishes sign-in tokens to wherever the logs go (§20 ships them to Loki). The
+	# API had this exact bug in its own request log until it was fixed.
+	#
+	# When access logs are wanted, redact the query first. This block is validated against
+	# Caddy 2 and is the shape to use:
+	#
+	#   log {
+	#       output stdout
+	#       format filter {
+	#           wrap json
+	#           fields {
+	#               request>uri query {
+	#                   replace token REDACTED
+	#               }
+	#           }
+	#       }
+	#   }
+	#
+	# `replace token REDACTED` names one parameter. Prefer `delete` of everything not needed,
+	# or keep the list under review, because the next secret parameter will not be on it.
+
 	# The API is served under the web origin so session cookies stay same-origin.
 	handle /api/auth/* {
 		reverse_proxy api:4000 {

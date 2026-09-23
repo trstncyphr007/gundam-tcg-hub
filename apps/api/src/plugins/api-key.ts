@@ -2,6 +2,7 @@ import { type ApiKeyScope, type Database, findActiveApiKey, touchApiKey } from '
 import { hashToken, safeEqual } from '@gth/security';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
+import { logUrl } from '../log-url.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -101,8 +102,14 @@ const apiKeyPluginImpl: FastifyPluginAsync<ApiKeyDeps> = (app, deps) => {
       request.apiKey = await authenticateApiKey(request, deps);
     } catch (error) {
       if (error instanceof ApiKeyError) {
-        // The key itself must never reach a log line, here or anywhere (SR-3.1).
-        request.log.warn({ route: request.url }, 'api key rejected');
+        // The key itself must never reach a log line, here or anywhere (SR-3.1). Nor may the
+        // query string: this field was the raw URL under a name that claimed otherwise, and
+        // it is written on a path a stranger can trigger at will. The matched route is both
+        // the honest value and the one SR-X.20 asks for.
+        request.log.warn(
+          { route: request.routeOptions.url ?? logUrl(request.url) },
+          'api key rejected',
+        );
         return reply.code(error.status).send({ error: error.message });
       }
       throw error;

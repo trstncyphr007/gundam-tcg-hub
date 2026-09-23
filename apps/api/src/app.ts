@@ -15,6 +15,7 @@ import {
 } from '@gth/db';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import type { ApiConfig } from './config.js';
+import { logUrl } from './log-url.js';
 import { ApiKeyError, apiKeyPlugin } from './plugins/api-key.js';
 import { authPlugin } from './plugins/auth.js';
 import { killSwitchPlugin } from './plugins/kill-switch.js';
@@ -89,15 +90,6 @@ export const REDACT_PATHS = [
   'res.headers["set-cookie"]',
 ];
 
-/**
- * An overlay token lives in the URL path, so ordinary request logging would write it to
- * disk — and a creator screen-sharing their logs would leak a live overlay (SR-2.2).
- * pino's `redact` only reaches object paths, so the URL is masked here instead.
- */
-export function maskOverlayToken(url: string): string {
-  return url.replace(/(\/v1\/overlay\/)[^/?#]+/, '$1[REDACTED]');
-}
-
 type FastifyCorsCallback = (error: Error | null, options: FastifyCorsOptions) => void;
 
 /** The documented, cross-origin-readable surface. Everything else stays same-origin. */
@@ -145,7 +137,7 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
               req: (request: { id: string; method: string; url: string }) => ({
                 id: request.id,
                 method: request.method,
-                url: maskOverlayToken(request.url),
+                url: logUrl(request.url),
               }),
             },
           },
