@@ -23,14 +23,13 @@ talk to, and what would leak if that thing were compromised".
 | Rotation    | Generated per machine by `pnpm env:init`; prod rotates per SR-0.15                                                                                        |
 | Network     | Internal Docker network, **no published ports** in production                                                                                             |
 
-### Valkey 8
+### Valkey 8 — removed 2026-09-24
 
-|             |                                                          |
-| ----------- | -------------------------------------------------------- |
-| What it is  | Queues, cache and rate limits                            |
-| Credentials | `VALKEY_URL` with `requirepass`; SOPS-encrypted for prod |
-| Data        | Ephemeral. Rate-limit counters and job payloads          |
-| Network     | Internal only, no published ports                        |
+Listed here as "queues, cache and rate limits", and doing none of it: nothing in the repository
+ever opened a connection to it. Rate limits and the flag cache live in process memory, the
+daily API quota lives in Postgres, and the scheduled jobs are one-shot containers rather than a
+queue. Removed from both stacks — see [ADR-042](adr/042-the-quota-outlives-the-process.md),
+which also records what brings it back.
 
 ### SMTP (Mailpit locally; a provider in production)
 

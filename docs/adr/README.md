@@ -8,7 +8,7 @@ New decisions get their own file.
 | 001 | pnpm workspaces + Turborepo monorepo                                                                            | Accepted, amended by 013    |
 | 002 | Code in the WSL2 filesystem, not OneDrive                                                                       | Accepted                    |
 | 003 | Postgres + Drizzle                                                                                              | Accepted                    |
-| 004 | Valkey 8 + BullMQ                                                                                               | Accepted                    |
+| 004 | Valkey 8 + BullMQ                                                                                               | **Superseded by 042**       |
 | 005 | Better Auth (Discord OAuth, passkeys, TOTP)                                                                     | Accepted                    |
 | 006 | Fastify API separate from Next.js                                                                               | Accepted                    |
 | 007 | SOPS + age for secrets                                                                                          | Accepted                    |
@@ -46,3 +46,4 @@ New decisions get their own file.
 | 039 | [The kill switches the runbook already promised](039-kill-switches-that-exist.md)                               | Accepted                    |
 | 040 | [Measure the speed promises, and leave the index alone](040-measure-before-optimising.md)                       | Accepted                    |
 | 041 | [The overlay keeps polling, and here is what that costs](041-the-overlay-polls.md)                              | Accepted                    |
+| 042 | [The quota outlives the process, and Valkey leaves the stack](042-the-quota-outlives-the-process.md)            | Accepted                    |

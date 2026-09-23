@@ -404,7 +404,7 @@ export function createAuth(db: Database, config: AuthConfig) {
       },
     },
 
-    // Built-in limiter (in-memory for a single instance; Valkey when we scale, SR-1.9).
+    // Built-in limiter (in-memory for a single instance; a shared store when we scale, SR-1.9).
     rateLimit: {
       enabled: true,
       window: 60,

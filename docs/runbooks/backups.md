@@ -9,7 +9,7 @@ this document.
 | Data                    | How                                                                                |
 | ----------------------- | ---------------------------------------------------------------------------------- |
 | Postgres (all app data) | `pg_dump -Fc` nightly, inside the database container                               |
-| Valkey                  | Not backed up: it holds only caches and rate-limit counters, which rebuild         |
+| ~~Valkey~~              | Gone (ADR-042). It held nothing; this row described counters it never stored       |
 | Caddy certificates      | Volume included in the restic snapshot (cheap to re-issue, but avoids rate limits) |
 | Everything else         | In git: compose files, Caddyfile, deploy script, encrypted secrets                 |
 

@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { check, index, integer, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  check,
+  date,
+  index,
+  integer,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { users } from './auth.js';
 import { app, retailerProducts, stockSnapshots } from './catalog.js';
 import { alertChannel, watchSubscriptions } from './watches.js';
@@ -46,6 +55,10 @@ export const apiKeys = app.table(
     scopes: apiKeyScope('scopes').array().notNull(),
     tier: apiKeyTier('tier').notNull().default('free'),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    /** The UTC day `quotaUsed` counts for. Null until the key's first call (migration 0040). */
+    quotaDay: date('quota_day'),
+    /** Requests made on `quotaDay`. Durable on purpose: a restart must not refill a quota. */
+    quotaUsed: integer('quota_used').notNull().default(0),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -55,6 +68,7 @@ export const apiKeys = app.table(
     check('api_keys_scopes_not_empty', sql`cardinality(${t.scopes}) >= 1`),
     check('api_keys_name_not_blank', sql`length(btrim(${t.name})) > 0`),
     check('api_keys_name_length', sql`length(${t.name}) <= 60`),
+    check('api_keys_quota_used_not_negative', sql`${t.quotaUsed} >= 0`),
     // Writing to the platform is not something a self-serve key may ever do. Enforced here
     // rather than only where keys are created, because "the UI would never send that" is not
     // a security control.

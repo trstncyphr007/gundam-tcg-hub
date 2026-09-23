@@ -4,6 +4,7 @@ import { seedSample } from '../seed/sample.js';
 import { type TestDatabase, startTestDatabase } from '../test/harness.js';
 import {
   claimDeliveries,
+  consumeApiKeyQuota,
   createApiKey,
   findActiveApiKey,
   findFanOutTargets,
@@ -177,6 +178,39 @@ describe('api keys (SR-3.1)', () => {
 
   it('returns null for an unknown prefix', async () => {
     await expect(findActiveApiKey(worker.db, 'nosuchpk')).resolves.toBeNull();
+  });
+
+  it('counts a daily quota that outlives the process, and rolls over on the UTC day', async () => {
+    const key = await createApiKey(tdb.db, {
+      name: 'quota',
+      prefix: 'quota001',
+      keyHash: 'hash-value',
+      scopes: ['prices:read'],
+    });
+
+    // Counted on the worker role, which is the point of the column grant in migration 0040:
+    // the tier that verifies keys may increment this and still may not re-scope or un-revoke
+    // one. A missing grant would fail this line as a permission error, not a wrong number.
+    expect(await consumeApiKeyQuota(worker.db, key.id)).toBe(1);
+    expect(await consumeApiKeyQuota(worker.db, key.id)).toBe(2);
+
+    // Nothing in the API is holding that 2. It is on the row, which is what makes a restart
+    // uninteresting — and was the entire bug.
+    const stored = await tdb.db.execute<{ quota_used: number }>(
+      `select quota_used from app.api_keys where prefix = 'quota001'`,
+    );
+    expect(stored[0]?.quota_used).toBe(2);
+
+    // Backdate the day and count again: the new day starts at one, with no sweeper and
+    // nothing scheduled. The roll-over lives inside the same statement that counts.
+    await tdb.db.execute(`update app.api_keys set quota_day = current_date - 1
+                           where prefix = 'quota001'`);
+    expect(await consumeApiKeyQuota(worker.db, key.id)).toBe(1);
+
+    // A key that has gone says so, rather than throwing at the caller.
+    await expect(
+      consumeApiKeyQuota(worker.db, '00000000-0000-0000-0000-000000000000'),
+    ).resolves.toBeNull();
   });
 
   it('cannot be read by the public read-only role', async () => {

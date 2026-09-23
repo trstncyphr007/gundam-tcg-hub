@@ -43,7 +43,6 @@ DATABASE_URL_MIGRATOR=postgres://app_migrator:${PG_MIG}@postgres:5432/gth
 DATABASE_URL_WEB=postgres://app_web:${PG_WEB}@postgres:5432/gth
 DATABASE_URL_WORKER=postgres://app_worker:${PG_WORK}@postgres:5432/gth
 DATABASE_URL_READONLY=postgres://app_readonly:${PG_RO}@postgres:5432/gth
-VALKEY_PASSWORD=$(rand)
 BETTER_AUTH_SECRET=$(openssl rand -base64 32)
 TOKEN_PEPPER=$(openssl rand -base64 32)
 DATA_ENCRYPTION_KEYS='{"k1":"$(openssl rand -base64 32)"}'
@@ -104,9 +103,8 @@ for svc in api web caddy; do
   docker inspect "$cid" --format "$svc: user={{.Config.User}} readonly={{.HostConfig.ReadonlyRootfs}} caps_dropped={{.HostConfig.CapDrop}} no_new_priv={{index .HostConfig.SecurityOpt 0}}"
 done
 
-step "databases are not reachable from outside the stack"
-printf 'postgres published only on loopback: %s\n' "$(docker inspect "$("${COMPOSE[@]}" --env-file "$ENV_FILE" ps -q postgres)" --format '{{json .NetworkSettings.Ports}}')"
-printf 'valkey published ports: %s (empty = none)\n' "$(docker inspect "$("${COMPOSE[@]}" --env-file "$ENV_FILE" ps -q valkey)" --format '{{json .NetworkSettings.Ports}}')"
+step "the database is not reachable from outside the stack"
+printf 'postgres published ports: %s (empty = none)\n' "$(docker inspect "$("${COMPOSE[@]}" --env-file "$ENV_FILE" ps -q postgres)" --format '{{json .NetworkSettings.Ports}}')"
 
 step "browser tests against the production stack"
 # Catalog + header specs only: the sign-in specs need Mailpit, which production has no use for.

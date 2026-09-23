@@ -5,7 +5,13 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import type { Auth, SecurityNotice } from '@gth/auth';
 import { ForbiddenError, PasskeyRequiredError, StepUpRequiredError } from '@gth/auth';
-import { type Database, type FlagReader, createFlagReader, pingDatabase } from '@gth/db';
+import {
+  type Database,
+  type FlagReader,
+  consumeApiKeyQuota,
+  createFlagReader,
+  pingDatabase,
+} from '@gth/db';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import type { ApiConfig } from './config.js';
 import { ApiKeyError, apiKeyPlugin } from './plugins/api-key.js';
@@ -204,14 +210,24 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
   }
 
   if (deps.keysDb) {
+    const keysDb = deps.keysDb;
     await app.register(apiKeyPlugin, {
-      keysDb: deps.keysDb,
+      keysDb,
       tokenPepper: config.TOKEN_PEPPER,
     });
-    await app.register(quotaPlugin, { store: quotaStore, applies: (r) => isPublicPath(r.url) });
+    await app.register(quotaPlugin, {
+      store: quotaStore,
+      applies: (r) => isPublicPath(r.url),
+      // The pool that verified the key counts the request, on the same narrow column grant
+      // (migration 0040). The day is kept there so a restart cannot refill it; the minute
+      // stays in memory, where losing it costs nothing worth having.
+      consumeDay: (keyId) => consumeApiKeyQuota(keysDb, keyId),
+    });
   }
 
-  // In-memory limiter for now; moves to Valkey when there is more than one instance (SR-X.27).
+  // In-memory limiter. Per-process, which is right for one instance and wrong for two; a
+  // shared store is what a second one needs (SR-X.27, ADR-042). The per-day key quota does
+  // not wait for that — it is in Postgres, because a restart was refilling it.
   // A refusal used to be answered and forgotten, so "this caller has been refused two
   // thousand times this hour" was not a fact anything could state (SR-X.22). Recorded only
   // when there is a pool to record it on, and throttled per caller so being refused cannot
@@ -280,7 +296,7 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     reply.header('cache-control', 'no-store').send({ status: 'ok' }),
   );
 
-  // Readiness: can we actually serve traffic? Checks dependencies (Valkey follows in Phase 1).
+  // Readiness: can we actually serve traffic? Postgres is the only dependency there is.
   app.get('/readyz', { config: { rateLimit: false } }, async (request, reply) => {
     reply.header('cache-control', 'no-store');
     if (!deps.db) return { status: 'ready', database: 'not_configured' };

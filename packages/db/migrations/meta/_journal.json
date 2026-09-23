@@ -281,6 +281,13 @@
       "when": 1790136000000,
       "tag": "0039_feature_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790139600000,
+      "tag": "0040_api_key_quota",
+      "breakpoints": true
     }
   ]
 }

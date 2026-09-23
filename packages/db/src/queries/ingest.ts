@@ -185,6 +185,46 @@ export async function touchApiKey(db: Database, id: string): Promise<void> {
   await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, id));
 }
 
+/**
+ * Count one request against a key's daily allowance, and say how many that makes (FR-3.7).
+ *
+ * One statement, because two would race: between a read and a write, any number of other
+ * requests can pass. The row lock an UPDATE takes is what serialises concurrent callers using
+ * the same key, and the whole roll-over is expressed inside it -- the CASE reads the *old*
+ * `quota_day`, so the first request of a new day resets to 1 without anybody scheduling
+ * anything. There is no sweeper, no cron, and no key that quietly keeps yesterday's count.
+ *
+ * The day is UTC and explicitly so. It would otherwise follow the connection's TimeZone
+ * setting, which would make a published limit depend on a container's environment.
+ *
+ * Returns null when the key has gone -- revoked and deleted mid-flight -- which the caller
+ * treats as "no durable answer" rather than as a refusal.
+ */
+export async function consumeApiKeyQuota(db: Database, id: string): Promise<number | null> {
+  const rows = await db.execute<{ quota_used: number }>(sql`
+    update app.api_keys
+       set quota_day  = timezone('utc', now())::date,
+           quota_used = case
+                          when quota_day = timezone('utc', now())::date then quota_used + 1
+                          else 1
+                        end
+     where id = ${id}::uuid
+    returning quota_used
+  `);
+  return rows[0]?.quota_used ?? null;
+}
+
+/** Seconds until the UTC day rolls over, which is when a daily quota comes back. */
+export function secondsUntilUtcMidnight(now = new Date()): number {
+  const next = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1,
+    /* midnight */ 0,
+  );
+  return Math.max(1, Math.ceil((next - now.getTime()) / 1000));
+}
+
 export async function createApiKey(
   db: Database,
   input: {

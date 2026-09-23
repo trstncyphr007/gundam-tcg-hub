@@ -67,7 +67,6 @@ DATABASE_URL_MIGRATOR=postgres://app_migrator:${PG_MIG}@postgres:5432/gth
 DATABASE_URL_WEB=postgres://app_web:${PG_WEB}@postgres:5432/gth
 DATABASE_URL_WORKER=postgres://app_worker:${PG_WORK}@postgres:5432/gth
 DATABASE_URL_READONLY=postgres://app_readonly:${PG_RO}@postgres:5432/gth
-VALKEY_PASSWORD=$(rand)
 BETTER_AUTH_SECRET=$(openssl rand -base64 32)
 TOKEN_PEPPER=$(openssl rand -base64 32)
 DATA_ENCRYPTION_KEYS={"k1":"$(openssl rand -base64 32)"}
