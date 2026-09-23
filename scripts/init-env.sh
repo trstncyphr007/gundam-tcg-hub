@@ -54,8 +54,13 @@ VALKEY_URL=redis://:${VALKEY_PASSWORD}@127.0.0.1:6379/0
 
 TOKEN_PEPPER=${TOKEN_PEPPER}
 # Single-quoted: this value is JSON, and some consumers of this file are shells. Unquoted,
-# `set -a; . ./.env` strips the double quotes and hands the application `{k1:...}`, which is
+# "set -a; . ./.env" strips the double quotes and hands the application {k1:...}, which is
 # not JSON and fails at boot. Node's --env-file and dotenv both understand the quotes.
+#
+# (Those used to be backticks. Inside this unquoted heredoc that is command substitution, so
+# generating the file ran them: "pnpm env:init" printed "command not found", the comment
+# explaining the quoting arrived in .env with its own explanation deleted, and one of them
+# sourced the .env being written. Quotes, never backticks, inside this heredoc.)
 DATA_ENCRYPTION_KEYS='{"k1":"${DATA_ENCRYPTION_KEY}"}'
 DATA_ENCRYPTION_ACTIVE_KID=k1
 

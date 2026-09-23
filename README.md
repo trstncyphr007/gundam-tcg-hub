@@ -41,6 +41,18 @@ one thing this project cannot afford. Remove it again with
 delete from app.price_observations where evidence_ref = 'seed:synthetic';
 ```
 
+Verified from a fresh clone on 2026-09-24, on a machine with no containers and no volumes:
+every command above succeeds and the site serves.
+
+> **If you regenerate `.env`, delete the database volume too.** The roles are created once,
+> when Postgres first starts, from the passwords in `.env` at that moment. A new `.env` against
+> an old volume fails with `password authentication failed for user app_migrator`, which reads
+> like a broken migration and is really a stale volume:
+>
+> ```bash
+> pnpm stack:down && docker volume rm gth-dev_pgdata gth-dev_valkeydata && pnpm stack:up
+> ```
+
 The web app proxies `/api/auth/*` and `/v1/*` to the API, so the browser only ever talks to one
 origin: session cookies stay same-origin, with no CORS and no `SameSite=None`. Caddy does the
 same path routing in production.
