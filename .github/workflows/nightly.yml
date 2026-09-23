@@ -109,6 +109,13 @@ jobs:
       # generates inputs from the schemas and fails on any 5xx or any response that does not
       # match what the spec promises -- which is the pair of properties a published API has to
       # hold if anyone is going to build on it.
+      #
+      # **What this does not reach.** The document describes eight read-only GETs, and this
+      # run carries no session, so the API's twenty-nine authenticated write routes are
+      # invisible to it. That is exactly where six 5xx bugs were sitting until they were found
+      # by hand (#64). The "no 5xx" half of AC-3.4 is therefore also enforced from inside the
+      # test suite, where sessions already work: `apps/api/src/routes/no-5xx.test.ts`, which
+      # fails if a write route is added without being listed in it.
       - name: schemathesis - fuzz /v1 against its own spec
         run: |
           curl -fsS http://127.0.0.1:4000/docs/openapi.json -o "${RUNNER_TEMP}/openapi.json"
