@@ -218,6 +218,10 @@ jobs:
             docker run --rm -i "$HADOLINT_IMAGE" hadolint --failure-threshold warning - < "$f"
             echo "::endgroup::"
           done
+      - name: exec bits
+        # A script edited from a Windows editor comes back as mode 100644 and nobody notices
+        # until it will not run on the server. Three fixes by hand was two too many.
+        run: bash scripts/check-exec-bits.sh
       - name: actionlint
         run: docker run --rm -v "$PWD:/repo" -w /repo "$ACTIONLINT_IMAGE" -color
       - name: zizmor

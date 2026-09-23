@@ -6,9 +6,13 @@ import {
   decideFlag,
   decideReport,
   getModerationQueue,
+  type FlagReader,
   getOperationsSummary,
   getSecuritySummary,
+  isKnownFlag,
+  listFlags,
   normaliseReason,
+  setFlag,
   writeAuditLog,
 } from '@gth/db';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -37,6 +41,11 @@ export interface AdminDeps {
   db: Database;
   /** Worker pool: the one role permitted to change whether a price counts. */
   workerDb: Database;
+  /**
+   * The API's own flag reader, so flipping a switch here takes effect in this process at once
+   * rather than after its cache expires. Other processes see it within ten seconds.
+   */
+  flags?: FlagReader | undefined;
 }
 
 const idParamSchema = z.object({ id: z.uuid() }).strict();
@@ -46,6 +55,10 @@ const reportDecisionSchema = z
     decision: z.enum(['approve', 'reject']),
     reason: z.string().max(MAX_REASON_LENGTH + 50),
   })
+  .strict();
+
+const killSwitchSchema = z
+  .object({ enabled: z.boolean(), reason: z.string().max(MAX_REASON_LENGTH + 50) })
   .strict();
 
 const flagDecisionSchema = z
@@ -74,7 +87,7 @@ function guard(request: FastifyRequest, reply: FastifyReply): string | null {
 }
 
 export function registerAdminRoutes(app: FastifyInstance, deps: AdminDeps): void {
-  const { db, workerDb } = deps;
+  const { db, workerDb, flags } = deps;
 
   app.get('/v1/admin/moderation', async (request, reply) => {
     const actor = guard(request, reply);
@@ -105,6 +118,57 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminDeps): void
     const summary = await getSecuritySummary(db);
     return reply.header('cache-control', 'no-store').send(summary);
   });
+
+  // The kill switches (§22, ADR-039). Reading them is harmless; flipping one is rare, audited,
+  // and requires a reason — "who turned this off and what for" is the first question asked
+  // the next morning.
+  app.get('/v1/admin/flags', async (request, reply) => {
+    const actor = guard(request, reply);
+    if (actor === null) return reply;
+
+    return reply.header('cache-control', 'no-store').send({ flags: await listFlags(db) });
+  });
+
+  app.post(
+    '/v1/admin/flags/:key',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const actor = guard(request, reply);
+      if (actor === null) return reply;
+
+      const key = (request.params as { key?: unknown }).key;
+      if (typeof key !== 'string' || !isKnownFlag(key)) {
+        return reply.code(404).send({ error: 'not_found' });
+      }
+      const body = killSwitchSchema.safeParse(request.body);
+      if (!body.success) {
+        return reply.code(400).send({ error: 'invalid_request', details: issuesOf(body.error) });
+      }
+
+      let reason: string;
+      try {
+        reason = normaliseReason(body.data.reason);
+      } catch (error) {
+        if (error instanceof ModerationError) {
+          return reply.code(400).send({ error: 'invalid_request', reason: error.message });
+        }
+        throw error;
+      }
+
+      await setFlag(workerDb, key, body.data.enabled, actor, reason);
+      await writeAuditLog(workerDb, {
+        actorId: actor,
+        action: body.data.enabled ? 'flag.enabled' : 'flag.disabled',
+        targetType: 'feature_flag',
+        targetId: key,
+        diff: { reason },
+      });
+      // The process that made the change should not have to wait out its own cache.
+      flags?.refresh();
+
+      return reply.header('cache-control', 'no-store').send({ flags: await listFlags(db) });
+    },
+  );
 
   app.post(
     '/v1/admin/reports/:id/decision',

@@ -82,7 +82,11 @@ export function AdminGate({
 }
 
 /** Links between the admin pages, shown once an admin is in. */
-export function AdminNav({ current }: { current: 'moderation' | 'operations' }): React.JSX.Element {
+export function AdminNav({
+  current,
+}: {
+  current: 'moderation' | 'operations' | 'switches';
+}): React.JSX.Element {
   const link = (href: string, label: string, key: typeof current) => (
     <Link
       href={href}
@@ -96,6 +100,7 @@ export function AdminNav({ current }: { current: 'moderation' | 'operations' }):
     <nav className="flex gap-4 text-sm" aria-label="Admin" data-testid="admin-nav">
       {link('/admin/moderation', 'Moderation', 'moderation')}
       {link('/admin/operations', 'Operations', 'operations')}
+      {link('/admin/switches', 'Switches', 'switches')}
     </nav>
   );
 }

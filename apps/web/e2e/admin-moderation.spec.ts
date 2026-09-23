@@ -91,6 +91,61 @@ test.describe('operations dashboard (FR-1.12)', () => {
   });
 });
 
+/**
+ * The kill switches (plan §22, ADR-039).
+ *
+ * In this file rather than one of their own, because the admin passkey session is enrolled and
+ * cached here: two spec files both wanting one race over the same credential's signature
+ * counter, and the loser looks like a broken console.
+ */
+test.describe('kill switches', () => {
+  test('are behind the same gates as the rest of the console', async ({ page }) => {
+    await signIn(page, CREATOR_EMAIL);
+    await page.goto('/admin/switches');
+    await expect(page.getByTestId('admin-forbidden')).toBeVisible();
+    // A non-admin learns nothing about what is on the page, let alone flips one.
+    await expect(page.getByTestId('switch')).toHaveCount(0);
+  });
+
+  test('refuse without a reason, switch off, take effect, and switch back on', async ({ page }) => {
+    await signInWithPasskeyOnce(page, ADMIN_EMAIL);
+    await page.goto('/admin/switches');
+
+    // Straight to the button, no reason typed: nothing happens.
+    const alerts = page.getByTestId('switch').filter({ hasText: 'Restock alerts' });
+    await expect(alerts).toHaveAttribute('data-enabled', 'true');
+    await alerts.getByTestId('switch-off').click();
+    await alerts.getByTestId('switch-confirm-off').click();
+    await expect(alerts.getByTestId('switch-error')).toContainText('audit log');
+    await expect(alerts).toHaveAttribute('data-enabled', 'true');
+
+    const api = page.getByTestId('switch').filter({ hasText: 'Public API' });
+    await api.getByTestId('switch-why').fill('e2e: pretending to contain an incident');
+    await api.getByTestId('switch-off').click();
+    // Turning something off asks once more; turning it back on does not.
+    await api.getByTestId('switch-confirm-off').click();
+    await page.waitForLoadState('networkidle');
+
+    await expect(api).toHaveAttribute('data-enabled', 'false');
+    await expect(page.getByTestId('switches-off')).toContainText('switched off');
+    await expect(api.getByTestId('switch-reason')).toContainText('pretending to contain');
+
+    // The public API really is off — and the console that can undo it is not.
+    const refused = await page.request.get('/v1/games');
+    expect(refused.status()).toBe(503);
+    expect(refused.headers()['retry-after']).toBe('300');
+    await expect(page.getByTestId('switches')).toBeVisible();
+
+    await api.getByTestId('switch-why').fill('e2e: all clear');
+    await api.getByTestId('switch-on').click();
+    await page.waitForLoadState('networkidle');
+    await expect(api).toHaveAttribute('data-enabled', 'true');
+
+    const served = await page.request.get('/v1/games');
+    expect(served.status()).toBe(200);
+  });
+});
+
 test.describe('moderation console', () => {
   test('is closed to an account that is not an admin', async ({ page }) => {
     // Not `signInOnce`: that cache is shared by every spec, and cookies set here belong to
