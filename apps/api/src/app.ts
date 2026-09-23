@@ -36,6 +36,19 @@ import { buildOpenApiDocument } from './v1/openapi.js';
 import { registerPublicRoutes } from './v1/registry.js';
 import { publicRoutes } from './v1/routes.js';
 
+/** One registered route, as Fastify received it. */
+export interface RouteRecord {
+  method: string;
+  url: string;
+}
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    /** Every route this instance serves. Filled as routes are registered. */
+    routeTable: RouteRecord[];
+  }
+}
+
 export interface AppDeps {
   /** Read-only connection for public catalog endpoints (least privilege). */
   db?: Database | undefined;
@@ -141,6 +154,27 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     bodyLimit: 1_048_576,
     requestTimeout: 15_000,
   });
+
+  /**
+   * What this application actually serves, recorded as it is built (SR-X.6).
+   *
+   * Every route, exactly as Fastify received it. `printRoutes` renders a radix tree meant for
+   * a human — it splits shared prefixes across lines and merges differently-named parameters
+   * into `:key|:id` — so reconstructing paths from it is guesswork that is wrong in exactly
+   * the cases that matter. This is the register itself.
+   *
+   * It exists so a check can be made against the routes that are here rather than the ones
+   * someone remembered: `deny-by-default.test.ts` requires each of these to refuse an
+   * anonymous caller unless it is written down as public.
+   */
+  const routes: RouteRecord[] = [];
+  app.addHook('onRoute', (route) => {
+    for (const method of [route.method].flat()) {
+      if (method === 'HEAD' || method === 'OPTIONS') continue;
+      routes.push({ method, url: route.url });
+    }
+  });
+  app.decorate('routeTable', routes);
 
   // JSON API: lock the browser down completely (SR-X.14).
   await app.register(helmet, {
