@@ -1,6 +1,6 @@
 # Guardrail Proofs
 
-**Last run: 2026-09-20 — 8 passed, 0 failed, 1 skipped.**
+**Last run: 2026-09-23 — 12 passed, 0 failed, 1 skipped.**
 
 Every gate in this project claims to stop something. These proofs make each one actually
 refuse, so the claim is evidence rather than assertion. A gate nobody has watched fire is a
@@ -15,7 +15,8 @@ git repos, and nothing is left behind. **Run it after changing any gate**, and r
 result here.
 
 Plan §27 lists seven proofs. Two of them assume GitHub features this repo does not have, so
-they test the compensating control from ADR-014 instead — noted below.
+they test the compensating control from ADR-014 instead — noted below. Proofs 8–10 cover gates
+this project added afterwards, which had been claims nobody had watched fire.
 
 ---
 
@@ -32,6 +33,10 @@ they test the compensating control from ADR-014 instead — noted below.
 | 6   | Deploy an unverified image                 | digest validation in `deploy.sh`        | **PASS**              |
 | 6b  | `cosign verify` an unsigned image          | cosign                                  | _skipped — see below_ |
 | 7   | Push straight to `main`                    | pre-push hook **+ GitHub ruleset**      | **PASS**              |
+| 8   | Add a second outbound HTTP request         | Semgrep `gth-no-outbound-http`          | **PASS**              |
+| 8b  | Keep the one allowed outbound module       | the rule's exclusion, still matching    | **PASS**              |
+| 9   | Use a `style` prop in a component          | ESLint `no-restricted-syntax`           | **PASS**              |
+| 10  | Commit a shebang script as mode 644        | `scripts/check-exec-bits.sh` in CI      | **PASS**              |
 
 ---
 
@@ -109,10 +114,23 @@ before anything starts.
 
 ---
 
+## The 2026-09-23 run
+
+Nothing new was found: all twelve gates refused what they claim to refuse. The reason for
+running it was that four gates had been added since the last run — the outbound-request rule
+(ADR-030), the inline-style ban (ADR-031) and the exec-bit check (ADR-039) — and every one of
+them was an untested claim until this run. Three of the four are now proofs 8–10.
+
+Proof 8b is the one worth keeping in mind: it checks that the module which **is** allowed to
+make an outbound request still passes. A rule that starts refusing its own exception gets
+switched off by the next person who hits it, and then it refuses nothing at all.
+
 ## When to re-run
 
-- After changing `.gitleaks.toml`, `.semgrep.yml`, `lefthook.yml`, a Dockerfile, or
-  `deploy.sh`
+- After changing `.gitleaks.toml`, `.semgrep.yml`, `lefthook.yml`, `eslint.config.mjs`, a
+  Dockerfile, or `deploy.sh`
+- **After adding a gate** — a gate with no proof is a claim, and this file is where claims
+  become evidence
 - After upgrading any scanner — **a rule that silently stops matching looks exactly like a
   clean repo**, which is how the AWS gap above went unnoticed
 - Before a release
