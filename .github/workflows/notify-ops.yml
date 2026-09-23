@@ -1,0 +1,57 @@
+# Tell somebody when an unattended workflow fails (plan §18.3, SR-X.22).
+#
+# The nightly scan failed three nights running in September and nobody noticed, because a
+# failed workflow announces itself only to whoever happens to open GitHub that day. That is
+# the same shape as a backup nobody has restored: the control runs, and its result reaches
+# no one.
+#
+# Called by the workflows nobody watches in real time — `nightly` and `release`. Not `ci`,
+# which fails in front of the person who pushed it, and not `deploy`, which a human started
+# and is waiting on.
+#
+# **Deliberately a reusable workflow rather than `workflow_run`.** That trigger would let one
+# file watch every other, and it runs with the repository's own privileges in the base repo —
+# the pattern behind a long line of CI compromises. zizmor flags it as high severity, and the
+# fix was to not need it: the workflows that want reporting call this one.
+name: notify ops
+
+on:
+  workflow_call:
+    inputs:
+      what:
+        description: What failed, in the words the channel should see.
+        required: true
+        type: string
+    secrets:
+      webhook:
+        description: Discord ops webhook. Optional; without it this says so and exits cleanly.
+        required: false
+
+permissions: {}
+
+jobs:
+  post:
+    name: post to the ops channel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: post
+        env:
+          WEBHOOK: ${{ secrets.webhook }}
+          WHAT: ${{ inputs.what }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WEBHOOK}" ]; then
+            echo "No DISCORD_OPS_WEBHOOK_URL secret set; not reporting."
+            echo "Add it in the repository settings to hear about this failure in Discord."
+            exit 0
+          fi
+          # Through the environment and encoded by jq, never interpolated into the payload.
+          payload=$(jq -nc --arg w "$WHAT" --arg u "$RUN_URL" \
+            '{content: ("⚠️ " + $w + "\n" + $u), flags: 4}')
+          curl -fsS --max-time 10 -X POST \
+            -H 'content-type: application/json' \
+            -d "$payload" \
+            "$WEBHOOK" > /dev/null
+          echo "reported: ${WHAT}"

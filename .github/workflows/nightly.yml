@@ -130,3 +130,18 @@ jobs:
           path: ${{ runner.temp }}/zap
           retention-days: 30
           if-no-files-found: warn
+
+  # This scan failed three nights running in September and told nobody, because a failed
+  # workflow announces itself only to whoever opens GitHub that day.
+  report:
+    name: report a failure
+    needs: [dast]
+    if: failure()
+    # `./` is the form GitHub documents and every version of Actions understands. `$/` is
+    # newer, and a reusable-workflow reference that does not resolve would fail at exactly the
+    # moment this job exists to report a failure.
+    uses: ./.github/workflows/notify-ops.yml # zizmor: ignore[self-repository]
+    with:
+      what: nightly security scan failed (ZAP baseline or /v1 fuzzing)
+    secrets:
+      webhook: ${{ secrets.DISCORD_OPS_WEBHOOK_URL }}

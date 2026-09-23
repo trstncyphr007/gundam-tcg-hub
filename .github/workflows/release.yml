@@ -182,3 +182,16 @@ jobs:
             echo ""
             echo "Deploy with the **deploy** workflow, passing these digests."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # A failed release means there is no signed image for the commit that just merged — and the
+  # next deploy would quietly use an older one. Worth hearing about.
+  report:
+    name: report a failure
+    needs: [publish]
+    if: failure()
+    # See the note in nightly.yml for why this is `./` and not `$/`.
+    uses: ./.github/workflows/notify-ops.yml # zizmor: ignore[self-repository]
+    with:
+      what: release failed — no signed images were published for this commit
+    secrets:
+      webhook: ${{ secrets.DISCORD_OPS_WEBHOOK_URL }}
