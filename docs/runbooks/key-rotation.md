@@ -16,7 +16,6 @@ get it wrong under pressure — so when in doubt, rotate.
 | `TOKEN_PEPPER`              | SOPS / `.env`                                    | **Every API key and overlay token dies.** See below | 180d        |
 | `DATA_ENCRYPTION_KEYS`      | SOPS / `.env`                                    | Nothing, if done in order. See below                | 365d        |
 | `DATABASE_URL_*` (4 roles)  | SOPS / `.env`                                    | A restart                                           | 180d        |
-| `VALKEY_URL`                | SOPS / `.env`                                    | Cache and rate-limit counters reset                 | 180d        |
 | `DISCORD_CLIENT_SECRET`     | SOPS                                             | Nothing visible                                     | 180d        |
 | `DISCORD_BOT_TOKEN`         | SOPS                                             | Bot reconnects                                      | 180d        |
 | `DISCORD_ALERT_WEBHOOK_URL` | SOPS                                             | Nothing visible                                     | 180d        |

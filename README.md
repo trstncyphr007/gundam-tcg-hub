@@ -24,7 +24,7 @@ Security reports are welcome — see [`SECURITY.md`](SECURITY.md).
 ```bash
 pnpm install          # also installs git hooks (lefthook)
 pnpm env:init         # generates .env with random local secrets (never committed)
-pnpm stack:up         # Postgres 17 + Valkey 8 on 127.0.0.1
+pnpm stack:up         # Postgres 17 on 127.0.0.1
 pnpm db:migrate       # apply migrations (runs as app_migrator)
 pnpm db:seed          # sample catalog for local dev
 pnpm db:seed-prices   # optional: 90 days of synthetic prices, so the charts have a shape
@@ -50,7 +50,7 @@ every command above succeeds and the site serves.
 > like a broken migration and is really a stale volume:
 >
 > ```bash
-> pnpm stack:down && docker volume rm gth-dev_pgdata gth-dev_valkeydata && pnpm stack:up
+> pnpm stack:down && docker volume rm gth-dev_pgdata && pnpm stack:up
 > ```
 
 The web app proxies `/api/auth/*` and `/v1/*` to the API, so the browser only ever talks to one
@@ -141,8 +141,8 @@ Optional services: `docker compose --env-file .env -f infra/compose/docker-compo
 bash scripts/verify-prod-stack.sh   # build the real images and run the production stack locally
 ```
 
-That brings up Caddy + web + API + Postgres + Valkey exactly as production does (hardened,
-non-root, read-only containers; databases on an internal network with no published ports),
+That brings up Caddy + web + API + Postgres exactly as production does (hardened, non-root,
+read-only containers; the database on an internal network with no published ports),
 runs migrations as a one-off job, and drives the result in a browser.
 
 On a merge to `main`, **release** builds, scans, SBOMs, signs (keyless/Sigstore) and pushes

@@ -30,20 +30,9 @@ services:
       timeout: 3s
       retries: 20
 
-  valkey:
-    <<: *dev-hardening
-    image: valkey/valkey:8-bookworm@sha256:fea8b3e67b15729d4bb70589eb03367bab9ad1ee89c876f54327fc7c6e618571
-    environment:
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run pnpm env:init}
-    command: ['sh', '-c', 'exec valkey-server --requirepass "$$VALKEY_PASSWORD" --appendonly yes']
-    ports: ['127.0.0.1:6379:6379']
-    volumes:
-      - valkeydata:/data
-    healthcheck:
-      test: ['CMD-SHELL', 'valkey-cli --no-auth-warning -a "$$VALKEY_PASSWORD" ping | grep -q PONG']
-      interval: 5s
-      timeout: 3s
-      retries: 20
+  # No Valkey. It ran here for weeks with a password, a volume and an append-only file, and
+  # nothing in the repository ever opened a connection to it (ADR-042). It comes back when
+  # something needs it, which is a second API instance or a real job queue.
 
   mailpit:
     <<: *dev-hardening
@@ -59,4 +48,3 @@ services:
 
 volumes:
   pgdata: {}
-  valkeydata: {}

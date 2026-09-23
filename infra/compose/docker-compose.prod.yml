@@ -216,28 +216,14 @@ services:
       resources:
         limits: { cpus: '1.0', memory: 1G, pids: 512 }
 
-  valkey:
-    <<: *hardening
-    image: valkey/valkey:8-bookworm@sha256:fea8b3e67b15729d4bb70589eb03367bab9ad1ee89c876f54327fc7c6e618571
-    read_only: false
-    # The entrypoint takes ownership of /data and drops to the valkey user. With every
-    # capability dropped it cannot, and the append-only file fails to open.
-    cap_drop: ['ALL']
-    cap_add: ['CHOWN', 'DAC_OVERRIDE', 'SETGID', 'SETUID']
-    environment:
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?}
-    command: ['sh', '-c', 'exec valkey-server --requirepass "$$VALKEY_PASSWORD" --appendonly yes']
-    volumes:
-      - valkeydata:/data
-    networks: [internal]
-    healthcheck:
-      test: ['CMD-SHELL', 'valkey-cli --no-auth-warning -a "$$VALKEY_PASSWORD" ping | grep -q PONG']
-      interval: 10s
-      timeout: 5s
-      retries: 12
-    deploy:
-      resources:
-        limits: { cpus: '0.50', memory: 512M, pids: 256 }
+  # No Valkey (ADR-042). It ran here with a password, a persistent volume, and four
+  # capabilities added back so it could take ownership of its data directory — and not one
+  # line of code anywhere connecting to it.
+  #
+  # The cost was never the memory. `deploy.sh` brings the stack up with `--wait`, which waits
+  # on *every* service, so a Valkey that failed to start — a bad pull, a corrupt append-only
+  # file, a full disk — would have failed the deploy and rolled back a healthy release. An
+  # unused dependency was load-bearing for availability and for nothing else.
 
 networks:
   # Public-facing: only Caddy and the two app services.
@@ -250,6 +236,5 @@ networks:
 
 volumes:
   pgdata: {}
-  valkeydata: {}
   caddy_data: {}
   caddy_config: {}

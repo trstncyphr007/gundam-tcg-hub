@@ -16,7 +16,6 @@ PG_MIGRATOR_PASSWORD="$(rand_hex)"
 PG_WEB_PASSWORD="$(rand_hex)"
 PG_WORKER_PASSWORD="$(rand_hex)"
 PG_READONLY_PASSWORD="$(rand_hex)"
-VALKEY_PASSWORD="$(rand_hex)"
 TOKEN_PEPPER="$(openssl rand -base64 32)"
 BETTER_AUTH_SECRET="$(openssl rand -base64 32)"
 # Encrypts database fields that must stay secret even in a backup -- today, a break's server
@@ -48,9 +47,6 @@ DATABASE_URL_MIGRATOR=postgres://app_migrator:${PG_MIGRATOR_PASSWORD}@127.0.0.1:
 DATABASE_URL_WEB=postgres://app_web:${PG_WEB_PASSWORD}@127.0.0.1:5432/gth
 DATABASE_URL_WORKER=postgres://app_worker:${PG_WORKER_PASSWORD}@127.0.0.1:5432/gth
 DATABASE_URL_READONLY=postgres://app_readonly:${PG_READONLY_PASSWORD}@127.0.0.1:5432/gth
-
-VALKEY_PASSWORD=${VALKEY_PASSWORD}
-VALKEY_URL=redis://:${VALKEY_PASSWORD}@127.0.0.1:6379/0
 
 TOKEN_PEPPER=${TOKEN_PEPPER}
 # Single-quoted: this value is JSON, and some consumers of this file are shells. Unquoted,
