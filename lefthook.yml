@@ -10,6 +10,12 @@ pre-commit:
     prettier:
       glob: '*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}'
       run: pnpm exec prettier --check {staged_files}
+    exec-bits:
+      # Editing a script from the Windows side drops its mode to 644, and CI has caught that
+      # six times in six pull requests. CI is the wrong place to find it: by then the commit
+      # exists and the fix is another commit. Here it is a message before the commit lands.
+      glob: '*.sh'
+      run: bash scripts/check-exec-bits.sh
 
 commit-msg:
   commands:
