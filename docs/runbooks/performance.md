@@ -89,8 +89,49 @@ dressed up as a result. The script's check exists because of that.
 - On the VPS once it exists: a workstation is not a 2-vCPU server, and only the shape of these
   numbers transfers, not the numbers
 
-## Not yet measured
+## Overlay fan-out (§24: 100 concurrent overlays)
 
-**SSE fan-out** (§24 lists 100 concurrent overlays). The overlay's connection limit and
-heartbeat are unit-tested, but nothing has held a hundred of them open at once. That needs a
-different tool than k6's HTTP scenarios and is worth doing before the first big break night.
+```bash
+bash scripts/measure-overlays.sh          # 100 streams across 20 breaks
+STREAMS=400 API_RATE_LIMIT_RAISED=1 bash scripts/measure-overlays.sh
+```
+
+It creates its own breaks, opens the streams, logs one pull, times the arrival at every overlay
+watching that break, then removes what it made. k6 cannot do server-sent events without a
+custom build, and this needed to measure something k6 would not anyway: **how long a pull takes
+to reach a viewer**.
+
+| Overlays | Idle database load | Pull → overlay p95 | Refused | Cross-talk |
+| -------- | ------------------ | ------------------ | ------- | ---------- |
+| 100      | 106 tx/s           | **989 ms**         | 0       | 0          |
+| 200      | 206 tx/s           | 968 ms             | 0       | 0          |
+| 400      | 406 tx/s           | 938 ms             | 0       | 0          |
+
+**Each overlay costs one database transaction per second whether or not anything is
+happening.** Every connection polls on its own timer (`OVERLAY_POLL_MS = 1000`), so the
+standing load is one query per viewer per second, perfectly linearly: a hundred viewers is
+about a hundred transactions a second on a completely idle system.
+
+Delivery is bounded by that same poll — about a second, near enough regardless of how many are
+watching. AC-2.1 asks for "under 1 s locally" and this **meets it with no margin**: the latency
+is the poll interval, not the work.
+
+"Cross-talk" is the correctness check: no overlay was ever shown another break's pull, at any
+size. Worth asserting under load, because a shared cache or a mixed-up key would show up
+exactly here and nowhere in a single-stream test.
+
+### Measuring more than ~100 from one machine needs the limiter raised
+
+Every connection here comes from one address, so past about 120 the per-IP limit (SR-1.9)
+refuses them — and 180 refusals look precisely like an overlay that cannot cope. In production
+those connections arrive from as many machines as there are viewers. `measure-overlays.sh`
+refuses to run the larger sizes until the limit is raised deliberately.
+
+### The trade, if these numbers ever stop working
+
+A shorter poll means faster overlays and proportionally more load; a longer one, the reverse.
+The alternative is Postgres `LISTEN`/`NOTIFY`, which takes the idle cost to zero and delivers in
+milliseconds — at the price of a second delivery mechanism to keep working. Not worth it at a
+hundred viewers and a hundred transactions a second. It starts being worth it when a break
+night regularly draws enough viewers for idle polling to be a visible fraction of a 2-vCPU
+server, somewhere around five hundred (ADR-041).

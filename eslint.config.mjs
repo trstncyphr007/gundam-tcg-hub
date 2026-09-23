@@ -81,7 +81,7 @@ export default defineConfig(
   {
     // k6 load scripts run in k6's own runtime, not Node: `__ENV` is its environment and the
     // `k6/*` modules resolve inside the tool. Linted for mistakes, not for Node-ness.
-    files: ['perf/**/*.js'],
+    files: ['perf/**/*.{js,mjs}'],
     languageOptions: { globals: { __ENV: 'readonly', __VU: 'readonly', __ITER: 'readonly' } },
   },
   prettier,
