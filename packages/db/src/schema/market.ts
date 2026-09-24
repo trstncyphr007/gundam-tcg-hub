@@ -85,7 +85,13 @@ export const sellerAccounts = app.table(
 );
 
 /**
- * A card offered for sale (FR-5.2).
+ * A card offered for sale by a person (FR-5.2).
+ *
+ * **Not to be confused with the other thing this codebase calls a listing.**
+ * `packages/db/src/queries/listings.ts` is about `retailer_products` — a shop's page for a
+ * sealed product, registered by the scanner. That one is a URL we watch; this one is somebody
+ * selling a card. The tables are unambiguous (`listings` and `retailer_products`); only the
+ * prose overlaps, and it overlaps enough to be worth saying once here.
  *
  * `card_variant_id` is required, unlike a live-sale entry or a break pull. Those record
  * something that happened and are still worth having when the catalog is thin; a listing that

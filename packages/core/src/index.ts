@@ -5,5 +5,6 @@ export * from './collections.js';
 export * from './fairness.js';
 export * from './rarity.js';
 export * from './live-sales.js';
+export * from './market.js';
 export * from './orders.js';
 export * from './vod.js';
