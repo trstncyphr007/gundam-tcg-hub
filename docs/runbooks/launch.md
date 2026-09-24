@@ -38,7 +38,14 @@ could already reach the inbox.
       (`backups.md`). Both root-only, mode 0400.
 - [ ] **The same webhook as a GitHub repository secret** named `DISCORD_OPS_WEBHOOK_URL`, so a
       failed nightly scan or release reaches the same channel.
-- [ ] `bash /srv/gth/preflight.sh` — it checks all of the above and changes nothing.
+- [ ] `sudo /srv/gth/preflight.sh production` — changes nothing; prints PASS, FAIL or SKIP per
+      check. It needs **both** the environment argument and root: the script is `0750` and
+      root-owned, and the SSH, firewall, `/etc/gth` and age-key checks cannot run without it.
+      Any other way it either refuses outright or skips half of itself while looking fine —
+      this line read `bash /srv/gth/preflight.sh` until 2026-09-25, which does neither.
+  - **Not covered, so check by hand:** the GitHub repository secret above (it lives on GitHub,
+    not on this host), and whether anybody actually reads the channel the ops webhook posts
+    into.
 
 ## First deploy
 

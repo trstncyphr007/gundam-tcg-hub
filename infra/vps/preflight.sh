@@ -97,8 +97,14 @@ done
 echo "== scheduled jobs"
 # The retention job deletes personal data on a clock (ADR-035), so "is it scheduled?" is a
 # question worth answering before a deploy rather than after a subject access request.
+#
+# This list drifted: it was written with three timers and stayed that way while `watchdog` and
+# `alert-retry` were added, so the one check that runs on launch day would have reported a clean
+# bill of health on a host where the dead man's switch itself had no timer. It is kept explicit
+# — enumerating whatever is installed could not detect a missing one — and `scripts/check-jobs.sh`
+# now fails CI if it stops matching `jobs_schedule`.
 if have systemctl && [ -d /run/systemd/system ]; then
-  for unit in gth-rollup.timer gth-retention.timer gth-backup.timer; do
+  for unit in gth-rollup.timer gth-retention.timer gth-watchdog.timer gth-alert-retry.timer gth-backup.timer; do
     if systemctl is-enabled "$unit" >/dev/null 2>&1; then
       pass "${unit} enabled"
     else
@@ -117,6 +123,21 @@ elif is_root; then
   fail 'no DISCORD_OPS_WEBHOOK_URL in /etc/gth/ops.env — a failed job or backup would alert nobody'
 else
   skip 'ops alert configuration (needs root to read /etc/gth)'
+fi
+# The timer being enabled says the backup will *run*, not that it has anywhere to write. The
+# install template in backups.md is full of angle-bracket placeholders, so "the file exists" is
+# not the question either.
+if ! is_root; then
+  skip 'backup credentials (needs root to read /etc/gth)'
+elif [ ! -r /etc/gth/restic.env ]; then
+  fail 'no /etc/gth/restic.env — the backup timer would run and save nothing (backups.md)'
+elif grep -qE '^(RESTIC_REPOSITORY|RESTIC_PASSWORD)=.*<' /etc/gth/restic.env; then
+  fail '/etc/gth/restic.env still has placeholders from the install template'
+elif grep -q '^RESTIC_REPOSITORY=.\+' /etc/gth/restic.env &&
+  grep -q '^RESTIC_PASSWORD=.\+' /etc/gth/restic.env; then
+  pass 'backups have a repository and a password'
+else
+  fail 'RESTIC_REPOSITORY or RESTIC_PASSWORD is missing from /etc/gth/restic.env'
 fi
 
 echo "== age key"
