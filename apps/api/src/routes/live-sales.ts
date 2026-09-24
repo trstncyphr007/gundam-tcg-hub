@@ -10,7 +10,7 @@ import {
   writeAuditLog,
 } from '@gth/db';
 import type { KeyRing } from '@gth/security';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 /**
@@ -77,7 +77,21 @@ export function registerLiveSaleRoutes(app: FastifyInstance, deps: LiveSaleDeps)
     '/v1/live-sales',
     // Per-seller rate limit (SR-4.4). A live stream sells fast; this sits well above a
     // person and bounds a script. The daily cap in the query layer is the other half.
-    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    //
+    // It said "per-seller" and was keyed on the caller's address, which is the default when no
+    // `keyGenerator` is given — so two sellers in one venue shared an allowance and one seller
+    // on two connections had none. `preHandler`, because the session has to be resolved first.
+    {
+      config: {
+        rateLimit: {
+          max: 120,
+          timeWindow: '1 minute',
+          hook: 'preHandler',
+          keyGenerator: (request: FastifyRequest) =>
+            request.subject ? `seller:${request.subject.userId}` : `ip:${request.ip}`,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.subject) return reply.code(401).send({ error: 'unauthenticated' });
       authorize(request.subject, 'live_sale:write');
