@@ -2,10 +2,7 @@ import { formatVodOffset } from '@gth/core/vod';
 import { notFound } from 'next/navigation';
 import { api } from '@/lib/api';
 import { BreakVerifier } from './verifier';
-
-function dollars(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
+import { dollars } from '@/lib/money';
 
 export async function generateMetadata({
   params,

@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { centsFromInput } from '@/lib/money';
+import { centsFromInput, dollars } from '@/lib/money';
 
 interface Pull {
   seq: number;
@@ -33,10 +33,6 @@ interface Candidate {
 }
 
 type Status = 'draft' | 'live' | 'ended';
-
-function dollars(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 /**
  * Keyboard-first pull logging with index-filled values (FR-2.1, FR-2.2).

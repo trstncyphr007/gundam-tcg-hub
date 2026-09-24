@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { dollars } from '@/lib/money';
 
 interface Pull {
   seq: number;
@@ -13,10 +14,6 @@ interface OverlayState {
   costCents: number | null;
   pulls: Pull[];
   totalCents: number;
-}
-
-function dollars(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
 }
 
 /**

@@ -5,10 +5,35 @@
  * total stops matching the rows it is a total of.
  */
 export function dollars(cents: number, currency = 'USD'): string {
-  const sign = cents < 0 ? '-' : '';
-  const abs = Math.abs(cents);
+  // Integer cents is the contract, and rounding here is the cheap insurance rather than the
+  // real defence: without it a fractional value formats as "$0.12.5", because the remainder
+  // is pasted on as text. A wrong-by-half-a-cent figure beats an unreadable one.
+  const whole = Math.round(cents);
+  const sign = whole < 0 ? '-' : '';
+  const abs = Math.abs(whole);
   const amount = `${String(Math.trunc(abs / 100))}.${String(abs % 100).padStart(2, '0')}`;
   return currency === 'USD' ? `${sign}$${amount}` : `${sign}${amount} ${currency}`;
+}
+
+/**
+ * Subtotals, one per currency, in the order the currencies first appear.
+ *
+ * Because adding money in different currencies produces a number that is not money. The
+ * live-sale logger summed `priceCents` across every row and printed the result with a dollar
+ * sign, so a seller who logged one sale in CAD and one in USD was shown a total that was
+ * neither — on the page whose only job is recording what things sold for.
+ *
+ * `live_sales.currency` is a real column with a CHECK that it is an ISO code (migration 0023),
+ * so this is a supported case rather than a hypothetical one.
+ */
+export function totalsByCurrency(
+  items: readonly { priceCents: number; currency: string }[],
+): { currency: string; cents: number }[] {
+  const totals = new Map<string, number>();
+  for (const item of items) {
+    totals.set(item.currency, (totals.get(item.currency) ?? 0) + item.priceCents);
+  }
+  return [...totals].map(([currency, cents]) => ({ currency, cents }));
 }
 
 /** Signed, for a gain or loss where the sign is the point. */

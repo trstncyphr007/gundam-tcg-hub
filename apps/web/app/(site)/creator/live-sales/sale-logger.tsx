@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { centsFromInput } from '@/lib/money';
+import { centsFromInput, dollars, totalsByCurrency } from '@/lib/money';
 
 interface Sale {
   id: string;
@@ -29,10 +29,6 @@ interface CardHit {
 }
 
 const CONDITIONS = ['nm', 'lp', 'mp', 'hp', 'dmg'] as const;
-
-function dollars(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 /**
  * Keyboard-first live-sale logging (FR-4.1, under three seconds an entry).
@@ -61,7 +57,9 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
   const [busy, setBusy] = useState(false);
   const labelRef = useRef<HTMLInputElement>(null);
 
-  const total = sales.reduce((sum, s) => sum + s.priceCents, 0);
+  // Per currency. Summing across them gives a number that is not money, and this page's whole
+  // job is recording what things sold for.
+  const totals = totalsByCurrency(sales);
 
   useEffect(() => {
     const term = label.trim();
@@ -330,7 +328,11 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
         </p>
         <p>
           <span className="text-muted">Total</span>{' '}
-          <strong data-testid="sale-total">{dollars(total)}</strong>
+          <strong data-testid="sale-total">
+            {totals.length === 0
+              ? dollars(0)
+              : totals.map((t) => dollars(t.cents, t.currency)).join(' · ')}
+          </strong>
         </p>
       </div>
 
@@ -366,7 +368,7 @@ export function SaleLogger({ initial }: { initial: Sale[] }): React.JSX.Element 
               ) : (
                 <span className="text-muted">not yet counted</span>
               )}
-              <span>{dollars(sale.priceCents)}</span>
+              <span>{dollars(sale.priceCents, sale.currency)}</span>
               {!sale.published && !sale.flagged && (
                 <button
                   type="button"
