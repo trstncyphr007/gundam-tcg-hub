@@ -8,3 +8,4 @@ export * from './pricing.js';
 export * from './collections.js';
 export * from './profiles.js';
 export * from './live-sales.js';
+export * from './market.js';
