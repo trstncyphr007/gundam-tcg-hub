@@ -89,8 +89,15 @@ test.describe('breaker profiles', () => {
     expect(response?.status()).toBe(404);
     await stranger.close();
 
+    // Absent from the directory, rather than "the directory is empty": the sample seed
+    // publishes a placeholder profile, so a count of zero would be a claim about the fixture
+    // and not about whether an unpublished profile stays unlisted.
+    //
+    // The seeded handle is asserted present first, so a directory that failed to render at all
+    // cannot pass this by being absent along with everything else.
     await page.goto('/breakers');
-    await expect(page.getByTestId('breaker-list')).toHaveCount(0);
+    await expect(page.getByTestId('breaker-list')).toContainText('sample-breaker');
+    await expect(page.getByTestId('breaker-list')).not.toContainText(handle);
   });
 
   test('publishing shows the page, and it names only what the creator typed', async ({

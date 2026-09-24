@@ -135,7 +135,10 @@ jobs:
         run: |
           curl -fsS http://127.0.0.1:4000/docs/openapi.json -o "${RUNNER_TEMP}/openapi.json"
           pipx install "schemathesis==${SCHEMATHESIS_VERSION}"
-          schemathesis run "${RUNNER_TEMP}/openapi.json" \
+          # `--config-file` is a top-level option, before the subcommand. It supplies the one
+          # parameter a fuzzer cannot guess: the handle of a profile that exists (see the file).
+          schemathesis --config-file schemathesis.toml \
+            run "${RUNNER_TEMP}/openapi.json" \
             --url http://127.0.0.1:4000 \
             --checks all \
             --max-examples 40 \
