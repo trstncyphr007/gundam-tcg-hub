@@ -2,6 +2,7 @@ import { type ListingDraft, photosRequiredFor, validateListing } from '@gth/core
 import { and, eq, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { listings } from '../schema/market.js';
+import { MissingReferenceError, isForeignKeyViolation } from './pg-errors.js';
 import { asUser } from './watches.js';
 
 /**
@@ -60,21 +61,30 @@ export async function createListing(
 ): Promise<Listing> {
   validateListing(input);
   return asUser(db, sellerId, async (tx) => {
-    const [row] = await tx
-      .insert(listings)
-      .values({
-        sellerId,
-        cardVariantId: input.cardVariantId,
-        condition: input.condition,
-        priceCents: input.priceCents,
-        quantity: input.quantity,
-        ...(input.currency === undefined ? {} : { currency: input.currency }),
-        ...(input.notes === undefined || input.notes === null ? {} : { notes: input.notes }),
-        photoRequired: photosRequiredFor(input.priceCents),
-      })
-      .returning();
-    if (!row) throw new Error('listing insert returned nothing');
-    return row;
+    try {
+      const [row] = await tx
+        .insert(listings)
+        .values({
+          sellerId,
+          cardVariantId: input.cardVariantId,
+          condition: input.condition,
+          priceCents: input.priceCents,
+          quantity: input.quantity,
+          ...(input.currency === undefined ? {} : { currency: input.currency }),
+          ...(input.notes === undefined || input.notes === null ? {} : { notes: input.notes }),
+          photoRequired: photosRequiredFor(input.priceCents),
+        })
+        .returning();
+      if (!row) throw new Error('listing insert returned nothing');
+      return row;
+    } catch (error) {
+      // A card variant id that is well-formed and names nothing. The route comment claimed
+      // this already answered 404 "the same way every other missing reference does"; the
+      // no-5xx sweep disagreed and was right — without this it is a foreign key violation
+      // that reaches the error handler as 500 (#64's exact shape, found by #64's gate).
+      if (isForeignKeyViolation(error)) throw new MissingReferenceError('card');
+      throw error;
+    }
   });
 }
 
