@@ -72,6 +72,8 @@ export async function dispatchRestockEvent(
     const outcome = await transport.send(message, {
       email: target.email,
       displayName: target.displayName,
+      userId: target.userId,
+      subscriptionId: delivery.subscriptionId,
     });
 
     if (outcome.ok === true) {

@@ -32,6 +32,7 @@ import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
 import { type LiveSaleDeps, registerLiveSaleRoutes } from './routes/live-sales.js';
 import { registerProfileRoutes } from './routes/profile.js';
 import { registerSessionRoutes } from './routes/sessions.js';
+import { registerUnsubscribeRoutes } from './routes/unsubscribe.js';
 import { registerWatchRoutes } from './routes/watches.js';
 import { renderDocsPage } from './v1/docs.js';
 import { buildOpenApiDocument } from './v1/openapi.js';
@@ -380,6 +381,17 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
         // is served under the same locked-down policy as the rest of the API.
         .send(renderDocsPage(spec)),
     );
+  }
+
+  if (deps.writeDb) {
+    // No session and no auth needed: the signature in the link is what identifies the watch
+    // (SR-1.12). Mounted whenever there is a write pool, because an email that goes out with
+    // an unsubscribe header the server cannot honour is worse than one without it.
+    await registerUnsubscribeRoutes(app, {
+      db: deps.writeDb,
+      tokenPepper: config.TOKEN_PEPPER,
+      watchesUrl: `${config.APP_BASE_URL}/account/watches`,
+    });
   }
 
   if (deps.writeDb && deps.auth) {

@@ -16,6 +16,13 @@ export interface RestockMessage {
 export interface Recipient {
   email: string;
   displayName: string | null;
+  /**
+   * Whose watch, and which one. Both go into the email's unsubscribe link, signed together
+   * (SR-1.12): the reader has no session, and the row cannot be read without knowing the
+   * owner, so the owner travels with the link.
+   */
+  userId: string;
+  subscriptionId: string;
 }
 
 export interface Transport {
@@ -50,7 +57,7 @@ export function formatPrice(priceCents: number | null, currency: string): string
   return `${(priceCents / 100).toFixed(2)} ${currency}`;
 }
 
-export function buildPlainText(message: RestockMessage): string {
+export function buildPlainText(message: RestockMessage, unsubscribeUrl?: string): string {
   return [
     `Back in stock: ${message.productName}`,
     `Retailer: ${message.retailerName}`,
@@ -58,6 +65,12 @@ export function buildPlainText(message: RestockMessage): string {
     `Link: ${message.url}`,
     '',
     'You are receiving this because you set up a restock watch.',
+    // In the body as well as the header: a header is for the mail client, and plenty of
+    // readers look for the word instead. It says which product, because it stops the emails
+    // for that one watch and leaves the rest alone.
+    ...(unsubscribeUrl === undefined
+      ? []
+      : [`Stop emails about ${message.productName}: ${unsubscribeUrl}`]),
   ].join('\n');
 }
 
@@ -194,18 +207,26 @@ export interface MailSender {
 export function createEmailTransport(options: {
   mailer: MailSender;
   from: string;
-  unsubscribeUrl: string;
+  /** The signed, session-free link that stops emails for one watch (SR-1.12, RFC 8058). */
+  unsubscribeUrl: (userId: string, subscriptionId: string) => string;
 }): Transport {
   return {
     send: async (message, recipient) => {
+      const unsubscribe = options.unsubscribeUrl(recipient.userId, recipient.subscriptionId);
       try {
         await options.mailer.sendMail({
           to: recipient.email,
           from: options.from,
           subject: `Back in stock: ${message.productName}`,
-          text: buildPlainText(message),
-          // One-click unsubscribe keeps us out of spam folders and is good manners (SR-1.12).
-          headers: { 'List-Unsubscribe': `<${options.unsubscribeUrl}>` },
+          text: buildPlainText(message, unsubscribe),
+          headers: {
+            'List-Unsubscribe': `<${unsubscribe}>`,
+            // Without this, `List-Unsubscribe` is a link to somewhere, not one-click
+            // unsubscribing — and Gmail now expects one-click from anyone sending in volume.
+            // Getting that wrong puts restock alerts in spam, which defeats the feature
+            // without anybody being told (RFC 8058).
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
         });
         return { ok: true };
       } catch (error) {

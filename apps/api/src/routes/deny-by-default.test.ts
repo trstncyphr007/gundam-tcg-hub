@@ -77,6 +77,12 @@ const PUBLIC: { route: string; why: string }[] = [
   // hashed at rest and revocable. OBS has nowhere to keep a cookie.
   { route: 'GET /v1/overlay/:token', why: 'overlay token is the credential' },
   { route: 'GET /v1/overlay/:token/stream', why: 'overlay token is the credential' },
+
+  // The same idea, for a link in an email: the signature over the watch id is the credential
+  // (SR-1.12, RFC 8058). A mail client following a one-click unsubscribe has no session and
+  // never will, and an unsubscribe that demands a sign-in is not an unsubscribe.
+  { route: 'GET /v1/unsubscribe', why: 'signed link is the credential' },
+  { route: 'POST /v1/unsubscribe', why: 'signed link is the credential; RFC 8058 one-click' },
 ];
 
 beforeAll(async () => {
