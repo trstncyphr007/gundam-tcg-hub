@@ -33,6 +33,16 @@ export const MAX_LISTING_PRICE_CENTS = 100_000_000;
 /** Most of one card a single listing may offer. */
 export const MAX_LISTING_QUANTITY = 999;
 
+/**
+ * Most photos one listing may carry (FR-5.2).
+ *
+ * Front and back is the requirement; eight leaves room for close-ups of an edge, a corner and a
+ * surface scratch, which is what somebody arguing about condition actually wants to see. It is
+ * also a bound on what a single listing can cost us to store and to scan, which is the other
+ * reason a number belongs here rather than nowhere.
+ */
+export const MAX_PHOTOS_PER_LISTING = 8;
+
 export class ListingError extends Error {
   constructor(
     readonly code:

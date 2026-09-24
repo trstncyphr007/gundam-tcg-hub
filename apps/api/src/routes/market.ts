@@ -3,6 +3,7 @@ import { authorize } from '@gth/auth';
 import {
   type Database,
   ListingNotFoundError,
+  countApprovedPhotos,
   createListing,
   deleteDraftListing,
   getListing,
@@ -162,7 +163,12 @@ export function registerMarketRoutes(app: FastifyInstance, db: Database): void {
    *
    * The photo requirement is checked here rather than in the query layer because it is a
    * question about the listing *and* its photos, and the answer changes as photos are added.
-   * Slice 4 gives it real photos to count; until then nothing is over the threshold with any.
+   *
+   * It counts **approved** photos, which is the only count worth having: a pending upload is a
+   * file nobody has inspected, and letting one satisfy the requirement above $25 would turn the
+   * control into "did somebody send us bytes". Until the pipeline exists to approve anything,
+   * that count is zero and nothing over the threshold can go live — which is the correct
+   * behaviour rather than a placeholder.
    */
   app.post('/v1/listings/:id/status', PER_USER_MUTATIONS, async (request, reply) => {
     if (!request.subject) return reply.code(401).send({ error: 'unauthenticated' });
@@ -183,7 +189,8 @@ export function registerMarketRoutes(app: FastifyInstance, db: Database): void {
     }
 
     if (body.data.status === 'active') {
-      const allowed = canPublish({ priceCents: existing.priceCents, photoCount: 0 });
+      const photoCount = await countApprovedPhotos(db, request.subject.userId, params.data.id);
+      const allowed = canPublish({ priceCents: existing.priceCents, photoCount });
       if (!allowed.ok) {
         return reply.code(409).send({ error: allowed.error.code, message: allowed.error.message });
       }
