@@ -225,6 +225,10 @@ jobs:
         # A script edited from a Windows editor comes back as mode 100644 and nobody notices
         # until it will not run on the server. Three fixes by hand was two too many.
         run: bash scripts/check-exec-bits.sh
+      - name: scheduled jobs are defined everywhere they need to be
+        # A job lives in four places — the timer, the runner's allowlist, the compose profile
+        # and the image. Miss one and it exists, is documented, has tests, and never runs.
+        run: bash scripts/check-jobs.sh
       - name: actionlint
         run: docker run --rm -v "$PWD:/repo" -w /repo "$ACTIONLINT_IMAGE" -color
       - name: zizmor
