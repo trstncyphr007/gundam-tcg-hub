@@ -81,6 +81,9 @@ importers:
       nodemailer:
         specifier: 10.0.9
         version: 10.0.9
+      stripe:
+        specifier: 22.6.2
+        version: 22.6.2(@types/node@24.13.4)
       zod:
         specifier: 4.6.2
         version: 4.6.2
@@ -3279,6 +3282,15 @@ packages:
     resolution: {integrity: sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w==}
     engines: {node: '>=12'}
 
+  stripe@22.6.2:
+    resolution: {integrity: sha512-PwRE2scocvXqDKPiskMa5vRJEAEkq46W69XyUYmAwrNSLr675lQnfqLwnsndAWizwgihOWw/irLmoFRo3ez7ew==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@types/node': '>=18'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+
   styled-jsx@5.1.6:
     resolution: {integrity: sha512-qSVyDTeMotdvQYoHWLNGwRFJHC+i+ZvdBRYosOFgC+Wg1vx4frN2/RG/NA7SYqqvKNLf39P2LSRA2pu6n0XYZA==}
     engines: {node: '>= 12.0.0'}
@@ -6192,6 +6204,10 @@ snapshots:
   strip-ansi@7.2.0:
     dependencies:
       ansi-regex: 6.3.0
+
+  stripe@22.6.2(@types/node@24.13.4):
+    optionalDependencies:
+      '@types/node': 24.13.4
 
   styled-jsx@5.1.6(react@19.3.0):
     dependencies:
