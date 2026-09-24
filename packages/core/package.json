@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./api-tiers": "./src/api-tiers.ts",
     "./fairness": "./src/fairness.ts",
     "./vod": "./src/vod.ts"
   },
