@@ -1,4 +1,6 @@
 import type { Database } from '../client.js';
+import { asUser } from '../queries/watches.js';
+import { users } from '../schema/auth.js';
 import {
   cardVariants,
   cards,
@@ -8,7 +10,7 @@ import {
   sealedProducts,
   sets,
 } from '../schema/catalog.js';
-import { packOdds } from '../schema/profiles.js';
+import { creatorProfiles, packOdds } from '../schema/profiles.js';
 
 /**
  * Minimal SAMPLE catalog for local development and tests.
@@ -110,4 +112,46 @@ export async function seedSample(db: Database): Promise<void> {
       sourceUrl: 'https://sample-publisher.invalid/sample-set-one/odds',
     },
   ]);
+
+  /**
+   * Somebody for those odds to be compared against.
+   *
+   * The odds above were seeded "so the breaker profile's comparison is visible locally" and
+   * there was no profile, so `/v1/breakers` answered with an empty list and
+   * `/v1/breakers/{handle}` answered 404 to everything. Both endpoints shipped, are published
+   * in the OpenAPI document, and had never been exercised against a row that exists — the
+   * nightly fuzzer said so every night: "1 operation repeatedly returned 404 Not Found,
+   * preventing tests from reaching your API's core logic".
+   *
+   * The page is nearly empty until a creator logs some pulls, which is a thing a person does
+   * rather than a thing a seed should forge: `break_pulls` is hash-chained (SR-4.1) and rows
+   * invented outside the code that maintains the chain would be exactly the tampering that
+   * table exists to detect.
+   */
+  const [creator] = await db
+    .insert(users)
+    .values({
+      id: 'sample-breaker',
+      name: 'Sample Breaker',
+      email: 'breaker@sample.invalid',
+      role: 'creator',
+      displayName: 'Sample Breaker',
+    })
+    .onConflictDoNothing()
+    .returning();
+
+  if (creator) {
+    // `creator_profiles` has FORCE'd row-level security, which applies to the table's owner
+    // too: a connection that has not said who it is inserts nothing and is told why only if
+    // it looks. Declaring the user is what every other writer of this table does.
+    await asUser(db, creator.id, (tx) =>
+      tx.insert(creatorProfiles).values({
+        userId: creator.id,
+        handle: 'sample-breaker',
+        displayName: 'Sample Breaker',
+        bio: 'A placeholder profile so the public breaker pages have something to show.',
+        published: true,
+      }),
+    );
+  }
 }

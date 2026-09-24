@@ -133,7 +133,9 @@ describe('claiming a profile (FR-4.3)', () => {
     expect((await getMyProfile(web, CREATOR))?.handle).toBe('trstn');
     // Nobody else does, and "unpublished" and "no such handle" are the same answer.
     expect(await getBreakerProfile(anonymous, 'trstn')).toBeNull();
-    expect(await listPublishedProfiles(anonymous)).toHaveLength(0);
+    // By handle, not by count: the sample seed publishes a placeholder profile of its own, so
+    // "the list is empty" would be an assertion about the fixture rather than about this.
+    expect((await listPublishedProfiles(anonymous)).map((p) => p.handle)).not.toContain('trstn');
   });
 
   it('appears once published', async () => {
@@ -146,7 +148,7 @@ describe('claiming a profile (FR-4.3)', () => {
 
     const profile = await getBreakerProfile(anonymous, 'trstn');
     expect(profile?.displayName).toBe('GUNDAM with TRSTN');
-    expect((await listPublishedProfiles(anonymous)).map((p) => p.handle)).toEqual(['trstn']);
+    expect((await listPublishedProfiles(anonymous)).map((p) => p.handle)).toContain('trstn');
   });
 
   it('publishes nothing about the account behind it (SR-3.8)', async () => {

@@ -210,7 +210,11 @@ describe('the public breaker page (FR-4.3)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/v1/breakers' });
     const handles = res.json<{ items: { handle: string }[] }>().items.map((i) => i.handle);
-    expect(handles).toEqual(['shown']);
+    // Membership rather than the whole list: the sample seed publishes a placeholder profile
+    // of its own, so an exact match would be asserting what the fixture contains instead of
+    // what this endpoint does with published and unpublished rows.
+    expect(handles).toContain('shown');
+    expect(handles).not.toContain('hidden');
   });
 
   it('rejects a malformed handle at the edge rather than in a query', async () => {

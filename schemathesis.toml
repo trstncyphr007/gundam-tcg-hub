@@ -1,0 +1,16 @@
+# Configuration for the nightly fuzz run (AC-3.4). Used by `.github/workflows/nightly.yml`.
+#
+# Only one thing is set here, and it is a fixture problem rather than a preference.
+#
+# `/v1/breakers/{handle}` takes a handle, and a fuzzer generating random ones never finds a
+# profile that exists — so every case answered 404 and the endpoint's actual logic was never
+# reached. schemathesis said so on every run, in as many words: "1 operation repeatedly
+# returned 404 Not Found, preventing tests from reaching your API's core logic".
+#
+# This points it at the placeholder profile `packages/db/src/seed/sample.ts` publishes, which
+# CI seeds before the run. That value belongs here rather than in the OpenAPI document: a
+# published example that exists only in the development seed would be a lie on a page people
+# build clients from.
+[[operations]]
+include-path = "/v1/breakers/{handle}"
+parameters = { handle = "sample-breaker" }
