@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { SignInRequired } from '@/components/sign-in-required';
 import { api } from '@/lib/api';
 import { SaleLogger } from './sale-logger';
 
@@ -8,12 +8,7 @@ export default async function LiveSalesPage(): Promise<React.JSX.Element> {
   const me = await api.me();
   if (!me) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Live sales</h1>
-        <Link href="/sign-in" className="underline">
-          Sign in
-        </Link>
-      </div>
+      <SignInRequired title="Live sales" reason="log a live sale" next="/creator/live-sales" />
     );
   }
 

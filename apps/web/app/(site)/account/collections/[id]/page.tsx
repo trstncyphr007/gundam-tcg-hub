@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { SignInRequired } from '@/components/sign-in-required';
 import { api } from '@/lib/api';
 import { CollectionManager } from './collection-manager';
 
@@ -14,12 +15,11 @@ export default async function ManageCollectionPage({
   const me = await api.me();
   if (!me) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Collection</h1>
-        <Link href="/sign-in" className="underline">
-          Sign in
-        </Link>
-      </div>
+      <SignInRequired
+        title="Collection"
+        reason="see this collection"
+        next={`/account/collections/${id}`}
+      />
     );
   }
 

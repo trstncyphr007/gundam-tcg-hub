@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SignInRequired } from '@/components/sign-in-required';
 import { api } from '@/lib/api';
 import { NewCollectionForm } from './new-collection-form';
 
@@ -15,16 +16,11 @@ export default async function CollectionsPage() {
 
   if (!me) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">My collections</h1>
-        <p className="text-sm text-muted">You need to sign in to keep a collection.</p>
-        <Link
-          href="/sign-in"
-          className="inline-block rounded px-4 py-2 text-sm font-medium bg-accent"
-        >
-          Sign in
-        </Link>
-      </div>
+      <SignInRequired
+        title="My collections"
+        reason="keep a collection"
+        next="/account/collections"
+      />
     );
   }
 

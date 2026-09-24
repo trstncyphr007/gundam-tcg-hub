@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { SignInRequired } from '@/components/sign-in-required';
 import { api } from '@/lib/api';
 import { FairnessPanel } from './fairness-panel';
 import { PackCount } from './pack-count';
@@ -17,12 +18,7 @@ export default async function RunBreakPage({
   const me = await api.me();
   if (!me) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Run break</h1>
-        <Link href="/sign-in" className="underline">
-          Sign in
-        </Link>
-      </div>
+      <SignInRequired title="Run break" reason="run this break" next={`/creator/breaks/${id}`} />
     );
   }
 

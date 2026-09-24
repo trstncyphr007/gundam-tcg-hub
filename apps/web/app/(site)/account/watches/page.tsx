@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SignInRequired } from '@/components/sign-in-required';
 import { api } from '@/lib/api';
 import { SignOutButton } from './sign-out-button';
 
@@ -8,18 +9,7 @@ export default async function WatchesPage() {
   const me = await api.me();
 
   if (!me) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">My watches</h1>
-        <p className="text-sm text-muted">You need to sign in to see your watches.</p>
-        <Link
-          href="/sign-in"
-          className="inline-block rounded px-4 py-2 text-sm font-medium bg-accent"
-        >
-          Sign in
-        </Link>
-      </div>
-    );
+    return <SignInRequired title="My watches" reason="see your watches" next="/account/watches" />;
   }
 
   const watches = await api.watches();
