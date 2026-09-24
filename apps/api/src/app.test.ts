@@ -38,6 +38,67 @@ describe('security headers (SR-X.14)', () => {
   });
 });
 
+describe('a path that exists, but not with that method', () => {
+  /**
+   * 405 rather than 404, under `/v1` only.
+   *
+   * The published document says which methods each path has, so answering 404 for a method it
+   * does not have tells a client the resource is gone when it is not. The nightly fuzzer has
+   * failed on this every night since it was added, which is how it was found.
+   */
+  // The `/v1` routes are only registered when there is a database, and registering them is all
+  // this needs: a 405 is decided by the router, so no handler ever runs and nothing is queried.
+  const withPublicRoutes = async (): Promise<FastifyInstance> =>
+    buildApp(baseConfig, { db: {} as never });
+
+  it('answers 405 with an Allow header on a documented path', async () => {
+    app = await withPublicRoutes();
+    for (const method of ['POST', 'PUT', 'DELETE'] as const) {
+      const res = await app.inject({ method, url: '/v1/games' });
+      expect(res.statusCode, method).toBe(405);
+      expect(res.headers['allow'], method).toContain('GET');
+      expect(res.json()).toEqual({ error: 'method_not_allowed' });
+    }
+  });
+
+  it('answers 405 on a path with a parameter in it', async () => {
+    // The case the first version of this got wrong. Fastify's `hasRoute` compares the URL
+    // against registered *patterns*, so `/v1/cards/<a-real-id>` does not match
+    // `/v1/cards/:id` and every parameterised route kept answering 404.
+    app = await withPublicRoutes();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/cards/00000000-0000-7000-8000-000000000000/prices',
+    });
+    expect(res.statusCode).toBe(405);
+    expect(res.headers['allow']).toContain('GET');
+  });
+
+  it('answers 405 for a body-carrying method Fastify refuses before routing', async () => {
+    // QUERY is a method Fastify knows, so it is rejected for a missing content-type *before*
+    // routing and never reaches the not-found handler. Left alone, the caller is told their
+    // header was wrong when the truth is the method does not exist here.
+    app = await withPublicRoutes();
+    const res = await app.inject({ method: 'QUERY' as 'GET', url: '/v1/games' });
+    expect(res.statusCode).toBe(405);
+    expect(res.headers['allow']).toContain('GET');
+  });
+
+  it('still answers 404 when the path itself does not exist', async () => {
+    app = await withPublicRoutes();
+    const res = await app.inject({ method: 'POST', url: '/v1/nothing-here' });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('leaves everything outside /v1 answering 404, as it is meant to', async () => {
+    // The disabled Better Auth endpoints are meant to look absent rather than forbidden
+    // (ADR-026). 405 there would undo that by confirming the path exists.
+    app = await withPublicRoutes();
+    const res = await app.inject({ method: 'POST', url: '/healthz' });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
 describe('error handling', () => {
   it('returns a JSON 404 for unknown routes', async () => {
     app = await buildApp(baseConfig);
