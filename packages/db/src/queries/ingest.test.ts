@@ -3,7 +3,9 @@ import { createDb } from '../client.js';
 import { seedSample } from '../seed/sample.js';
 import { type TestDatabase, startTestDatabase } from '../test/harness.js';
 import {
+  abandonDelivery,
   claimDeliveries,
+  claimRetryableDeliveries,
   consumeApiKeyQuota,
   createApiKey,
   findActiveApiKey,
@@ -95,6 +97,106 @@ describe('recordStockReport (FR-1.7)', () => {
   });
 });
 
+describe('the alerts still owed (FR-1.8)', () => {
+  /**
+   * Its own watcher, rather than relying on one another block happens to create first. A
+   * fixture that depends on test order is a fixture that breaks when somebody reorders them.
+   */
+  beforeAll(async () => {
+    await tdb.db.execute(
+      `insert into app.users (id, name, email) values ('owed-user', 'Owed', 'owed@example.com')
+       on conflict do nothing`,
+    );
+    await asUser(tdb.db, 'owed-user', (tx) =>
+      tx.execute(
+        `insert into app.watch_subscriptions (user_id, sealed_product_id, channels)
+         values ('owed-user', '${productId}', array['email']::app.alert_channel[])
+         on conflict do nothing`,
+      ),
+    );
+  });
+
+  /** A restock with one claimed delivery, left in whatever state the test needs. */
+  async function owed(
+    overrides: {
+      status?: string;
+      attempts?: number;
+      ageMinutes?: number;
+      eventHoursAgo?: number;
+    } = {},
+  ): Promise<{ eventId: string; deliveryId: string }> {
+    const { status = 'pending', attempts = 1, ageMinutes = 10, eventHoursAgo = 0 } = overrides;
+    await recordStockReport(worker.db, { retailerProductId: listingId, inStock: false });
+    const { event } = await recordStockReport(worker.db, {
+      retailerProductId: listingId,
+      inStock: true,
+    });
+    const eventId = String(event?.id);
+    const targets = await findFanOutTargets(worker.db, listingId);
+    const claimed = await claimDeliveries(worker.db, eventId, targets);
+    const deliveryId = String(claimed[0]?.id);
+
+    await tdb.db.execute(
+      `update app.alert_deliveries
+          set status = '${status}',
+              attempts = ${String(attempts)},
+              created_at = now() - make_interval(mins => ${String(ageMinutes)})
+        where id = '${deliveryId}'`,
+    );
+    await tdb.db.execute(
+      `update app.restock_events
+          set detected_at = now() - make_interval(hours => ${String(eventHoursAgo)})
+        where id = '${eventId}'`,
+    );
+    return { eventId, deliveryId };
+  }
+
+  const ids = (rows: { id: string }[]): string[] => rows.map((r) => r.id);
+
+  it('offers a delivery nobody has managed to send', async () => {
+    const { deliveryId } = await owed();
+    const rows = await claimRetryableDeliveries(worker.db);
+    expect(ids(rows)).toContain(deliveryId);
+    // Enough to rebuild the message a retry has to send.
+    const row = rows.find((r) => r.id === deliveryId);
+    expect(row?.retailerProductId).toBe(listingId);
+    expect(row?.detectedAt).toBeInstanceOf(Date);
+  });
+
+  it('leaves alone a delivery a fan-out may still be working on', async () => {
+    // The row was created seconds ago, which is what an in-flight delivery looks like. Taking
+    // it here would send the same alert twice — the failure people actually notice.
+    const { deliveryId } = await owed({ ageMinutes: 0 });
+    const rows = await claimRetryableDeliveries(worker.db);
+    expect(ids(rows)).not.toContain(deliveryId);
+  });
+
+  it('stops at the attempt cap', async () => {
+    const { deliveryId } = await owed({ attempts: 5 });
+    expect(ids(await claimRetryableDeliveries(worker.db))).not.toContain(deliveryId);
+  });
+
+  it('will not resurrect an alert about yesterday', async () => {
+    // Telling somebody a box came back in stock yesterday is not a late alert, it is a wrong
+    // one: they will go and look, and it will be gone.
+    const { deliveryId } = await owed({ eventHoursAgo: 30 });
+    expect(ids(await claimRetryableDeliveries(worker.db))).not.toContain(deliveryId);
+  });
+
+  it('ignores anything already settled', async () => {
+    for (const status of ['sent', 'failed', 'skipped']) {
+      const { deliveryId } = await owed({ status });
+      expect(ids(await claimRetryableDeliveries(worker.db)), status).not.toContain(deliveryId);
+    }
+  });
+
+  it('abandons one for good', async () => {
+    const { deliveryId } = await owed();
+    await abandonDelivery(worker.db, deliveryId, 'gave up');
+    expect(ids(await claimRetryableDeliveries(worker.db))).not.toContain(deliveryId);
+  });
+});
+
 describe('fan-out and deliveries (FR-1.8)', () => {
   it('finds watchers of both the listing and its product, and nothing for unknown ids', async () => {
     await tdb.db.execute(
@@ -130,20 +232,25 @@ describe('fan-out and deliveries (FR-1.8)', () => {
     // Second claim for the same event returns nothing: the unique index is the guard.
     await expect(claimDeliveries(worker.db, String(event?.id), targets)).resolves.toEqual([]);
 
-    await markDeliverySent(worker.db, String(claimed[0]?.id));
-    const afterSend = await listDeliveriesForEvent(worker.db, String(event?.id));
-    expect(afterSend[0]?.status).toBe('sent');
-    expect(afterSend[0]?.attempts).toBe(1);
+    // The one that was actually marked, not whichever the list happens to return first: this
+    // listing has more than one watcher, and `[0]` was quietly assuming it did not.
+    const id = String(claimed[0]?.id);
+    const mine = async (): Promise<(typeof claimed)[0] | undefined> =>
+      (await listDeliveriesForEvent(worker.db, String(event?.id))).find((d) => d.id === id);
 
-    await markDeliveryFailed(worker.db, String(claimed[0]?.id), 'x'.repeat(400));
-    const afterFail = await listDeliveriesForEvent(worker.db, String(event?.id));
-    expect(afterFail[0]?.status).toBe('failed');
+    await markDeliverySent(worker.db, id);
+    expect((await mine())?.status).toBe('sent');
+    expect((await mine())?.attempts).toBe(1);
+
+    await markDeliveryFailed(worker.db, id, 'x'.repeat(400));
+    const afterFail = await mine();
+    expect(afterFail?.status).toBe('failed');
     // Error text is truncated so a huge upstream message cannot bloat the table.
-    expect(afterFail[0]?.lastError?.length).toBe(300);
-    expect(afterFail[0]?.attempts).toBe(2);
+    expect(afterFail?.lastError?.length).toBe(300);
+    expect(afterFail?.attempts).toBe(2);
 
-    await markDeliveryFailed(worker.db, String(claimed[0]?.id), 'unsupported', 'skipped');
-    expect((await listDeliveriesForEvent(worker.db, String(event?.id)))[0]?.status).toBe('skipped');
+    await markDeliveryFailed(worker.db, id, 'unsupported', 'skipped');
+    expect((await mine())?.status).toBe('skipped');
   });
 
   it('claims nothing when there are no targets', async () => {

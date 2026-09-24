@@ -8,6 +8,7 @@ grants are the point: it can do these jobs and nothing else.
 | Price index    | `pnpm price:rollup` | 03:30 UTC    | Prices go stale. Visible, recoverable — the rollup recomputes, so a missed night is picked up by the next run |
 | Data retention | `pnpm db:retention` | 04:30 UTC    | **Personal data is kept past its retention period.** Not visible, not recoverable after the fact              |
 | Ops watchdog   | (server only)       | every 15 min | Nothing tells you anything is wrong. Its own daily "all clear" going quiet is the sign it has stopped         |
+| Alert retry    | (server only)       | every 5 min  | **Alerts that failed once are never sent.** Silent: the person who asked to be told simply is not told        |
 
 ## Why retention is its own command
 
@@ -91,6 +92,34 @@ daily line stops arriving, the watchdog is what broke.**
 Thresholds live in `packages/db/src/queries/ops-alerts.ts` (`DEFAULT_THRESHOLDS`) and are
 exercised directly by unit tests. Repeats are remembered in the database, not in the process,
 so restarting the job does not reset anyone's peace and quiet.
+
+## The alert retry (FR-1.8)
+
+```bash
+docker compose --profile jobs run --rm alert-retry
+```
+
+Fan-out happens inside the scanner's own request, which is right: a restock alert is worth
+having in the first minute and much less in the tenth. But that was **one pass and no second
+chance**. Every transport worked out whether a failure might not happen next time — a Discord
+429, a 5xx, a timeout — and the dispatcher threw that answer away and marked everything
+`failed`. Nothing ever read a failed row, so a momentary blip meant the person who asked to be
+told a box was back in stock was never told, and nothing said so.
+
+Now `pending` means **still owed**, and this job is the second chance. Three bounds:
+
+| Bound     | Value     | Why                                                                                |
+| --------- | --------- | ---------------------------------------------------------------------------------- |
+| Attempts  | 5         | A channel that has refused five times will refuse the sixth                        |
+| Event age | 24 hours  | Telling somebody a box returned _yesterday_ is not a late alert, it is a wrong one |
+| Row age   | 2 minutes | Never race a fan-out that is delivering it right now                               |
+
+`FOR UPDATE SKIP LOCKED` in the claim means two runs cannot collide either, so the timer can
+overlap a slow run without double-sending.
+
+**The watchdog is the backstop.** Its "deliveries stuck" finding fires when the oldest pending
+alert is over fifteen minutes old — which, now that `pending` means owed, is exactly the shape
+of "the retry job has stopped". The two were written months apart and happen to fit.
 
 Without `DISCORD_OPS_WEBHOOK_URL` it still runs, prints what it would have said, and exits 0 —
 a host that is not wired up yet should show that in its journal rather than fail a timer every

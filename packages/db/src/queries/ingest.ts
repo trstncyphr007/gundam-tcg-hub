@@ -147,11 +147,93 @@ export async function markDeliverySent(db: Database, id: string): Promise<void> 
     .where(eq(alertDeliveries.id, id));
 }
 
+/**
+ * Deliveries that are still owed, and may be tried again (FR-1.8).
+ *
+ * `pending` means "nobody has managed to send this yet", which covers two situations that look
+ * the same from here and are both alerts a person asked for and did not get:
+ *
+ *  - a transport said it failed and might not next time — a Discord 429, a 5xx, a timeout;
+ *  - nothing said anything, because the process died between claiming the row and sending it.
+ *
+ * `created_at` older than `staleAfter` keeps this off rows a fan-out is working on right now,
+ * and `FOR UPDATE SKIP LOCKED` keeps two runs off each other.
+ *
+ * Bounded by the event's age as well as by attempts. A restock alert is worth having for a few
+ * hours and worth nothing the next day — telling somebody a box came back in stock yesterday
+ * is not a late alert, it is a wrong one.
+ */
+export interface RetryableDelivery {
+  id: string;
+  eventId: string;
+  subscriptionId: string;
+  channel: 'email' | 'discord_dm' | 'discord_webhook' | 'web_push';
+  attempts: number;
+  retailerProductId: string;
+  /** From the event, so a retry says what the first attempt would have said. */
+  priceCents: number | null;
+  currency: string;
+  /** When the stock actually came back — not when we got round to saying so. */
+  detectedAt: Date;
+}
+
+/** What the driver actually hands back: `db.execute` needs an indexable shape, and a raw
+ * timestamptz arrives as a string. Kept separate so the exported type stays honest. */
+interface RetryableRow extends Omit<RetryableDelivery, 'detectedAt'> {
+  [key: string]: unknown;
+  detectedAt: string;
+}
+
+export async function claimRetryableDeliveries(
+  db: Database,
+  options: {
+    maxAttempts?: number;
+    staleAfterSeconds?: number;
+    eventWithinHours?: number;
+    limit?: number;
+  } = {},
+): Promise<RetryableDelivery[]> {
+  const { maxAttempts = 5, staleAfterSeconds = 120, eventWithinHours = 24, limit = 200 } = options;
+  // Raw SQL, so the driver hands back what Postgres sent: `detected_at` arrives as a string,
+  // not a Date. Declaring it a Date and passing it straight into a message would have thrown
+  // the first time anything formatted it — at the far end of a retry nobody was watching. It
+  // is converted here, where the type is claimed, rather than trusted downstream.
+  const rows = await db.execute<RetryableRow>(sql`
+    select d.id,
+           d.event_id        as "eventId",
+           d.subscription_id as "subscriptionId",
+           d.channel,
+           d.attempts,
+           e.retailer_product_id as "retailerProductId",
+           e.price_cents         as "priceCents",
+           e.currency,
+           e.detected_at         as "detectedAt"
+      from app.alert_deliveries d
+      join app.restock_events e on e.id = d.event_id
+     where d.status = 'pending'
+       and d.attempts < ${maxAttempts}
+       and d.created_at < now() - make_interval(secs => ${staleAfterSeconds})
+       and e.detected_at > now() - make_interval(hours => ${eventWithinHours})
+     order by d.created_at
+     limit ${limit}
+     for update of d skip locked
+  `);
+  return rows.map((row) => ({ ...row, detectedAt: new Date(row.detectedAt) }));
+}
+
+/** Give up on a delivery that has been tried as often as it is going to be. */
+export async function abandonDelivery(db: Database, id: string, reason: string): Promise<void> {
+  await db
+    .update(alertDeliveries)
+    .set({ status: 'failed', lastError: reason.slice(0, 300) })
+    .where(eq(alertDeliveries.id, id));
+}
+
 export async function markDeliveryFailed(
   db: Database,
   id: string,
   reason: string,
-  status: 'failed' | 'skipped' = 'failed',
+  status: 'failed' | 'skipped' | 'pending' = 'failed',
 ): Promise<void> {
   await db
     .update(alertDeliveries)
