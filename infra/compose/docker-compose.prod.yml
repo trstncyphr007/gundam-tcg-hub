@@ -180,6 +180,30 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
+  # Every few minutes: send the alerts we still owe (FR-1.8). Fan-out runs inside the
+  # scanner's own request and gets one pass, so a Discord 429 or an SMTP hiccup used to lose
+  # the alert for good — and silently, because a failed row was a number nobody read. Needs
+  # `egress` for the same reason the watchdog does.
+  alert-retry:
+    <<: *hardening
+    profiles: [jobs]
+    image: ${API_IMAGE:?set API_IMAGE to a signed digest}
+    user: '65532:65532'
+    command: ['dist/job-alert-retry.js']
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_WORKER: ${DATABASE_URL_WORKER:?}
+      # The same transports as the first attempt, built from the same values: a retry that
+      # goes out a different way is not a retry.
+      SMTP_URL: ${SMTP_URL:-}
+      EMAIL_FROM: ${EMAIL_FROM:?}
+      APP_BASE_URL: ${APP_BASE_URL:?}
+      DISCORD_ALERT_WEBHOOK_URL: ${DISCORD_ALERT_WEBHOOK_URL:-}
+    networks: [internal, egress]
+    restart: 'no'
+    depends_on:
+      postgres: { condition: service_healthy }
+
   postgres:
     <<: *hardening
     image: postgres:17-bookworm@sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652

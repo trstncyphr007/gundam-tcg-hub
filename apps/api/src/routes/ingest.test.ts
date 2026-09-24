@@ -405,7 +405,10 @@ describe('alert fan-out (FR-1.8)', () => {
     );
     const deliveries = await listDeliveriesForEvent(tdb.db, String(events[0]?.id));
     expect(deliveries).toHaveLength(2);
-    expect(deliveries.every((d) => d.status === 'failed')).toBe(true);
+    // `pending`, not `failed`: the transport said this one might work next time, and the
+    // alert-retry job is what tries it. This line read `failed` until somebody noticed that
+    // nothing ever looked at a failed row again (FR-1.8).
+    expect(deliveries.every((d) => d.status === 'pending')).toBe(true);
     expect(deliveries[0]?.lastError).toContain('smtp exploded');
     expect(deliveries[0]?.attempts).toBe(1);
   });

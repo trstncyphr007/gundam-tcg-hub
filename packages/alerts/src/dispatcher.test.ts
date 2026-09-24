@@ -106,7 +106,11 @@ describe('dispatchRestockEvent', () => {
     expect(deliveries[0]?.lastError).toMatch(/no transport/);
   });
 
-  it('records failures and keeps going', async () => {
+  it('records failures and keeps going, leaving a retryable one still owed', async () => {
+    // This used to assert `failed` for a failure the transport had just said was worth trying
+    // again — which is what the code did, and was the bug: terminal, never read again, so an
+    // SMTP hiccup meant somebody who asked to be told was never told. `pending` means "still
+    // owed", and the alert-retry job picks it up (FR-1.8).
     outcome = { ok: false, reason: 'smtp refused', retryable: true };
     const event = await newEvent();
     const result = await dispatchRestockEvent(
@@ -115,11 +119,28 @@ describe('dispatchRestockEvent', () => {
       message,
     );
     expect(result.failed).toBe(2);
+    expect(result.retryable).toBe(2);
     const deliveries = await listDeliveriesForEvent(worker.db, event.id);
-    const failed = deliveries.filter((d) => d.status === 'failed');
-    expect(failed).toHaveLength(2);
-    expect(failed[0]?.lastError).toContain('smtp refused');
-    expect(failed[0]?.attempts).toBe(1);
+    const owed = deliveries.filter((d) => d.status === 'pending');
+    expect(owed).toHaveLength(2);
+    expect(owed[0]?.lastError).toContain('smtp refused');
+    expect(owed[0]?.attempts).toBe(1);
+  });
+
+  it('gives up straight away on a failure that will happen every time', async () => {
+    // A webhook address we will never accept is not a blip. Trying it four more times would
+    // buy the same refusal four more times, and delay nothing but the truth.
+    outcome = { ok: false, reason: 'webhook url rejected by allowlist', retryable: false };
+    const event = await newEvent();
+    const result = await dispatchRestockEvent(
+      { db: worker.db, transports: { email: recordingTransport('email') } },
+      event,
+      message,
+    );
+    expect(result.failed).toBe(2);
+    expect(result.retryable).toBe(0);
+    const deliveries = await listDeliveriesForEvent(worker.db, event.id);
+    expect(deliveries.filter((d) => d.status === 'failed')).toHaveLength(2);
   });
 
   it('logs failures without the recipient address', async () => {
