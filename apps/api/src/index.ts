@@ -98,6 +98,19 @@ const app = await buildApp(config, {
           }),
           appBaseUrl: config.APP_BASE_URL,
         },
+        // Only with a signing secret. Without one nothing could be verified, and an endpoint
+        // that accepts unverifiable claims about money is worse than no endpoint.
+        ...(config.STRIPE_WEBHOOK_SECRET === undefined
+          ? {}
+          : {
+              stripeWebhook: {
+                workerDb: worker.db,
+                stripe: createStripeClient({
+                  secretKey: config.STRIPE_SECRET_KEY,
+                  webhookSecret: config.STRIPE_WEBHOOK_SECRET,
+                }),
+              },
+            }),
       }),
   ingest: {
     workerDb: worker.db,
