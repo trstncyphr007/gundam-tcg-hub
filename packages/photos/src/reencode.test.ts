@@ -201,13 +201,16 @@ describe('the size it is stored at', () => {
   });
 
   it('actually resizes the picture, not just the number', () => {
-    const out = reencodePhoto(realJpeg(2400, 1800));
+    // 2000 rather than something larger: it is over the cap, which is all this needs, and
+    // every extra megapixel is a second of pure-JS resampling in a suite that runs on every
+    // push. The first version used 2400 × 1800 and timed out on CI under coverage.
+    const out = reencodePhoto(realJpeg(2000, 1500));
     expect(Math.max(out.width, out.height)).toBe(DISPLAY_MAX_DIMENSION);
     expect(out.height).toBe(1200);
   });
 
   it('is smaller than the original it came from', () => {
-    const original = realJpeg(2400, 1800);
+    const original = realJpeg(2000, 1500);
     expect(reencodePhoto(original).bytes.length).toBeLessThan(original.length);
   });
 });
