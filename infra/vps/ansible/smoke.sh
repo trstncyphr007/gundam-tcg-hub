@@ -35,6 +35,7 @@ cat > /tmp/gth-smoke-inventory.ini <<EOF
 ${NAME} ansible_connection=community.docker.docker ansible_python_interpreter=/usr/bin/python3
 EOF
 
+# shellcheck disable=SC2120  # "$@" is there for running this by hand with extra ansible flags.
 run() {
   ansible-playbook -i /tmp/gth-smoke-inventory.ini "${HERE}/site.yml" \
     -e gth_container_smoke=true \

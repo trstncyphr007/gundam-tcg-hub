@@ -1,6 +1,7 @@
 # Guardrail Proofs
 
-**Last run: 2026-09-23 — 12 passed, 0 failed, 1 skipped.**
+**Last run: 2026-09-25 — 13 passed, 0 failed, 0 skipped.** The one that used to be skipped,
+`cosign verify` against an unsigned image, now runs: cosign is installed on the workstation.
 
 Every gate in this project claims to stop something. These proofs make each one actually
 refuse, so the claim is evidence rather than assertion. A gate nobody has watched fire is a
@@ -15,28 +16,34 @@ git repos, and nothing is left behind. **Run it after changing any gate**, and r
 result here.
 
 Plan §27 lists seven proofs. Two of them assume GitHub features this repo does not have, so
-they test the compensating control from ADR-014 instead — noted below. Proofs 8–10 cover gates
+they test the compensating control from ADR-014 instead — noted below. Proofs 8–11 cover gates
 this project added afterwards, which had been claims nobody had watched fire.
+
+Proof 11 is the newest and the plainest example of why this file exists. Shell was the only
+language here with no linter at all: the `run:` blocks in the workflows were covered by
+actionlint, and the seventeen real scripts — the ones that deploy, back up, rotate keys and
+decide whether the server is ready — by nothing.
 
 ---
 
 ## Results
 
-| #   | What it tries to do                        | What stops it                           | Result                |
-| --- | ------------------------------------------ | --------------------------------------- | --------------------- |
-| 1   | Commit a staged AWS access key id          | gitleaks (`.gitleaks.toml`)             | **PASS**              |
-| 1b  | Commit a staged `gth_live_` API key        | gitleaks, our own rule                  | **PASS**              |
-| 2   | Leave a secret in git history              | gitleaks in CI + GitHub push protection | **PASS**              |
-| 3   | Add a dependency with a known CVE          | `osv-scanner`                           | **PASS**              |
-| 4   | Use `sql.raw` or `dangerouslySetInnerHTML` | Semgrep + `.semgrep.yml`                | **PASS**              |
-| 5   | Ship a container running as root           | hadolint                                | **PASS**              |
-| 6   | Deploy an unverified image                 | digest validation in `deploy.sh`        | **PASS**              |
-| 6b  | `cosign verify` an unsigned image          | cosign                                  | _skipped — see below_ |
-| 7   | Push straight to `main`                    | pre-push hook **+ GitHub ruleset**      | **PASS**              |
-| 8   | Add a second outbound HTTP request         | Semgrep `gth-no-outbound-http`          | **PASS**              |
-| 8b  | Keep the one allowed outbound module       | the rule's exclusion, still matching    | **PASS**              |
-| 9   | Use a `style` prop in a component          | ESLint `no-restricted-syntax`           | **PASS**              |
-| 10  | Commit a shebang script as mode 644        | `scripts/check-exec-bits.sh` in CI      | **PASS**              |
+| #   | What it tries to do                        | What stops it                            | Result   |
+| --- | ------------------------------------------ | ---------------------------------------- | -------- |
+| 1   | Commit a staged AWS access key id          | gitleaks (`.gitleaks.toml`)              | **PASS** |
+| 1b  | Commit a staged `gth_live_` API key        | gitleaks, our own rule                   | **PASS** |
+| 2   | Leave a secret in git history              | gitleaks in CI + GitHub push protection  | **PASS** |
+| 3   | Add a dependency with a known CVE          | `osv-scanner`                            | **PASS** |
+| 4   | Use `sql.raw` or `dangerouslySetInnerHTML` | Semgrep + `.semgrep.yml`                 | **PASS** |
+| 5   | Ship a container running as root           | hadolint                                 | **PASS** |
+| 6   | Deploy an unverified image                 | digest validation in `deploy.sh`         | **PASS** |
+| 6b  | `cosign verify` an unsigned image          | cosign                                   | **PASS** |
+| 7   | Push straight to `main`                    | pre-push hook **+ GitHub ruleset**       | **PASS** |
+| 8   | Add a second outbound HTTP request         | Semgrep `gth-no-outbound-http`           | **PASS** |
+| 8b  | Keep the one allowed outbound module       | the rule's exclusion, still matching     | **PASS** |
+| 9   | Use a `style` prop in a component          | ESLint `no-restricted-syntax`            | **PASS** |
+| 10  | Commit a shebang script as mode 644        | `scripts/check-exec-bits.sh` in CI       | **PASS** |
+| 11  | `rm -rf $var/*` in a shell script          | shellcheck (SC2115) in CI and pre-commit | **PASS** |
 
 ---
 
@@ -101,10 +108,15 @@ server does — at `git commit` rather than at `git push` — which is the cheap
 find a mistake. The difference now is that bypassing them with `--no-verify` no longer
 bypasses anything that matters.
 
-## The one that is skipped
+## The one that used to be skipped
 
-`cosign` is not installed on the workstation; it runs in the release and deploy workflows.
-What _is_ checked locally is the other half of the control: `deploy.sh` refuses anything
+`cosign` was not installed on the workstation until the deploy track needed it, so this proof
+sat skipped through several runs. **It now runs and passes**, which matters more than it
+sounds: a skipped proof and a passing one look identical in a summary line unless somebody
+counts, and this file had been reporting "12 passed, 1 skipped" as though that were a clean
+result.
+
+What is also checked locally is the other half of the control: `deploy.sh` refuses anything
 that is not a `sha256:` digest, so a mutable tag can never reach `cosign verify` in the
 first place.
 

@@ -220,5 +220,16 @@ blocked "the exec-bit check rejects a non-executable shebang script" \
 cd "$REPO_ROOT" || exit 1
 
 # --------------------------------------------------------------------------- #
+head2 "11. A shell script that would delete the wrong thing is rejected"
+# The shell here deploys, backs up, rotates keys and decides whether the server is ready, and
+# until 2026-09-25 it was the only language in this repository with no linter at all: the
+# `run:` blocks in the workflows were covered by actionlint, the seventeen real scripts by
+# nothing. `rm -rf $var/*` is the canonical way that ends badly — one unset variable and it is
+# `rm -rf /*`.
+printf '#!/usr/bin/env bash\nset -euo pipefail\nrm -rf $target_dir/*\n' > "$WORK/danger.sh"
+blocked "shellcheck rejects rm -rf on an unguarded variable (SC2115)" \
+  shellcheck --severity=warning "$WORK/danger.sh"
+
+# --------------------------------------------------------------------------- #
 printf '\n\033[1m%d passed, %d failed, %d skipped\033[0m\n' "$pass" "$fail" "$skip"
 [ "$fail" -eq 0 ] || exit 1
