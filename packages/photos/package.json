@@ -1,0 +1,27 @@
+{
+  "name": "@gth/photos",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "jpeg-js": "0.4.4",
+    "pngjs": "7.0.0"
+  },
+  "devDependencies": {
+    "@gth/config": "workspace:*",
+    "@gth/security": "workspace:*",
+    "@types/node": "24.13.4",
+    "@types/pngjs": "6.0.5",
+    "@vitest/coverage-v8": "5.0.0",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  }
+}
