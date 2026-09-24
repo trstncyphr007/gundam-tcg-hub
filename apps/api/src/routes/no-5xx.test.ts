@@ -7,6 +7,7 @@ import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { type ApiConfig, loadConfig } from '../config.js';
+import type { StripeClient } from '../payments/stripe.js';
 import { TEST_PASSKEY } from '../test/auth-fixtures.js';
 
 /**
@@ -133,6 +134,12 @@ const WRITES: Call[] = [
   { method: 'DELETE', url: `/v1/listings/${GHOST}` },
 
   { method: 'POST', url: '/v1/seller/onboard' },
+
+  // Buying something that is not there. The interesting sweep is the one *after* this — a
+  // real listing whose seller Stripe has never heard of — which `checkout.test.ts` covers
+  // because it needs a second user to own the listing.
+  { method: 'POST', url: `/v1/listings/${GHOST}/buy` },
+
   // Unsigned, which is what every caller who is not Stripe looks like.
   { method: 'POST', url: '/v1/webhooks/stripe', payload: { id: 'evt_x', type: 'account.updated' } },
 
@@ -167,6 +174,31 @@ const WRITES: Call[] = [
     as: 'admin',
   },
 ];
+
+/**
+ * A Stripe that answers without a network.
+ *
+ * So the payment routes are *in* this sweep rather than absent from it: routes that only exist
+ * when a secret is configured are exactly the ones that never get swept, and this file's whole
+ * argument is that the unswept routes are where the 5xx are.
+ *
+ * `constructEvent` throws because nothing this sweep sends is signed, and that is the path a
+ * webhook request takes here. 400 is the right answer and passes the rule, which is only that
+ * we never blame ourselves for what a caller sent.
+ */
+function fakeStripe(): StripeClient {
+  return {
+    createConnectedAccount: () => Promise.resolve({ accountId: 'acct_no5xx' }),
+    createOnboardingLink: () => Promise.resolve({ url: 'https://connect.stripe.test/x' }),
+    getAccountStatus: () =>
+      Promise.resolve({ chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false }),
+    constructEvent: () => {
+      throw new Error('no signature');
+    },
+    createCheckoutSession: () =>
+      Promise.resolve({ id: 'cs_no5xx', url: 'https://checkout.stripe.test/x' }),
+  };
+}
 
 beforeAll(async () => {
   tdb = await startTestDatabase();
@@ -205,41 +237,13 @@ beforeAll(async () => {
     // A fake Stripe, so the seller routes are *in* this sweep rather than absent from it.
     // Routes that only exist when a secret is configured are exactly the ones that never get
     // swept, and this file's whole argument is that the unswept routes are where the 5xx are.
-    seller: {
+    seller: { db: webPool.db, stripe: fakeStripe(), appBaseUrl: 'http://127.0.0.1:3000' },
+    stripeWebhook: { workerDb: workerPool.db, stripe: fakeStripe() },
+    checkout: {
       db: webPool.db,
-      stripe: {
-        createConnectedAccount: () => Promise.resolve({ accountId: 'acct_no5xx' }),
-        createOnboardingLink: () => Promise.resolve({ url: 'https://connect.stripe.test/x' }),
-        getAccountStatus: () =>
-          Promise.resolve({
-            chargesEnabled: false,
-            payoutsEnabled: false,
-            detailsSubmitted: false,
-          }),
-        constructEvent: () => {
-          throw new Error('not used in this sweep');
-        },
-      },
+      stripe: fakeStripe(),
       appBaseUrl: 'http://127.0.0.1:3000',
-    },
-    stripeWebhook: {
-      workerDb: workerPool.db,
-      stripe: {
-        createConnectedAccount: () => Promise.resolve({ accountId: 'acct_no5xx' }),
-        createOnboardingLink: () => Promise.resolve({ url: 'https://connect.stripe.test/x' }),
-        getAccountStatus: () =>
-          Promise.resolve({
-            chargesEnabled: false,
-            payoutsEnabled: false,
-            detailsSubmitted: false,
-          }),
-        // Nothing this sweep sends is signed, so this is the path it takes. 400 is the right
-        // answer and passes the rule here, which is only that we never blame ourselves for
-        // what a caller sent.
-        constructEvent: () => {
-          throw new Error('no signature');
-        },
-      },
+      feeBps: 500,
     },
     notify: () => Promise.resolve(),
   });

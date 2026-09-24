@@ -48,6 +48,7 @@ describe('what a switch is by default', () => {
       'alerts.enabled',
       'api.public.enabled',
       'scanner.ingest.enabled',
+      'market.checkout.enabled',
     ]);
     expect(flags.every((f) => f.enabled)).toBe(true);
     // Absent means on, so normal operation stores nothing at all.

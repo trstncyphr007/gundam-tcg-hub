@@ -44,6 +44,9 @@ const fakeStripe: StripeClient = {
   constructEvent: () => {
     throw new Error('not used here');
   },
+  createCheckoutSession: () => {
+    throw new Error('not used here');
+  },
 };
 
 let ipCounter = 0;

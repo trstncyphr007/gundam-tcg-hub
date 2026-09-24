@@ -28,6 +28,7 @@ export * from './queries/flags.js';
 export * from './queries/deletions.js';
 export * from './queries/market.js';
 export * from './queries/sellers.js';
+export * from './queries/orders.js';
 export * from './queries/webhooks.js';
 export * from './jobs.js';
 export * from './seed/sample.js';

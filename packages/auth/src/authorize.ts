@@ -46,6 +46,8 @@ export type Action =
   | 'live_sale:write'
   | 'listing:read'
   | 'listing:write'
+  | 'order:read'
+  | 'order:write'
   | 'admin:access';
 
 const BASE_ACTIONS: readonly Action[] = [
@@ -77,6 +79,21 @@ const BASE_ACTIONS: readonly Action[] = [
    */
   'listing:read',
   'listing:write',
+  /**
+   * Buying (FR-5.3), which is also not a role.
+   *
+   * `order:write` is "may start a purchase", and that is all it is. It does not decide whether
+   * this listing may be bought, whether this seller may be paid, or whether the money moved —
+   * those are the listing's status, the connected account's capabilities, and a signed webhook
+   * respectively, none of which a session asserts.
+   *
+   * `order:read` is separate from `listing:read` because an order is the more sensitive of the
+   * two: it names a counterparty, an amount and a payment. Row-level security already limits it
+   * to the two parties; splitting the action means a future token scoped to browse listings
+   * cannot read purchases as a side effect.
+   */
+  'order:read',
+  'order:write',
 ];
 
 /**

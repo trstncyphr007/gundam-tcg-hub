@@ -55,6 +55,30 @@ export async function getSellerAccount(
 }
 
 /**
+ * Where a purchase from this seller would send its money, asked by the buyer.
+ *
+ * The viewer is the one whose identity is declared, not the seller — impersonating the seller
+ * to read their own row would make the policy decorative. Migration 0043's
+ * `seller_accounts_select_active_seller` is what allows this, and it allows it only for a
+ * seller who has something on sale. A seller with no active listing reads as null here even
+ * though the row exists, which is the correct answer to "can I buy from them".
+ */
+export async function getSellerPayoutTarget(
+  db: Database,
+  viewerId: string,
+  sellerId: string,
+): Promise<SellerAccount | null> {
+  return asUser(db, viewerId, async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(sellerAccounts)
+      .where(eq(sellerAccounts.userId, sellerId))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+/**
  * Record the account Stripe just gave us.
  *
  * One per person, enforced by a unique index rather than by checking first: two requests
