@@ -36,6 +36,7 @@
     "db:seed-prices": "pnpm --filter @gth/db seed-prices",
     "db:retention": "pnpm --filter @gth/db retention",
     "keys:rotate": "pnpm --filter @gth/db rotate-keys",
+    "keys:fingerprint": "pnpm --filter @gth/db encrypted-fingerprints",
     "db:seed-scale": "pnpm --filter @gth/db seed-scale",
     "db:reapply-deletions": "pnpm --filter @gth/db reapply-deletions"
   },
