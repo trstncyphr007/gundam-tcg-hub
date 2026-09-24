@@ -10,6 +10,7 @@ import { createTransport } from 'nodemailer';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createMagicLinkSender, createSecurityNoticeSender } from './mailer.js';
+import { unsubscribeUrl } from './routes/unsubscribe.js';
 
 const config = loadConfig();
 
@@ -91,7 +92,8 @@ const app = await buildApp(config, {
         ? createEmailTransport({
             mailer,
             from: config.EMAIL_FROM,
-            unsubscribeUrl: `${config.APP_BASE_URL}/account/watches`,
+            unsubscribeUrl: (userId, subscriptionId) =>
+              unsubscribeUrl(config, userId, subscriptionId),
           })
         : createUnsupportedTransport('email (no SMTP configured)'),
       discord_webhook: config.DISCORD_ALERT_WEBHOOK_URL

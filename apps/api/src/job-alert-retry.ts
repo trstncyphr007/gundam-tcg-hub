@@ -7,6 +7,7 @@ import {
 import { createDb, getRestockContext } from '@gth/db';
 import { createTransport } from 'nodemailer';
 import { loadConfig } from './config.js';
+import { unsubscribeUrl } from './routes/unsubscribe.js';
 
 /**
  * Send the alerts we still owe (FR-1.8), shipped inside the API image like the other jobs
@@ -38,7 +39,8 @@ try {
         ? createEmailTransport({
             mailer,
             from: config.EMAIL_FROM,
-            unsubscribeUrl: `${config.APP_BASE_URL}/account/watches`,
+            unsubscribeUrl: (userId, subscriptionId) =>
+              unsubscribeUrl(config, userId, subscriptionId),
           })
         : createUnsupportedTransport('email (no SMTP configured)'),
       discord_webhook: config.DISCORD_ALERT_WEBHOOK_URL

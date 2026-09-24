@@ -73,7 +73,7 @@ interface Call {
   url: string;
   payload?: Record<string, unknown>;
   /** Which session to send. Defaults to the creator. */
-  as?: 'creator' | 'admin';
+  as?: 'creator' | 'admin' | 'anonymous';
 }
 
 /**
@@ -141,6 +141,9 @@ const WRITES: Call[] = [
   { method: 'POST', url: `/v1/account/sessions/${GHOST}/revoke` },
   { method: 'POST', url: '/v1/account/sessions/revoke-others' },
   { method: 'POST', url: '/v1/account/delete', payload: { email: 'nobody@example.test' } },
+
+  // No session by design (SR-1.12). Sent a token that is not one: it must answer, not break.
+  { method: 'POST', url: '/v1/unsubscribe?t=not-a-signed-link', as: 'anonymous' },
 
   // Admin. Reached with an admin session below, so the refusal is on the merits of the
   // request rather than stopping at the role check with the code behind it unvisited.
@@ -214,10 +217,15 @@ describe('no signed-in request answers 5xx (AC-3.4)', () => {
     const res: LightMyRequestResponse = await app.inject({
       method: call.method,
       url: call.url,
-      headers: { cookie: call.as === 'admin' ? adminCookie : cookie, origin: ORIGIN },
+      headers:
+        call.as === 'anonymous'
+          ? { origin: ORIGIN }
+          : { cookie: call.as === 'admin' ? adminCookie : cookie, origin: ORIGIN },
       ...(call.payload ? { payload: call.payload } : {}),
     });
     expect(res.statusCode, `${describeCall(call)} → ${res.body}`).toBeLessThan(500);
+    // A route that is public by design has no session to be in force.
+    if (call.as === 'anonymous') return;
     // The session must really be in force. Without this the sweep could quietly become
     // thirty 401s — every one of them under 500, and every one of them proving nothing.
     expect(res.statusCode, `${describeCall(call)} did not accept the session`).not.toBe(401);
@@ -241,7 +249,7 @@ describe('no signed-in request answers 5xx (AC-3.4)', () => {
 
     const swept = new Set(
       WRITES.map((call) => {
-        const path = call.url
+        const path = (call.url.split('?')[0] ?? call.url)
           .replaceAll(GHOST, ':id')
           .replaceAll(GHOST_2, ':id')
           .replace(/^\/v1\/admin\/reports\/:id\//, '/v1/admin/reports/:id/')

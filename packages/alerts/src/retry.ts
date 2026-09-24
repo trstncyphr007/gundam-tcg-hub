@@ -107,6 +107,8 @@ export async function retryOwedDeliveries(deps: RetryDeps): Promise<RetryResult>
     const outcome = await transport.send(message, {
       email: target.email,
       displayName: target.displayName,
+      userId: target.userId,
+      subscriptionId: delivery.subscriptionId,
     });
 
     if (outcome.ok === true) {

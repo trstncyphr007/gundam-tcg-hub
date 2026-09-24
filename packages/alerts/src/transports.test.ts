@@ -17,7 +17,12 @@ const message = {
   currency: 'USD',
   detectedAt: new Date('2026-09-20T12:00:00Z'),
 };
-const recipient = { email: 'pilot@example.com', displayName: 'Pilot' };
+const recipient = {
+  email: 'pilot@example.com',
+  displayName: 'Pilot',
+  userId: 'user-1',
+  subscriptionId: 'watch-1',
+};
 
 describe('isAllowedDiscordWebhook (SSRF guard, SR-1.1)', () => {
   it('accepts genuine Discord webhook urls', () => {
@@ -205,20 +210,30 @@ describe('the ops notifier', () => {
 });
 
 describe('email transport', () => {
-  it('sends with an unsubscribe header', async () => {
+  it('carries a one-click unsubscribe for this watch, in the header and the body', async () => {
+    // Per watch, not one link for the account: the reader wants to stop hearing about *this*
+    // product. And `List-Unsubscribe-Post`, without which the header is a link to somewhere
+    // rather than one-click unsubscribing (RFC 8058, SR-1.12).
     const sendMail = vi.fn().mockResolvedValue({});
     const transport = createEmailTransport({
       mailer: { sendMail },
       from: 'alerts@example.com',
-      unsubscribeUrl: 'https://app.example.com/account/watches',
+      unsubscribeUrl: (userId, id) =>
+        `https://api.example.com/v1/unsubscribe?t=${userId}|${id}.sig`,
     });
     await expect(transport.send(message, recipient)).resolves.toEqual({ ok: true });
     expect(sendMail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'pilot@example.com',
-        headers: { 'List-Unsubscribe': '<https://app.example.com/account/watches>' },
+        headers: {
+          'List-Unsubscribe': '<https://api.example.com/v1/unsubscribe?t=user-1|watch-1.sig>',
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
       }),
     );
+    // Also in the text, because plenty of readers look for the word rather than the header.
+    const sent = sendMail.mock.calls[0]?.[0] as { text: string };
+    expect(sent.text).toContain('https://api.example.com/v1/unsubscribe?t=user-1|watch-1.sig');
   });
 
   it('never leaks the recipient address into the failure reason', async () => {
@@ -227,7 +242,7 @@ describe('email transport', () => {
         sendMail: vi.fn().mockRejectedValue(new Error('550 rejected for pilot@example.com')),
       },
       from: 'alerts@example.com',
-      unsubscribeUrl: 'https://app.example.com/account/watches',
+      unsubscribeUrl: () => 'https://api.example.com/v1/unsubscribe?t=x',
     });
     const outcome = await transport.send(message, recipient);
     expect(outcome.ok).toBe(false);
