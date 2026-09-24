@@ -31,6 +31,7 @@ import { registerCollectionRoutes } from './routes/collections.js';
 import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
 import { type LiveSaleDeps, registerLiveSaleRoutes } from './routes/live-sales.js';
 import { registerMarketRoutes } from './routes/market.js';
+import { type CheckoutDeps, registerCheckoutRoutes } from './routes/checkout.js';
 import { type SellerDeps, registerSellerRoutes } from './routes/seller.js';
 import { type StripeWebhookDeps, registerStripeWebhookRoutes } from './routes/stripe-webhook.js';
 import { registerProfileRoutes } from './routes/profile.js';
@@ -119,6 +120,12 @@ export interface AppDeps {
    * answers 500 because a key is missing is worse than one that is not there.
    */
   seller?: SellerDeps | undefined;
+  /**
+   * Buying (FR-5.3). Separate from `seller` because the two answer different questions and a
+   * deployment could reasonably have one without the other — listings can exist before anybody
+   * can be paid, and the route that takes money should be the last one mounted, not the first.
+   */
+  checkout?: CheckoutDeps | undefined;
   /**
    * Stripe's webhooks (SR-5.2). Runs on the worker role and needs the raw body, so it is
    * registered in its own scope. Absent means the endpoint does not exist — better than one
@@ -505,6 +512,9 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     registerProfileRoutes(app, deps.writeDb);
     registerMarketRoutes(app, deps.writeDb);
     if (deps.seller) registerSellerRoutes(app, deps.seller);
+    if (deps.checkout) {
+      registerCheckoutRoutes(app, { ...deps.checkout, ...(flags ? { flags } : {}) });
+    }
     if (deps.moderationDb) {
       registerAdminRoutes(app, {
         db: deps.writeDb,

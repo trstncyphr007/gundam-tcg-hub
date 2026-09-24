@@ -1,18 +1,21 @@
+import { IllegalTransitionError } from '@gth/core';
 import {
   type Database,
   claimWebhookEvent,
+  markOrderPaid,
   markWebhookProcessed,
   updateSellerCapabilities,
   writeAuditLog,
 } from '@gth/db';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { StripeClient } from '../payments/stripe.js';
 
 export interface StripeWebhookDeps {
   /**
    * The worker pool. A webhook is not a session: migration 0041 gives the web role nothing on
-   * `webhook_events` at all, and the two capability columns on `seller_accounts` are outside
-   * its grant. This is the role that may write what a verified webhook says.
+   * `webhook_events` at all, the two capability columns on `seller_accounts` are outside its
+   * grant, and 0043 takes the payment columns on `orders` out of its reach too. This is the
+   * role that may write what a verified webhook says.
    */
   workerDb: Database;
   stripe: StripeClient;
@@ -36,6 +39,19 @@ export interface StripeWebhookDeps {
  * An event type we do not handle is still claimed and still answered 200. Stripe would
  * otherwise retry it for days, and "we received this and chose to ignore it" is a true and
  * useful thing for the table to say.
+ *
+ * ## The claim is inside the transaction now, and #95 had it outside
+ *
+ * That was right while nothing was being done about these events and wrong the moment
+ * something was. Claim-then-act, as two statements, has a gap: if the handler throws, the
+ * claim row is already committed, so Stripe's retry finds a duplicate, is answered 200, and
+ * the event is **never processed**. A row with a null `processed_at` records it, but nothing
+ * acts on that row — the failure is visible and permanent, which is the worst pair.
+ *
+ * Inside one transaction a failed handler rolls the claim back with it, and the retry is a
+ * fresh claim. Concurrency is unaffected: a second delivery arriving mid-transaction blocks on
+ * the unique index and then conflicts, exactly as before. What is lost is the "we were told and
+ * did not finish" row — and what replaces it is not having half-finished in the first place.
  */
 export async function registerStripeWebhookRoutes(
   app: FastifyInstance,
@@ -79,19 +95,23 @@ export async function registerStripeWebhookRoutes(
           return reply.code(400).send({ error: 'invalid_signature' });
         }
 
-        const claim = await claimWebhookEvent(deps.workerDb, {
-          provider: 'stripe',
-          eventId: event.id,
-          type: event.type,
-        });
-        if (!claim.claimed) {
-          // Seen before. 200 rather than 409: Stripe is not doing anything wrong by retrying,
-          // and an error would make it keep trying.
-          return reply.send({ received: true, duplicate: true });
-        }
+        const duplicate = await deps.workerDb.transaction(async (tx) => {
+          const db = tx as unknown as Database;
+          const claim = await claimWebhookEvent(db, {
+            provider: 'stripe',
+            eventId: event.id,
+            type: event.type,
+          });
+          if (!claim.claimed) return true;
 
-        await handle(deps, event);
-        await markWebhookProcessed(deps.workerDb, claim.id);
+          await handle(db, request, event);
+          await markWebhookProcessed(db, claim.id);
+          return false;
+        });
+
+        // Seen before. 200 rather than 409: Stripe is not doing anything wrong by retrying,
+        // and an error would make it keep trying.
+        if (duplicate) return reply.send({ received: true, duplicate: true });
         return reply.send({ received: true });
       },
     );
@@ -100,10 +120,15 @@ export async function registerStripeWebhookRoutes(
   });
 }
 
-/** What we actually do about each kind of event. Unknown types are acknowledged and ignored. */
-async function handle(deps: StripeWebhookDeps, event: { type: string; data: { object: unknown } }) {
-  if (event.type !== 'account.updated') return;
+type StripeEvent = { type: string; data: { object: unknown } };
 
+/** What we actually do about each kind of event. Unknown types are acknowledged and ignored. */
+async function handle(db: Database, request: FastifyRequest, event: StripeEvent): Promise<void> {
+  if (event.type === 'account.updated') return accountUpdated(db, event);
+  if (event.type === 'checkout.session.completed') return checkoutCompleted(db, request, event);
+}
+
+async function accountUpdated(db: Database, event: StripeEvent): Promise<void> {
   const account = event.data.object as {
     id?: unknown;
     charges_enabled?: unknown;
@@ -119,15 +144,105 @@ async function handle(deps: StripeWebhookDeps, event: { type: string; data: { ob
     payoutsEnabled: account.payouts_enabled === true,
   };
 
-  const updated = await updateSellerCapabilities(deps.workerDb, account.id, capabilities);
+  const updated = await updateSellerCapabilities(db, account.id, capabilities);
   // A connected account we have no row for is not an error: it can be one created and then
   // abandoned before we recorded it, or somebody else's account entirely if the key is ever
   // shared. Nothing to update, nothing to complain about.
   if (!updated) return;
 
-  await writeAuditLog(deps.workerDb, {
+  await writeAuditLog(db, {
     action: capabilities.chargesEnabled ? 'seller.enabled' : 'seller.disabled',
     targetType: 'seller_account',
     targetId: account.id,
+  });
+}
+
+/**
+ * The money moved (FR-5.3, AC-5.1).
+ *
+ * This is the only place in the codebase that can mark an order `paid`, and it is reached only
+ * after the signature over the raw body has been checked. Everything it needs is inside that
+ * signed payload: the order id we put in the metadata, the payment intent, and the tax Stripe
+ * collected. Nothing is looked up from the request and nothing is asked of a second API call,
+ * because a network round trip inside this transaction would hold it open across somebody
+ * else's latency.
+ *
+ * `payment_status` is checked rather than assumed. A completed session is not necessarily a
+ * paid one: a delayed payment method leaves the session complete and `unpaid` until it clears,
+ * and it clears on a different event. Believing the wrong one ships a card for nothing.
+ */
+async function checkoutCompleted(
+  db: Database,
+  request: FastifyRequest,
+  event: StripeEvent,
+): Promise<void> {
+  const session = event.data.object as {
+    id?: unknown;
+    payment_intent?: unknown;
+    payment_status?: unknown;
+    metadata?: { orderId?: unknown } | null;
+    total_details?: { amount_tax?: unknown } | null;
+  };
+
+  if (session.payment_status !== 'paid') return;
+
+  const orderId = session.metadata?.orderId;
+  // The payment intent can arrive expanded on some API versions. We want the id either way,
+  // and a shape we did not expect is a reason to stop rather than to guess.
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : undefined;
+  if (
+    typeof orderId !== 'string' ||
+    paymentIntentId === undefined ||
+    typeof session.id !== 'string'
+  )
+    return;
+
+  const taxCents = session.total_details?.amount_tax;
+
+  let result;
+  try {
+    result = await markOrderPaid(db, {
+      orderId,
+      paymentIntentId,
+      checkoutSessionId: session.id,
+      taxCents: typeof taxCents === 'number' && Number.isInteger(taxCents) ? taxCents : undefined,
+    });
+  } catch (error) {
+    if (!(error instanceof IllegalTransitionError)) throw error;
+    /**
+     * A payment for an order that cannot legally be paid — cancelled, or already refunded.
+     *
+     * Recorded and acknowledged, not retried. Stripe would deliver this for days and the
+     * answer would not change, and the money has genuinely moved, so somebody has to look at
+     * it. That is what the audit entry is for.
+     */
+    request.log.error(
+      { orderId, from: error.from, reason: error.reason },
+      'payment for an order that cannot be paid',
+    );
+    await writeAuditLog(db, {
+      action: 'order.payment_refused',
+      targetType: 'order',
+      targetId: orderId,
+      diff: { from: error.from, to: error.to, reason: error.reason },
+    });
+    return;
+  }
+
+  if (!result.applied) {
+    // `already_paid` is an ordinary retry that got past the claim; `unknown_order` means the
+    // metadata named something that is not here, which is worth saying out loud.
+    if (result.reason === 'unknown_order') {
+      request.log.error({ orderId }, 'payment for an order we have no record of');
+    }
+    return;
+  }
+
+  await writeAuditLog(db, {
+    action: 'order.paid',
+    targetType: 'order',
+    targetId: result.order.id,
+    diff: { amountCents: result.order.amountCents, feeCents: result.order.feeCents },
   });
 }

@@ -98,6 +98,14 @@ const app = await buildApp(config, {
           }),
           appBaseUrl: config.APP_BASE_URL,
         },
+        /**
+         * Buying, only when a webhook can be verified.
+         *
+         * Nested inside the `STRIPE_WEBHOOK_SECRET` check below on purpose: without it an
+         * order could be created and charged and **never marked paid**, because the only thing
+         * that moves it is a signed webhook. Taking somebody's money with no way to record
+         * that we did is worse than not offering to.
+         */
         // Only with a signing secret. Without one nothing could be verified, and an endpoint
         // that accepts unverifiable claims about money is worse than no endpoint.
         ...(config.STRIPE_WEBHOOK_SECRET === undefined
@@ -109,6 +117,15 @@ const app = await buildApp(config, {
                   secretKey: config.STRIPE_SECRET_KEY,
                   webhookSecret: config.STRIPE_WEBHOOK_SECRET,
                 }),
+              },
+              checkout: {
+                db: write.db,
+                stripe: createStripeClient({
+                  secretKey: config.STRIPE_SECRET_KEY,
+                  webhookSecret: config.STRIPE_WEBHOOK_SECRET,
+                }),
+                appBaseUrl: config.APP_BASE_URL,
+                feeBps: config.MARKETPLACE_FEE_BPS,
               },
             }),
       }),

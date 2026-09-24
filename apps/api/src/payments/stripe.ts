@@ -50,6 +50,22 @@ export interface StripeClient {
   }>;
   /** Verify a webhook against the raw body and the signing secret (SR-5.2). */
   constructEvent: (rawBody: Buffer | string, signature: string) => Stripe.Event;
+  /** A hosted Checkout session for one order (FR-5.3). */
+  createCheckoutSession: (input: CheckoutInput) => Promise<{ id: string; url: string }>;
+}
+
+export interface CheckoutInput {
+  /** Ours. It travels in the metadata and comes back on the webhook. */
+  orderId: string;
+  /** The seller's connected account. The money goes there, less our fee. */
+  destinationAccountId: string;
+  description: string;
+  amountCents: number;
+  currency: string;
+  quantity: number;
+  applicationFeeCents: number;
+  successUrl: string;
+  cancelUrl: string;
 }
 
 export interface StripeOptions {
@@ -146,6 +162,55 @@ export function createStripeClient(options: StripeOptions): StripeClient {
       // signature that will not match — which is the good failure. The bad one is verifying
       // something other than what was signed.
       return stripe.webhooks.constructEvent(rawBody, signature, options.webhookSecret);
+    },
+
+    createCheckoutSession: async (input) => {
+      const session = await stripe.checkout.sessions.create(
+        {
+          mode: 'payment',
+          line_items: [
+            {
+              quantity: input.quantity,
+              price_data: {
+                currency: input.currency,
+                unit_amount: input.amountCents,
+                product_data: { name: input.description },
+              },
+            },
+          ],
+          /**
+           * A **destination charge**. The payment is made to the platform and immediately
+           * transferred to the seller's connected account, less `application_fee_amount`.
+           *
+           * The alternative — a direct charge on the connected account — would put the
+           * chargeback liability and the Radar configuration on the seller. Holding it here
+           * is what lets §14.1's payout holds and dispute flow exist at all.
+           */
+          payment_intent_data: {
+            application_fee_amount: input.applicationFeeCents,
+            transfer_data: { destination: input.destinationAccountId },
+            // Our id on the PaymentIntent too, not only the session. A dispute or refund
+            // webhook arrives about the *intent*, and having to look up a session to find
+            // out which order it is about is a lookup that can fail.
+            metadata: { orderId: input.orderId },
+          },
+          success_url: input.successUrl,
+          cancel_url: input.cancelUrl,
+          metadata: { orderId: input.orderId },
+          // Stripe abandons an unpaid session after this. It is also how long the listing
+          // is realistically spoken for, so it wants to stay short.
+          expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+        },
+        // Keyed on the order, which we created first precisely so that this key exists.
+        // A double-clicked Buy button gets one session, not two, and therefore one charge.
+        idempotency('checkout', input.orderId),
+      );
+
+      // Typed as nullable because Stripe returns null for sessions in modes that have no
+      // hosted page. `mode: 'payment'` always has one — but the caller has to hand a URL to
+      // a buyer, so a missing one is a failure here rather than a redirect to "null" there.
+      if (session.url === null) throw new Error('stripe returned a session with no url');
+      return { id: session.id, url: session.url };
     },
   };
 }

@@ -1,6 +1,7 @@
 import { type ListingDraft, photosRequiredFor, validateListing } from '@gth/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
+import { cardVariants, cards, sets } from '../schema/catalog.js';
 import { listings } from '../schema/market.js';
 import { MissingReferenceError, isForeignKeyViolation } from './pg-errors.js';
 import { asUser } from './watches.js';
@@ -132,6 +133,35 @@ export async function getListing(
     return (row as Listing | undefined) ?? null;
   };
   return viewerId === null ? read(db) : asUser(db, viewerId, read);
+}
+
+/**
+ * What to call this card on somebody else's checkout page.
+ *
+ * The line item on Stripe's hosted page is the last thing a buyer reads before they pay, and
+ * a UUID there is how a legitimate purchase comes to look like a scam. No `asUser`: the
+ * catalog is public, and which card a listing names is not a secret from the person buying it.
+ */
+export async function describeCardVariant(
+  db: Database,
+  cardVariantId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({
+      name: cards.name,
+      number: cards.number,
+      setCode: sets.code,
+      finish: cardVariants.finish,
+    })
+    .from(cardVariants)
+    .innerJoin(cards, eq(cards.id, cardVariants.cardId))
+    .innerJoin(sets, eq(sets.id, cards.setId))
+    .where(eq(cardVariants.id, cardVariantId))
+    .limit(1);
+  if (!row) return null;
+
+  const finish = row.finish === 'normal' ? '' : ` (${row.finish.replace('_', ' ')})`;
+  return `${row.name} — ${row.setCode}-${row.number}${finish}`;
 }
 
 export interface UpdateListingInput extends ListingDraft {

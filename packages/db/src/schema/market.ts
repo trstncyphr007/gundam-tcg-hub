@@ -188,7 +188,15 @@ export const orders = app.table(
 
     /** What the buyer pays, in total. */
     amountCents: integer('amount_cents').notNull(),
-    /** Our cut (`application_fee_amount`). Reported by Stripe, not computed here. */
+    /**
+     * Our cut, as `application_fee_amount`.
+     *
+     * Computed server-side from the frozen `amount_cents` and the fee rate in force when the
+     * order was opened, and written once — this is the number we *instructed* Stripe to take,
+     * which is what the seller's proceeds are, and it is reproducible from the row rather than
+     * dependent on a rate that will change later. No session can change it afterwards
+     * (migration 0043 keeps it out of the web role's UPDATE grant).
+     */
     feeCents: integer('fee_cents').notNull().default(0),
     /** Collected by Stripe Tax as marketplace facilitator. */
     taxCents: integer('tax_cents').notNull().default(0),
@@ -221,6 +229,21 @@ export const orders = app.table(
     uniqueIndex('orders_payment_intent_key')
       .on(t.stripePaymentIntentId)
       .where(sql`${t.stripePaymentIntentId} is not null`),
+
+    /**
+     * One open order per listing (migration 0043).
+     *
+     * The marketplace's most obvious race: two buyers open the same listing, both get a
+     * Checkout session, both pay, and one card owes two people. A `NOT EXISTS` in the insert
+     * cannot catch it, because on the web role the subquery only sees the buyer's own orders.
+     * A unique index is enforced below row-level security and sees all of them.
+     */
+    uniqueIndex('orders_one_open_per_listing')
+      .on(t.listingId)
+      .where(
+        sql`${t.listingId} is not null
+            and ${t.status} in ('created', 'paid', 'shipped', 'delivered', 'completed', 'disputed')`,
+      ),
 
     // Nobody buys their own card. Wash trading is how a marketplace's numbers stop meaning
     // anything, and it is one line to forbid.

@@ -31,6 +31,17 @@ export const FLAGS = {
   publicApiEnabled: 'api.public.enabled',
   /** Scanner ingestion. Off refuses new stock reports without revoking anybody's key. */
   scannerIngestEnabled: 'scanner.ingest.enabled',
+  /**
+   * Buying (§22). Off refuses new purchases and touches nothing already under way.
+   *
+   * The switch an incident is most likely to want and least likely to have time to add. A
+   * pricing bug, a fee sign error, a hole in seller verification: each is made worse by every
+   * further minute of orders, and none is helped by a purchase already at Stripe's page being
+   * abandoned half way. So this stops the **start** of a purchase only. A session already open
+   * can still complete, and its webhook is still honoured — refusing to record a payment that
+   * has genuinely happened is how money goes missing.
+   */
+  checkoutEnabled: 'market.checkout.enabled',
 } as const;
 
 export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS];
