@@ -1,10 +1,14 @@
 ---
-# The nightly jobs, and one place for "something failed" to be heard (plan §20, SR-X.22).
+# The scheduled jobs, and one place for "something failed" to be heard (plan §20, SR-X.22).
 #
-# Both jobs were documented in docs/runbooks/scheduled-jobs.md as systemd units to write by
-# hand, against a `worker` compose service that did not exist. So neither could run on a real
-# host — including the retention job, whose whole point is deleting personal data on a clock.
+# They were once documented in docs/runbooks/scheduled-jobs.md as systemd units to write by
+# hand, against a `worker` compose service that did not exist. So none of them could run on a
+# real host — including retention, whose whole point is deleting personal data on a clock.
 # They are installed here instead, against the `jobs` profile in the production compose file.
+#
+# Three lists have to agree: `jobs_schedule` below, the allowlist in gth-job.sh, and the
+# services in docker-compose.prod.yml. `scripts/check-jobs.sh` checks that they do, because
+# `alert-retry` was added to two of the three and would have run nowhere.
 
 - name: Create the credentials directory
   ansible.builtin.file:
@@ -73,14 +77,16 @@
     content: |
       #!/usr/bin/env bash
       # Managed by Ansible (infra/vps/ansible/roles/jobs).
-      # Usage: gth-job.sh <staging|production> <retention|rollup>
+      # Usage: gth-job.sh <staging|production> <retention|rollup|watchdog|alert-retry>
       set -euo pipefail
 
-      environment="${1:?usage: gth-job.sh <staging|production> <retention|rollup>}"
+      environment="${1:?usage: gth-job.sh <staging|production> <retention|rollup|watchdog|alert-retry>}"
       job="${2:?}"
 
       case "$environment" in staging|production) ;; *) echo "unknown environment: $environment" >&2; exit 1 ;; esac
-      case "$job" in retention|rollup|watchdog) ;; *) echo "unknown job: $job" >&2; exit 1 ;; esac
+      # An allowlist, not a pass-through: this string reaches `compose run`, and the list is
+      # also the place a new job gets forgotten. It must match `jobs_schedule` in defaults.
+      case "$job" in retention|rollup|watchdog|alert-retry) ;; *) echo "unknown job: $job" >&2; exit 1 ;; esac
 
       root="{{ app_root }}/${environment}"
       runtime_env="/run/gth/job-${environment}.env"
@@ -165,7 +171,7 @@
       # Catch up after downtime rather than skipping a night in silence. It matters most for
       # retention: a host that was off at 04:30 must still delete when it comes back.
       Persistent=true
-      RandomizedDelaySec=120
+      RandomizedDelaySec={{ item.delay | default(120) }}
 
       [Install]
       WantedBy=timers.target

@@ -13,3 +13,10 @@ jobs_schedule:
   - name: watchdog
     description: Gundam TCG Hub ops watchdog
     hour: '*:0/15:00'
+  # Every five minutes, and the one job where the spreading jitter is worth shrinking: this
+  # sends alerts somebody is already waiting for (FR-1.8). A restock alert is worth a lot in
+  # the first minutes and much less later, so it runs often and starts promptly.
+  - name: alert-retry
+    description: Gundam TCG Hub alert retry
+    hour: '*:0/5:00'
+    delay: 15
