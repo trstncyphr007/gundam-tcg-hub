@@ -23,6 +23,7 @@
     "seed-prices": "tsx --env-file-if-exists=../../.env src/cli/seed-prices.ts",
     "retention": "tsx --env-file-if-exists=../../.env src/cli/retention.ts",
     "rotate-keys": "tsx --env-file-if-exists=../../.env src/cli/rotate-keys.ts",
+    "encrypted-fingerprints": "tsx --env-file-if-exists=../../.env src/cli/encrypted-fingerprints.ts",
     "seed-scale": "tsx --env-file-if-exists=../../.env src/cli/seed-scale.ts",
     "reapply-deletions": "tsx --env-file-if-exists=../../.env src/cli/reapply-deletions.ts"
   },

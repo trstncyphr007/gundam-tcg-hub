@@ -76,6 +76,21 @@ it, so rotation has an order, and skipping ahead makes data unreadable.
 
 4. **Remove** the old key only when that line names it, and deploy again.
 
+> **Rehearse it first, and check by fingerprint.** `bash scripts/key-rotation-drill.sh` runs
+> these four steps against the development database and checks the only thing that matters at
+> each: that every encrypted value still decrypts to exactly what it did before. It compares
+> `pnpm keys:fingerprint` — `id · key-id · sha256(plaintext)` — before and after, so the key
+> ids must change and the hashes must not, and no plaintext is ever printed.
+>
+> Run `pnpm keys:fingerprint` before and after the real rotation too. `keys:rotate` reports
+> what it re-encrypted; the fingerprints are what prove the values survived it, and they are
+> the only way to notice the one that did not.
+>
+> The drill returns the database to the key in `.env` on every exit path, including a failure
+> partway through — because the first version did not, and a deliberately-broken test run left
+> a development row encrypted under a key that existed only inside that process. That is the
+> loss this whole procedure exists to prevent, produced by the rehearsal for it.
+
 **What to do with the removed key depends on why it was removed.**
 
 - **Routine rotation:** keep the old key **offline** (password manager, not SOPS) until the
