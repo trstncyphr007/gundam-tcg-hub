@@ -4,9 +4,10 @@ import {
   createEmailTransport,
   createUnsupportedTransport,
 } from '@gth/alerts';
+import { parseEnv } from '@gth/core';
 import { createDb, getRestockContext } from '@gth/db';
 import { createTransport } from 'nodemailer';
-import { loadConfig } from './config.js';
+import { z } from 'zod';
 import { unsubscribeUrl } from './routes/unsubscribe.js';
 
 /**
@@ -25,7 +26,35 @@ import { unsubscribeUrl } from './routes/unsubscribe.js';
  * same transports built from the same configuration, because a retry that goes out a different
  * way is not a retry.
  */
-const config = loadConfig(process.env);
+/**
+ * Only what this job reads, like its siblings.
+ *
+ * It called `loadConfig` at first, which parses the whole application's configuration and
+ * refuses development defaults for `BETTER_AUTH_SECRET` and the encryption key ring in
+ * production. A job container is given the handful of values it needs, not all of them, so
+ * that check failed on secrets this job never touches and it died on startup — every five
+ * minutes, once it had a timer. Narrow is also honest: this list *is* what the job depends on.
+ */
+const config = parseEnv(
+  z.object({
+    DATABASE_URL_WORKER: z.string().startsWith('postgres'),
+    // The retried email carries the same signed unsubscribe link as the first attempt.
+    API_BASE_URL: z.url(),
+    APP_BASE_URL: z.url(),
+    TOKEN_PEPPER: z.string().min(32),
+    EMAIL_FROM: z.string().min(1),
+    // Empty counts as absent: a host without SMTP records email deliveries as unsupported
+    // rather than refusing to start.
+    SMTP_URL: z
+      .string()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    DISCORD_ALERT_WEBHOOK_URL: z
+      .url()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+  }),
+);
 
 const mailer = config.SMTP_URL ? createTransport(config.SMTP_URL) : null;
 if (!mailer) console.log('no SMTP_URL: email deliveries will be recorded as unsupported');
