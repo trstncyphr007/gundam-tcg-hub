@@ -63,12 +63,22 @@ export function registerPublicRoutes(
       });
       if (result === null) return reply.code(404).send({ error: 'not_found' });
 
+      // The response schema *shapes* the response, rather than only describing it.
+      //
+      // It was used for the document and the tests and never on the way out, so four public
+      // endpoints returned `createdAt` and `updatedAt` while the published document said no
+      // other properties were allowed. A spec generated from the same list as the routes
+      // cannot describe a missing endpoint — but it could still describe a different body,
+      // and it did, for as long as the API has been public.
+      //
+      // These are plain zod objects, so parsing strips what they do not declare: a field the
+      // document does not promise cannot escape, and a *missing* required one is still an
+      // error, because that is a real bug rather than a tidy-up.
+      const body = route.response.parse(result);
+
       // `Vary: Authorization` because the response to a keyed request carries RateLimit
       // headers a shared cache must not replay to somebody else.
-      return reply
-        .header('cache-control', route.cache)
-        .header('vary', 'Authorization')
-        .send(result);
+      return reply.header('cache-control', route.cache).header('vary', 'Authorization').send(body);
     });
   }
 }

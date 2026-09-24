@@ -39,6 +39,33 @@ import { buildOpenApiDocument } from './v1/openapi.js';
 import { registerPublicRoutes } from './v1/registry.js';
 import { publicRoutes } from './v1/routes.js';
 
+/** The methods a 405's `Allow` header may name. Anything else cannot have a route. */
+const ALLOWABLE_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;
+
+/**
+ * Does a concrete request path match a registered route pattern?
+ *
+ * `/v1/cards/:id/prices` matches `/v1/cards/<anything>/prices`, and a trailing `*` matches the
+ * rest. Deliberately only as clever as the patterns this app actually registers.
+ */
+export function pathMatchesRoute(pattern: string, path: string): boolean {
+  const expected = pattern.split('/');
+  const actual = path.split('/');
+  for (const [i, segment] of expected.entries()) {
+    if (segment === '*') return true;
+    // `.at()` rather than an index expression, the same way the pricing maths does it: it is
+    // typed `string | undefined`, so a short path is a missing value rather than a surprise.
+    const got = actual.at(i);
+    if (got === undefined) return false;
+    if (segment.startsWith(':')) {
+      if (got === '') return false;
+      continue;
+    }
+    if (segment !== got) return false;
+  }
+  return expected.length === actual.length;
+}
+
 /** One registered route, as Fastify received it. */
 export interface RouteRecord {
   method: string;
@@ -284,9 +311,60 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
   // Conditional GETs for the public catalog (FR-3.6).
   await app.register(etag, { weak: true });
 
-  app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'not_found' }));
+  /**
+   * Which methods this path does answer, for the `Allow` header on a 405.
+   *
+   * Read from `routeTable` — the list this app already keeps of every route it registered —
+   * rather than from Fastify's `hasRoute`, which compares the URL against registered
+   * *patterns* and so says no for `/v1/cards/<a-real-id>` against `/v1/cards/:id`. That gap
+   * is invisible on a path with no parameters, which is exactly how the first version of this
+   * passed its own test and still failed the fuzzer on three routes.
+   */
+  function otherMethodsFor(instance: FastifyInstance, url: string): string[] {
+    const path = url.split('?')[0] ?? url;
+    const methods = new Set<string>();
+    for (const route of instance.routeTable) {
+      if (pathMatchesRoute(route.url, path)) methods.add(route.method.toUpperCase());
+    }
+    return [...methods].filter((m) => ALLOWABLE_METHODS.includes(m as never)).sort();
+  }
+
+  app.setNotFoundHandler((request, reply) => {
+    // A path that exists, but not with this method, is 405 — and only under `/v1`, which is
+    // the surface with a published document promising exactly which methods it has.
+    //
+    // Everywhere else keeps answering 404 on purpose: the disabled Better Auth endpoints are
+    // meant to look absent rather than forbidden, because "forbidden" invites finding a way
+    // round (ADR-026), and 405 would undo that. Under `/v1` there is nothing to conceal —
+    // every method is in `/docs/openapi.json` — and a caller deserves to be told the
+    // difference between "no such thing" and "not like that".
+    const allowed = request.url.startsWith('/v1/') ? otherMethodsFor(app, request.url) : [];
+    if (allowed.length > 0) {
+      return reply
+        .code(405)
+        .header('allow', allowed.join(', '))
+        .send({ error: 'method_not_allowed' });
+    }
+    return reply.code(404).send({ error: 'not_found' });
+  });
 
   app.setErrorHandler((error, request, reply) => {
+    // A body-carrying method Fastify knows about — QUERY, say — is refused for a missing
+    // content-type *before* routing, so it never reaches the not-found handler above and the
+    // caller is told the wrong thing: that their header was wrong, when the truth is the
+    // method does not exist here. Only when this path really has no route for that method.
+    if (
+      (error as { code?: string }).code === 'FST_ERR_ROUTE_MISSING_CONTENT_TYPE' &&
+      request.url.startsWith('/v1/')
+    ) {
+      const allowed = otherMethodsFor(app, request.url);
+      if (allowed.length > 0 && !allowed.includes(request.method.toUpperCase())) {
+        return reply
+          .code(405)
+          .header('allow', allowed.join(', '))
+          .send({ error: 'method_not_allowed' });
+      }
+    }
     // Authorization failures are expected outcomes, not server faults (SR-X.6).
     if (error instanceof ForbiddenError) {
       request.log.warn({ action: error.action, userId: request.subject?.userId }, 'forbidden');

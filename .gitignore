@@ -29,3 +29,6 @@ Thumbs.db
 !.vscode/extensions.json
 !.vscode/settings.json
 .idea/
+
+# Left behind by a local schemathesis run (docs/runbooks/ has the command).
+.schemathesis/
