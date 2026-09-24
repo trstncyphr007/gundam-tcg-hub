@@ -72,7 +72,18 @@ jobs:
           # shellcheck disable=SC1091,SC1094
           . ./.env
           set +a
-          NODE_ENV=production node apps/api/dist/index.js > /tmp/api.log 2>&1 &
+          # The per-IP limit is raised for the scanned instance, on purpose.
+          #
+          # Everything below comes from one address, and schemathesis sends roughly nine
+          # hundred requests in ten seconds. At the production default of 120 a minute, most
+          # of them were answered 429 and never reached the application at all: measured, the
+          # "schema validation mismatch" warning named 8 operations at 120 and 1 with the
+          # limit out of the way. The fuzzer was spending its budget on the rate limiter.
+          #
+          # The limiter itself is not going untested by this — it has its own unit tests, and
+          # `apps/api/src/routes/auth-limits.test.ts` covers the per-user and per-address
+          # halves. What a fuzzer is for is the code behind it.
+          NODE_ENV=production API_RATE_LIMIT_MAX=1000000 node apps/api/dist/index.js > /tmp/api.log 2>&1 &
           NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 \
             node apps/web/.next/standalone/apps/web/server.js > /tmp/web.log 2>&1 &
           for _ in $(seq 1 60); do
@@ -116,6 +127,10 @@ jobs:
       # by hand (#64). The "no 5xx" half of AC-3.4 is therefore also enforced from inside the
       # test suite, where sessions already work: `apps/api/src/routes/no-5xx.test.ts`, which
       # fails if a write route is added without being listed in it.
+      #
+      # It reached even less than that until 2026-09-25: the API was started on the production
+      # per-IP limit, so most of these requests were answered 429 by us rather than tested.
+      # The limit is raised for the scanned instance now — see the note where it is started.
       - name: schemathesis - fuzz /v1 against its own spec
         run: |
           curl -fsS http://127.0.0.1:4000/docs/openapi.json -o "${RUNNER_TEMP}/openapi.json"
