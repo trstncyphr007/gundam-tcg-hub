@@ -9,7 +9,7 @@ import {
   listWatches,
   writeAuditLog,
 } from '@gth/db';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 const channelSchema = z.enum(['email', 'discord_dm', 'discord_webhook', 'web_push']);
@@ -36,6 +36,31 @@ function issuesOf(error: z.ZodError): { field: string; code: string }[] {
   }));
 }
 
+/**
+ * Adding and removing a watch, counted per *account* (SR-1.9: "watch mutations, 30 per minute
+ * per user").
+ *
+ * That limit was in the plan and in no code: these two routes declared none, so they inherited
+ * the global 120 a minute keyed on the caller's **address** — four times looser, and the wrong
+ * unit in both directions. A household behind one address shared an allowance they should not
+ * have to, and one account spread over several addresses had no per-account limit at all.
+ *
+ * `preHandler`, like the account-data limit, because the session has to be resolved before
+ * there is a user to count. Falls back to the address when there is none, which only happens on
+ * the way to a 401.
+ */
+const PER_USER_MUTATIONS = {
+  config: {
+    rateLimit: {
+      max: 30,
+      timeWindow: '1 minute',
+      hook: 'preHandler',
+      keyGenerator: (request: FastifyRequest) =>
+        request.subject ? `watch:${request.subject.userId}` : `ip:${request.ip}`,
+    },
+  },
+} as const;
+
 /** Watch subscriptions. Every row is scoped to the session user; `db` is the app_web pool. */
 export function registerWatchRoutes(app: FastifyInstance, db: Database): void {
   app.get('/v1/watches', async (request, reply) => {
@@ -46,7 +71,7 @@ export function registerWatchRoutes(app: FastifyInstance, db: Database): void {
     return reply.header('cache-control', 'no-store').send({ items, limit: MAX_WATCHES_PER_USER });
   });
 
-  app.post('/v1/watches', async (request, reply) => {
+  app.post('/v1/watches', PER_USER_MUTATIONS, async (request, reply) => {
     if (!request.subject) return reply.code(401).send({ error: 'unauthenticated' });
     authorize(request.subject, 'watch:write');
 
@@ -84,7 +109,7 @@ export function registerWatchRoutes(app: FastifyInstance, db: Database): void {
     return reply.code(201).header('cache-control', 'no-store').send(watch);
   });
 
-  app.delete('/v1/watches/:id', async (request, reply) => {
+  app.delete('/v1/watches/:id', PER_USER_MUTATIONS, async (request, reply) => {
     if (!request.subject) return reply.code(401).send({ error: 'unauthenticated' });
     authorize(request.subject, 'watch:write');
 

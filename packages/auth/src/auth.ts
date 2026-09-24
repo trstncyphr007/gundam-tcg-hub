@@ -6,6 +6,7 @@ import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/a
 import { magicLink } from 'better-auth/plugins/magic-link';
 import { describeDevice } from './devices.js';
 import { describeFailure, isAuthAttemptPath, recordFailedAttempt } from './failed-attempts.js';
+import { type IdentifierLimitOptions, createIdentifierLimiter } from './identifier-limit.js';
 import { hashIp } from './ip-hash.js';
 import {
   PasskeyPolicyError,
@@ -45,6 +46,12 @@ export interface AuthConfig {
    * swallowed, not fatal, because the thing it reports has already happened.
    */
   sendSecurityNotice?: ((notice: SecurityNotice) => Promise<void>) | undefined;
+  /**
+   * The per-address half of SR-1.9's sign-in limit. Defaults to 5 a minute, which is the
+   * number the plan has always claimed and never enforced. Overridable so a test that signs
+   * the same account in from six browsers is testing sessions rather than this.
+   */
+  magicLinkPerIdentifier?: IdentifierLimitOptions | undefined;
 }
 
 export type SecurityNotice =
@@ -153,6 +160,9 @@ async function noticeIfNewDevice(
 }
 
 export function createAuth(db: Database, config: AuthConfig) {
+  // One per auth instance, so it lives as long as the process and is not shared between them.
+  const linkLimiter = createIdentifierLimiter(config.magicLinkPerIdentifier ?? {});
+
   return betterAuth({
     appName: 'gundam-tcg-hub',
     baseURL: config.baseURL,
@@ -239,6 +249,23 @@ export function createAuth(db: Database, config: AuthConfig) {
       before: createAuthMiddleware(async (ctx) => {
         // As if they did not exist — not "forbidden", which would invite finding a way round.
         if (DISABLED_PATHS.has(ctx.path)) throw new APIError('NOT_FOUND');
+
+        // The per-address half of SR-1.9 (see identifier-limit.ts). The built-in limiter keys
+        // on the caller's address, which does nothing to stop somebody rotating addresses to
+        // have us post a hundred emails into one stranger's inbox.
+        //
+        // Refuses without looking anything up, so a registered and an unregistered address get
+        // the same answer at the same point — the enumeration property is unaffected, and
+        // `apps/api/src/routes/enumeration.test.ts` keeps it that way.
+        if (ctx.path === '/sign-in/magic-link') {
+          const email = field(ctx.body, 'email');
+          if (typeof email === 'string' && email !== '' && !linkLimiter.take(email)) {
+            throw new APIError('TOO_MANY_REQUESTS', {
+              message: 'too many sign-in links requested for that address; try again shortly',
+            });
+          }
+        }
+
         try {
           if (ctx.path === '/passkey/verify-authentication') {
             requireVerifiedUser(
