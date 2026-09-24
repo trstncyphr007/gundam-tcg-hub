@@ -5,8 +5,8 @@
 | Document             | Full-Stack DevSecOps Build Plan                                                                        |
 | Project working name | `gundam-tcg-hub` (rename at any time)                                                                  |
 | Owner                | TRSTN (GUNDAM with TRSTN)                                                                              |
-| Version              | 1.1 (Approved; amended 2026-09-20, see Amendment A1)                                                   |
-| Date                 | 2026-09-20                                                                                             |
+| Version              | 1.2 (Approved; amended 2026-09-20 and 2026-09-25, see Amendments A1 and A2)                            |
+| Date                 | 2026-09-20 (amended 2026-09-25)                                                                        |
 | Source strategy      | `TCG Market Project\tcg-marketplace-strategy-outline.txt`                                              |
 | Canonical copy       | `TCG Market Project\docs\devsecops-build-plan.md`                                                      |
 | Code repo            | `github.com/trstncyphr007/gundam-tcg-hub` (private); local `~/code/gundam-tcg-hub` in WSL Ubuntu-24.04 |
@@ -24,6 +24,40 @@
 >    - SR-0.1, SR-0.2 and SR-0.4 are deferred until the repo is public or the plan is upgraded.
 >    - The production deploy approval gate moves to a manual `workflow_dispatch` step.
 > 4. **Phase 0 scope:** the monorepo scaffold ships `apps/api` (Fastify), `packages/core`, `packages/security` and `packages/config`. `apps/web`, `apps/worker` and `apps/discord-bot` arrive in Phase 1.
+
+> ## Amendment A2 (2026-09-25): what was actually built
+>
+> Phases 1–4 are built. Several things below describe a system that no longer matches the one
+> in the repository — each for a reason, each recorded in an ADR. **This list was made by
+> checking the repository, not from memory**, because a plan that quietly stops describing
+> reality is worse than one that admits where it diverged: it is the document somebody reads
+> first, and the one they will believe.
+>
+> 1. **No Valkey, and no queue** (ADR-042, supersedes ADR-004 and every mention of BullMQ).
+>    It ran in both stacks for weeks with nothing connected to it. Rate limits are in process
+>    memory, the per-day API quota is in Postgres, and there is no message queue. It comes back
+>    when a second instance or a real queue needs it.
+> 2. **No `apps/worker`** (ADR-036). Scheduled work runs as one-shot containers built from the
+>    API image, under a `jobs` compose profile: `migrator`, `retention`, `rollup`, `watchdog`
+>    and `alert-retry`. Fan-out itself happens inside the scanner's own ingest request.
+> 3. **No `apps/restock-scanner` and no `packages/adapters`** — both follow from A1: the
+>    scanner is a separate Python repository, and the retailer adapters live with it.
+> 4. **No `apps/discord-bot`.** Alerts reach Discord by **webhook** only. The bot, Discord DMs
+>    and web push are deliberately unbuilt: `discord_dm` and `web_push` exist as declared
+>    _unsupported_ transports, so a watch asking for one records `skipped` rather than
+>    pretending. The bot is blocked on a token (§28).
+> 5. **No `packages/observability`, and no OpenTelemetry.** There are no traces and no metrics
+>    pipeline. What exists is structured `pino` logging to stdout, the `/admin/operations`
+>    page, and the watchdog that reads it and speaks up (ADR-038). §20 describes an intention,
+>    not a state.
+> 6. **`packages/alerts` exists** and is not in the §6 tree: transports, fan-out and the retry.
+> 7. **Nothing deploys on merge.** `release.yml` builds, signs and attests; `deploy.yml` is
+>    `workflow_dispatch` only and takes the environment as an input, for staging _and_
+>    production. §18.4 step 5 says staging deploys automatically. It does not.
+> 8. **`/docs` is routed at the edge**, not through the web app: `output: 'standalone'` bakes
+>    Next's rewrite target in at build time, when the API's address is not yet known.
+>
+> Nothing in Phase 5 is built, as planned.
 
 **How to read this document**
 
