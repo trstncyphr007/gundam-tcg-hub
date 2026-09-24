@@ -140,6 +140,41 @@ printf 'rate limit hdrs %s\n' "$(curl -s -D - -o /dev/null $base/v1/games | grep
 printf 'security hdrs   %s\n' "$(curl -s -D - -o /dev/null $base/ | grep -ciE '^(strict-transport-security|x-content-type-options|content-security-policy|referrer-policy)') of 4"
 printf 'server header   %s\n' "$(curl -s -D - -o /dev/null $base/ | grep -ci '^server:') (0 = hidden)"
 
+step "the API answers with what its document promises"
+# Four public endpoints returned `createdAt` and `updatedAt` while the published schema said
+# `additionalProperties: false`, for as long as the API has been public (#85). The routes and
+# the document are generated from one list, which guarantees the *endpoints* match and says
+# nothing about the *body* — and nothing compared the two until the nightly fuzzer did.
+#
+# This is the same check, on the real image, in a second and without installing a fuzzer: for
+# each list endpoint, are the keys the API sent the keys the document declares?
+python3 - "$base" <<'PY'
+import json, sys, urllib.request
+
+base = sys.argv[1]
+get = lambda path: json.load(urllib.request.urlopen(f'{base}{path}', timeout=10))
+spec = get('/docs/openapi.json')
+bad = []
+
+for path in ('/v1/games', '/v1/sets', '/v1/cards', '/v1/products', '/v1/breakers'):
+    schema = spec['paths'][path]['get']['responses']['200']['content']['application/json']['schema']
+    declared = set(schema['properties']['items']['items'].get('properties', {}))
+    items = get(path).get('items') or []
+    if not items:
+        print(f'  ---   {path:14} no rows to check')
+        continue
+    extra = set(items[0]) - declared
+    if extra:
+        bad.append(f'{path} sent undeclared {sorted(extra)}')
+        print(f'  FAIL  {path:14} undeclared: {sorted(extra)}')
+    else:
+        print(f'  ok    {path:14} {len(declared)} fields, nothing undeclared')
+
+if bad:
+    print('\nthe published document does not describe what the API sent', file=sys.stderr)
+    raise SystemExit(1)
+PY
+
 step "containers are hardened"
 for svc in api web caddy; do
   cid=$("${COMPOSE[@]}" --env-file "$ENV_FILE" ps -q "$svc")
