@@ -152,6 +152,9 @@ importers:
       '@gth/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@gth/security':
+        specifier: workspace:*
+        version: link:../../packages/security
       '@playwright/test':
         specifier: 1.63.0
         version: 1.63.0
