@@ -8,6 +8,7 @@ import { createDb, getRestockContext } from '@gth/db';
 import { buildKeyRing } from '@gth/security';
 import { createTransport } from 'nodemailer';
 import { buildApp } from './app.js';
+import { createStripeClient } from './payments/stripe.js';
 import { loadConfig } from './config.js';
 import { createMagicLinkSender, createSecurityNoticeSender } from './mailer.js';
 import { unsubscribeUrl } from './routes/unsubscribe.js';
@@ -84,6 +85,20 @@ const app = await buildApp(config, {
     db: write.db,
     keyRing: buildKeyRing(config.DATA_ENCRYPTION_KEYS, config.DATA_ENCRYPTION_ACTIVE_KID),
   },
+  // The marketplace, only when Stripe is configured (Phase 5). No key, no seller routes —
+  // rather than routes that exist and answer 500 because a secret is missing.
+  ...(config.STRIPE_SECRET_KEY === undefined
+    ? {}
+    : {
+        seller: {
+          db: write.db,
+          stripe: createStripeClient({
+            secretKey: config.STRIPE_SECRET_KEY,
+            webhookSecret: config.STRIPE_WEBHOOK_SECRET,
+          }),
+          appBaseUrl: config.APP_BASE_URL,
+        },
+      }),
   ingest: {
     workerDb: worker.db,
     tokenPepper: config.TOKEN_PEPPER,

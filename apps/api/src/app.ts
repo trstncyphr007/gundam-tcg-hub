@@ -31,6 +31,7 @@ import { registerCollectionRoutes } from './routes/collections.js';
 import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
 import { type LiveSaleDeps, registerLiveSaleRoutes } from './routes/live-sales.js';
 import { registerMarketRoutes } from './routes/market.js';
+import { type SellerDeps, registerSellerRoutes } from './routes/seller.js';
 import { registerProfileRoutes } from './routes/profile.js';
 import { registerSessionRoutes } from './routes/sessions.js';
 import { registerUnsubscribeRoutes } from './routes/unsubscribe.js';
@@ -110,6 +111,13 @@ export interface AppDeps {
    * hand in one with no cache and watch a flip take effect immediately.
    */
   flags?: FlagReader | undefined;
+  /**
+   * The marketplace's payment side (Phase 5). Absent means the seller routes are not mounted
+   * at all, rather than mounted and quietly unable to do anything — the same shape as
+   * `moderationDb`. Without Stripe configured there is no marketplace, and a route that
+   * answers 500 because a key is missing is worse than one that is not there.
+   */
+  seller?: SellerDeps | undefined;
 }
 
 /** Never log credentials or session material (SR-X.20). */
@@ -481,6 +489,7 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     registerCollectionRoutes(app, deps.writeDb);
     registerProfileRoutes(app, deps.writeDb);
     registerMarketRoutes(app, deps.writeDb);
+    if (deps.seller) registerSellerRoutes(app, deps.seller);
     if (deps.moderationDb) {
       registerAdminRoutes(app, {
         db: deps.writeDb,
