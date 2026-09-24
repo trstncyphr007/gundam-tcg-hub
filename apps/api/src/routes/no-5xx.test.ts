@@ -132,6 +132,8 @@ const WRITES: Call[] = [
   { method: 'POST', url: `/v1/listings/${GHOST}/status`, payload: { status: 'active' } },
   { method: 'DELETE', url: `/v1/listings/${GHOST}` },
 
+  { method: 'POST', url: '/v1/seller/onboard' },
+
   {
     method: 'POST',
     url: '/v1/developer/keys',
@@ -198,6 +200,26 @@ beforeAll(async () => {
       secretsDb: workerPool.db,
     },
     liveSales: { db: webPool.db, keyRing },
+    // A fake Stripe, so the seller routes are *in* this sweep rather than absent from it.
+    // Routes that only exist when a secret is configured are exactly the ones that never get
+    // swept, and this file's whole argument is that the unswept routes are where the 5xx are.
+    seller: {
+      db: webPool.db,
+      stripe: {
+        createConnectedAccount: () => Promise.resolve({ accountId: 'acct_no5xx' }),
+        createOnboardingLink: () => Promise.resolve({ url: 'https://connect.stripe.test/x' }),
+        getAccountStatus: () =>
+          Promise.resolve({
+            chargesEnabled: false,
+            payoutsEnabled: false,
+            detailsSubmitted: false,
+          }),
+        constructEvent: () => {
+          throw new Error('not used in this sweep');
+        },
+      },
+      appBaseUrl: 'http://127.0.0.1:3000',
+    },
     notify: () => Promise.resolve(),
   });
 
