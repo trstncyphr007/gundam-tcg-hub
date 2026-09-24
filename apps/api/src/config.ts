@@ -62,6 +62,27 @@ const apiEnvSchema = z.object({
   WEBAUTHN_RP_ID: z.string().min(1).default('localhost'),
   WEBAUTHN_RP_NAME: z.string().min(1).max(64).default('Gundam TCG Hub'),
   WEBAUTHN_ORIGIN: z.url().default('http://localhost:3000'),
+
+  /**
+   * Stripe (Phase 5, ADR-011). All optional: the marketplace is simply off until they are
+   * set, and every other part of this API runs without them.
+   *
+   * There is no development default, and there will not be one. A default elsewhere in this
+   * file is a weak key refused in production; a default here would be somebody else's Stripe
+   * account. The *shapes* are pinned instead, because `sk_live_` sitting where `sk_test_`
+   * belongs is exactly the mistake worth catching at boot rather than at the first charge.
+   */
+  STRIPE_SECRET_KEY: optional(z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/u)),
+  STRIPE_PUBLISHABLE_KEY: optional(z.string().regex(/^pk_(test|live)_[A-Za-z0-9]+$/u)),
+  /** From `stripe listen` locally, or the endpoint's signing secret in the dashboard. */
+  STRIPE_WEBHOOK_SECRET: optional(z.string().startsWith('whsec_')),
+  /**
+   * Our cut, in basis points (FR-5.3). 500 = 5%.
+   *
+   * Basis points rather than a percentage float: money that has been through a float is a
+   * number nobody can reconcile, and this one is subtracted from what a seller is owed.
+   */
+  MARKETPLACE_FEE_BPS: z.coerce.number().int().min(0).max(2000).default(500),
 });
 
 export type ApiConfig = z.infer<typeof apiEnvSchema>;

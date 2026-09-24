@@ -41,12 +41,23 @@ rules:
       - pattern: globalThis.fetch
       - pattern-regex: (from|require\()\s*['"](node:)?(http|https|http2|dgram)['"]
       - pattern-regex: (from|require\()\s*['"](undici|axios|got|node-fetch|superagent)['"]
+      # An SDK is an outbound request with a nicer name. `stripe` reaches api.stripe.com the
+      # moment it is constructed with a key, and this rule enumerated HTTP *libraries* rather
+      # than outbound capability — so it would have let an entire payment integration in
+      # without saying a word. Named here so the exception below has to be taken on purpose,
+      # which is what ADR-030 asks for: "add it to that module, or change this rule on
+      # purpose."
+      - pattern-regex: (from|require\()\s*['"]stripe['"]
     paths:
       include:
         - apps/api/src/**
         - packages/*/src/**
       exclude:
         - packages/alerts/src/transports.ts
+        # The one module allowed to talk to Stripe (Phase 5). Fixed host, official SDK, and no
+        # user-supplied URL anywhere in it — so the questions this rule exists to ask have the
+        # same answer they have for the Discord transport: there is nothing to point at.
+        - apps/api/src/payments/stripe.ts
         - '**/*.test.ts'
         - packages/db/src/test/**
 
