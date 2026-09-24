@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SignInRequired } from '@/components/sign-in-required';
 import { api } from '@/lib/api';
 import { KeyManager } from './key-manager';
 
@@ -8,18 +9,7 @@ export default async function DeveloperPage() {
   const me = await api.me();
 
   if (!me) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">API keys</h1>
-        <p className="text-sm text-muted">You need to sign in to create an API key.</p>
-        <Link
-          href="/sign-in"
-          className="inline-block rounded px-4 py-2 text-sm font-medium bg-accent"
-        >
-          Sign in
-        </Link>
-      </div>
-    );
+    return <SignInRequired title="API keys" reason="create an API key" next="/account/developer" />;
   }
 
   const keys = await api.developerKeys();

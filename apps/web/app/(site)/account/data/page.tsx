@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { SignInRequired } from '@/components/sign-in-required';
 import { api } from '@/lib/api';
 import { DataManager } from './data-manager';
 
@@ -11,12 +11,11 @@ export default async function DataPage(): Promise<React.JSX.Element> {
   const me = await api.me();
   if (!me) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Your data</h1>
-        <Link href="/sign-in?next=%2Faccount%2Fdata" className="underline">
-          Sign in
-        </Link>
-      </div>
+      <SignInRequired
+        title="Your data"
+        reason="download or delete your data"
+        next="/account/data"
+      />
     );
   }
 

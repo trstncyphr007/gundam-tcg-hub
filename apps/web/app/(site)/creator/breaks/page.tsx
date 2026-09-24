@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SignInRequired } from '@/components/sign-in-required';
 import { api } from '@/lib/api';
 import { NewBreakForm } from './new-break-form';
 
@@ -10,18 +11,7 @@ export default async function BreaksPage() {
   const me = await api.me();
 
   if (!me) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">My breaks</h1>
-        <p className="text-sm text-muted">You need to sign in to run a break.</p>
-        <Link
-          href="/sign-in"
-          className="inline-block rounded px-4 py-2 text-sm font-medium bg-accent"
-        >
-          Sign in
-        </Link>
-      </div>
-    );
+    return <SignInRequired title="My breaks" reason="run a break" next="/creator/breaks" />;
   }
 
   if (me.role !== 'creator' && me.role !== 'admin') {

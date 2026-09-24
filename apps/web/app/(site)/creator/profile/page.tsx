@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { SignInRequired } from '@/components/sign-in-required';
 import { api } from '@/lib/api';
 import { ProfileForm } from './profile-form';
 
@@ -8,12 +8,11 @@ export default async function CreatorProfilePage(): Promise<React.JSX.Element> {
   const me = await api.me();
   if (!me) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Your breaker page</h1>
-        <Link href="/sign-in" className="underline">
-          Sign in
-        </Link>
-      </div>
+      <SignInRequired
+        title="Your breaker page"
+        reason="set up your breaker page"
+        next="/creator/profile"
+      />
     );
   }
 

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SignInRequired } from '@/components/sign-in-required';
 import { api } from '@/lib/api';
 import { PasskeyManager } from './passkey-manager';
 import { SessionManager } from './session-manager';
@@ -12,12 +13,7 @@ export default async function SecurityPage(): Promise<React.JSX.Element> {
   const me = await api.me();
   if (!me) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Security</h1>
-        <Link href="/sign-in?next=%2Faccount%2Fsecurity" className="underline">
-          Sign in
-        </Link>
-      </div>
+      <SignInRequired title="Security" reason="manage how you sign in" next="/account/security" />
     );
   }
 

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SignInRequired } from '@/components/sign-in-required';
 import type { AdminRefusal } from '@/lib/api';
 
 /**
@@ -21,14 +22,9 @@ export function AdminGate({
   const next = encodeURIComponent(path);
 
   if (refusal.kind === 'signed_out') {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        <Link href={`/sign-in?next=${next}`} className="underline">
-          Sign in
-        </Link>
-      </div>
-    );
+    // The shared one, so the signed-out sweep can see that this page has a gate at all — the
+    // other refusals below are for somebody who *is* signed in and still may not be here.
+    return <SignInRequired title={title} reason="use the admin console" next={path} />;
   }
 
   if (refusal.kind === 'step_up' || refusal.kind === 'passkey_required') {
