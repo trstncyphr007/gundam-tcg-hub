@@ -74,15 +74,31 @@ step "seed the sample catalog (local verification only)"
 DATABASE_URL_MIGRATOR="postgres://app_migrator:${PG_MIG}@127.0.0.1:5433/gth" \
   pnpm -s db:seed 2>&1 | tail -n 1
 
-step "run the scheduled jobs as one-off jobs"
-# What systemd runs at 03:30, 04:30 and every quarter of an hour, in the production image, on
-# the worker role. These were pnpm scripts until #45, which the production image has no way to
-# run — so this step exists to prove the thing the server will actually execute, rather than
-# the developer command that resembles it. A grant the worker is missing fails here, not at
-# 04:30. The watchdog runs with no webhook configured, which must be a clean exit.
-for job in rollup retention watchdog; do
-  "${COMPOSE[@]}" --env-file "$ENV_FILE" --profile jobs run --rm "$job" 2>&1 | sed "s/^/${job}: /" | tail -n 4
+step "every scheduled job runs in the production image"
+# What systemd runs at 03:30, 04:30 and every few minutes, in the production image, on the
+# worker role. These were pnpm scripts until #45, which the production image has no way to run
+# — so this proves the thing the server will actually execute rather than the developer command
+# that resembles it. A grant the worker is missing fails here, not at 04:30. The watchdog runs
+# with no webhook configured, which must still be a clean exit.
+#
+# **The exit code is checked.** This used to pipe each job through `sed | tail`, so the status
+# came from `tail` and every job "passed" however it ended. `alert-retry` was broken the whole
+# time it was in this list: it read the whole application's configuration instead of its own
+# handful, so it died on secrets it never uses.
+jobs_failed=''
+for job in rollup retention watchdog alert-retry; do
+  if out=$("${COMPOSE[@]}" --env-file "$ENV_FILE" --profile jobs run --rm "$job" 2>&1); then
+    printf '  ok    %-12s %s\n' "$job" "$(printf '%s' "$out" | grep -v '^ *Container ' | tail -n 1)"
+  else
+    printf '  FAIL  %-12s\n' "$job"
+    printf '%s\n' "$out" | tail -n 12 | sed 's/^/          /'
+    jobs_failed="${jobs_failed} ${job}"
+  fi
 done
+[ -z "$jobs_failed" ] || {
+  printf '\n\033[1;31mjobs that could not run:%s\033[0m\n' "$jobs_failed" >&2
+  exit 1
+}
 
 step "smoke tests through Caddy"
 base=http://127.0.0.1:8080

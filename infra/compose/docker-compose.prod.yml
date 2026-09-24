@@ -199,6 +199,13 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:?}
       APP_BASE_URL: ${APP_BASE_URL:?}
       DISCORD_ALERT_WEBHOOK_URL: ${DISCORD_ALERT_WEBHOOK_URL:-}
+      # The retried email carries the same signed unsubscribe link as the first attempt, which
+      # needs the API's public address to point at and the pepper to sign with (SR-1.12). Both
+      # were missing: the pepper would have fallen back to its development default, which
+      # `loadConfig` refuses in production, so the job crashed on startup every five minutes —
+      # and the address would have put `127.0.0.1` in an email if it had not.
+      API_BASE_URL: ${API_BASE_URL:?}
+      TOKEN_PEPPER: ${TOKEN_PEPPER:?}
     networks: [internal, egress]
     restart: 'no'
     depends_on:
