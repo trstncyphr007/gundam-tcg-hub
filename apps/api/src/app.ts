@@ -32,6 +32,7 @@ import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
 import { type LiveSaleDeps, registerLiveSaleRoutes } from './routes/live-sales.js';
 import { registerMarketRoutes } from './routes/market.js';
 import { type SellerDeps, registerSellerRoutes } from './routes/seller.js';
+import { type StripeWebhookDeps, registerStripeWebhookRoutes } from './routes/stripe-webhook.js';
 import { registerProfileRoutes } from './routes/profile.js';
 import { registerSessionRoutes } from './routes/sessions.js';
 import { registerUnsubscribeRoutes } from './routes/unsubscribe.js';
@@ -118,6 +119,12 @@ export interface AppDeps {
    * answers 500 because a key is missing is worse than one that is not there.
    */
   seller?: SellerDeps | undefined;
+  /**
+   * Stripe's webhooks (SR-5.2). Runs on the worker role and needs the raw body, so it is
+   * registered in its own scope. Absent means the endpoint does not exist — better than one
+   * that exists and cannot verify anything.
+   */
+  stripeWebhook?: StripeWebhookDeps | undefined;
 }
 
 /** Never log credentials or session material (SR-X.20). */
@@ -479,6 +486,14 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
       tokenPepper: config.TOKEN_PEPPER,
       watchesUrl: `${config.APP_BASE_URL}/account/watches`,
     });
+  }
+
+  // No session, deliberately: the signature is what authenticates this, and Stripe has no
+  // cookie. It is mounted independently of `auth` for the same reason — a webhook endpoint
+  // that only exists when sign-in is configured would be missing on exactly the deployment
+  // that still takes payments.
+  if (deps.stripeWebhook) {
+    await registerStripeWebhookRoutes(app, deps.stripeWebhook);
   }
 
   if (deps.writeDb && deps.auth) {

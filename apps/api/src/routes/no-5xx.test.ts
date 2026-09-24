@@ -133,6 +133,8 @@ const WRITES: Call[] = [
   { method: 'DELETE', url: `/v1/listings/${GHOST}` },
 
   { method: 'POST', url: '/v1/seller/onboard' },
+  // Unsigned, which is what every caller who is not Stripe looks like.
+  { method: 'POST', url: '/v1/webhooks/stripe', payload: { id: 'evt_x', type: 'account.updated' } },
 
   {
     method: 'POST',
@@ -219,6 +221,25 @@ beforeAll(async () => {
         },
       },
       appBaseUrl: 'http://127.0.0.1:3000',
+    },
+    stripeWebhook: {
+      workerDb: workerPool.db,
+      stripe: {
+        createConnectedAccount: () => Promise.resolve({ accountId: 'acct_no5xx' }),
+        createOnboardingLink: () => Promise.resolve({ url: 'https://connect.stripe.test/x' }),
+        getAccountStatus: () =>
+          Promise.resolve({
+            chargesEnabled: false,
+            payoutsEnabled: false,
+            detailsSubmitted: false,
+          }),
+        // Nothing this sweep sends is signed, so this is the path it takes. 400 is the right
+        // answer and passes the rule here, which is only that we never blame ourselves for
+        // what a caller sent.
+        constructEvent: () => {
+          throw new Error('no signature');
+        },
+      },
     },
     notify: () => Promise.resolve(),
   });
