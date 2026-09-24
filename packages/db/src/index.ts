@@ -26,6 +26,7 @@ export * from './queries/security-events.js';
 export * from './queries/ops-alerts.js';
 export * from './queries/flags.js';
 export * from './queries/deletions.js';
+export * from './queries/market.js';
 export * from './jobs.js';
 export * from './seed/sample.js';
 export * from './seed/scale.js';
