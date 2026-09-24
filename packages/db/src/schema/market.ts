@@ -40,6 +40,15 @@ export const orderActor = app.enum('order_actor', ['buyer', 'seller', 'admin', '
 export const listingStatus = app.enum('listing_status', ['draft', 'active', 'sold', 'withdrawn']);
 
 /**
+ * Where an uploaded photo is in the pipeline (SR-5.5).
+ *
+ * `pending` means bytes were promised and nothing has looked at them. Nothing is served in that
+ * state and nothing counts towards the photo requirement, because a file nobody has inspected
+ * is indistinguishable from a file somebody chose carefully.
+ */
+export const photoStatus = app.enum('photo_status', ['pending', 'approved', 'rejected']);
+
+/**
  * A seller's Stripe Connect account (FR-5.1, ADR-011).
  *
  * We hold an account *id* and two booleans, and nothing else. No bank details, no tax
@@ -145,6 +154,102 @@ export const listings = app.table(
     check('listings_quantity_sane', sql`${t.quantity} <= 999`),
     check('listings_currency_iso', sql`${t.currency} ~ '^[A-Z]{3}$'`),
     check('listings_notes_length', sql`${t.notes} is null or length(${t.notes}) <= 500`),
+  ],
+);
+
+/**
+ * A photograph of the actual card (FR-5.2, SR-5.5, T10).
+ *
+ * Two keys, because the bytes a stranger uploaded and the bytes a browser receives are never
+ * the same bytes:
+ *
+ *  - `upload_key` is where the original lands. It is written by a presigned PUT, read once by
+ *    the pipeline, and **deleted**. It is a staging area, not storage.
+ *  - `object_key` is the re-encoded copy, rebuilt from decoded pixels. Null until the pipeline
+ *    has finished, because a photo with no approved copy has nothing to serve.
+ *
+ * Everything the pipeline establishes — the dimensions, the digest, whether a scanner objected
+ * — is outside what a session may write. A seller uploads a file and says nothing else about
+ * it; the facts are ours to determine, the same way an order's `paid` is Stripe's.
+ */
+export const listingPhotos = app.table(
+  'listing_photos',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => listings.id, { onDelete: 'cascade' }),
+    /** Where the original was PUT. Emptied once the pipeline is done with it. */
+    uploadKey: text('upload_key').notNull(),
+    /** The re-encoded copy, which is the only one anybody is ever served. */
+    objectKey: text('object_key'),
+    status: photoStatus('status').notNull().default('pending'),
+    /**
+     * Why it was refused, as a code from `@gth/security`'s inspection or the virus scanner.
+     *
+     * Kept rather than deleted: a seller whose upload vanished with no explanation assumes the
+     * site is broken, and a rejection nobody recorded is one nobody can count either.
+     */
+    rejectionReason: text('rejection_reason'),
+    contentType: text('content_type'),
+    byteSize: integer('byte_size'),
+    width: integer('width'),
+    height: integer('height'),
+    /**
+     * Of the **re-encoded** copy, not the upload.
+     *
+     * Two sellers photographing the same card get different bytes; two listings with the same
+     * digest are the same file, which is the cheap half of the stolen-photo check (SR-5.6).
+     * Deliberately not unique — an identical photo is a signal to look at, not a thing to
+     * refuse, and refusing it would let anybody lock a photo out by uploading it first.
+     */
+    sha256: text('sha256'),
+    /** When a scanner last had an opinion. Null means nothing has looked. */
+    scannedAt: timestamp('scanned_at', { withTimezone: true }),
+    /** Display order, lowest first. Front, then back, then the detail shots. */
+    position: integer('position').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('listing_photos_listing_idx').on(t.listingId, t.position),
+    // One row per stored object, both ways. A second row pointing at the same key would make
+    // deleting one of them delete the other's picture.
+    uniqueIndex('listing_photos_upload_key').on(t.uploadKey),
+    uniqueIndex('listing_photos_object_key')
+      .on(t.objectKey)
+      .where(sql`${t.objectKey} is not null`),
+    // For the duplicate-photo question, which asks "who else has this digest".
+    index('listing_photos_sha256_idx')
+      .on(t.sha256)
+      .where(sql`${t.sha256} is not null`),
+
+    // An approved photo has something to serve and something to serve it about. Without this,
+    // `approved` with a null `object_key` is a row the gallery would render as a broken image.
+    check(
+      'listing_photos_approved_is_complete',
+      sql`${t.status} <> 'approved'
+          or (${t.objectKey} is not null and ${t.width} is not null and ${t.height} is not null
+              and ${t.sha256} is not null and ${t.scannedAt} is not null)`,
+    ),
+    // And a rejected one says why, because "rejected" on its own helps nobody.
+    check(
+      'listing_photos_rejected_has_reason',
+      sql`${t.status} <> 'rejected' or ${t.rejectionReason} is not null`,
+    ),
+    check(
+      'listing_photos_dimensions_sane',
+      sql`(${t.width} is null or (${t.width} > 0 and ${t.width} <= 8000))
+          and (${t.height} is null or (${t.height} > 0 and ${t.height} <= 8000))`,
+    ),
+    check(
+      'listing_photos_size_sane',
+      sql`${t.byteSize} is null or (${t.byteSize} > 0 and ${t.byteSize} <= 10485760)`,
+    ),
+    check('listing_photos_position_sane', sql`${t.position} >= 0 and ${t.position} < 8`),
+    check('listing_photos_sha256_hex', sql`${t.sha256} is null or ${t.sha256} ~ '^[0-9a-f]{64}$'`),
   ],
 );
 
