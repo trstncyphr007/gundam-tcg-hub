@@ -163,14 +163,48 @@ docker exec -i gth-production-postgres-1 dropdb -U "$PG_SUPERUSER" gth_restore_t
 rm -rf /tmp/restore
 ```
 
-| Date                                   | Snapshot | Restore time | Row counts sane? | By  |
-| -------------------------------------- | -------- | ------------ | ---------------- | --- |
-| _(first drill after the first deploy)_ |          |              |                  |     |
+| Date                                   | Snapshot                 | Restore time | Row counts sane?                | By     |
+| -------------------------------------- | ------------------------ | ------------ | ------------------------------- | ------ |
+| 2026-09-24                             | workstation (`1ac7a14e`) | 2s           | yes — 53 policies, 91 grants    | Claude |
+| 2026-09-24                             | workstation, **rebuild** | —            | yes — plus privileges exercised | Claude |
+| _(first drill after the first deploy)_ |                          |              |                                 |        |
+
+The second row is `scripts/rebuild-drill.sh`, which is the one that matters for a lost host:
+it restores onto a container that has never seen the data, initialised the way production's
+would be, and then **uses** each role to check the privileges came back — see the warning in
+[Full-host rebuild](#full-host-rebuild) about `pg_restore`'s exit status.
 
 ## Full-host rebuild
 
 1. New VPS → `docs/runbooks/vps-setup.md` (steps 1–8).
 2. Restore the latest dump into the fresh database before starting the app.
+
+   > **`pg_restore` will exit 1, and the restore will have worked.** Bringing up Postgres on a
+   > new volume runs `packages/db/init/01-roles.sh`, which creates the roles, the extensions
+   > and the `app` and `drizzle` schemas. The dump creates those schemas too, so you get:
+   >
+   > ```
+   > pg_restore: error: could not execute query: ERROR:  schema "app" already exists
+   > pg_restore: error: could not execute query: ERROR:  schema "drizzle" already exists
+   > ```
+   >
+   > **Those two lines, and a non-zero exit, are expected.** Any other error is not.
+   >
+   > Do not judge the restore by its exit status. Judge it by what is in the database:
+   >
+   > ```bash
+   > psql -qAtX -c "select count(*) from pg_policies where schemaname = 'app'"        # 53+
+   > psql -qAtX -c "select count(*) from information_schema.role_table_grants
+   >                 where table_schema = 'app' and grantee = 'app_web'"              # 91+
+   > psql -qAtX -c "select count(*) from app.users"                                   # your rows
+   > ```
+   >
+   > A restore that brings the rows and loses the row-level security looks perfectly healthy
+   > and leaks. `scripts/rebuild-drill.sh` runs this whole path on a workstation — a genuinely
+   > fresh container, initialised as production's would be — and checks the privileges by
+   > using them: that `app_readonly` cannot write, that `app_web` cannot read a key hash, and
+   > that nobody can update the audit log. Run it before you need it.
+
 3. **Re-apply account deletions made since that dump** — see
    [`restore.md`](restore.md#after-any-restore-re-apply-account-deletions). A backup is older
    than the promises made since it was taken.
