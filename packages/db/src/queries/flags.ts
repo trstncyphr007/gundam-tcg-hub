@@ -17,7 +17,15 @@ import type { Database } from '../client.js';
  *    was off for two hours is not an operation this offers, and no role has DELETE.
  */
 export const FLAGS = {
-  /** Alert delivery. Off holds deliveries as pending; they go out when it is back on. */
+  /**
+   * Alert delivery. Off stops alerts being **sent** — by the fan-out inside the scanner's
+   * request, and by the retry job, which until now did not read this switch at all.
+   *
+   * Deliveries already owed stay pending and untouched, and go out when it is back on. A
+   * restock detected *while* it is off is still recorded, but creates no delivery, so nobody
+   * is told about that one afterwards. The asymmetry is worth knowing: this switch pauses a
+   * backlog, it does not queue new alerts up behind itself.
+   */
   alertsEnabled: 'alerts.enabled',
   /** The public catalog and pricing API. Off answers 503; the console stays reachable. */
   publicApiEnabled: 'api.public.enabled',

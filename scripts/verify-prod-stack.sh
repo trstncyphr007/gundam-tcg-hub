@@ -100,6 +100,33 @@ done
   exit 1
 }
 
+step "the alerts kill switch stops the retry job too"
+# The switch an operator pulls at 2am (§22, ADR-039). Fan-out has read it since the switches
+# were built; this job did not, so pulling it stopped *new* alerts while the timer kept
+# draining the backlog to the same inboxes every five minutes.
+#
+# Proved here, in the production image, against a real row in `app.feature_flags` — because
+# both previous faults in this job were in the wiring and not the logic (#76 no timer, #77
+# could not start), and neither would have been caught by a unit test.
+flag() {
+  "${COMPOSE[@]}" --env-file "$ENV_FILE" exec -T -e PGPASSWORD="$PG_SUPER" postgres \
+    psql -q -U gth_admin -h 127.0.0.1 -d gth -c \
+    "insert into app.feature_flags (key, enabled, reason, updated_by)
+     values ('alerts.enabled', $1, 'verify-prod-stack drill', 'drill')
+     on conflict (key) do update set enabled = excluded.enabled" >/dev/null
+}
+flag false
+off=$("${COMPOSE[@]}" --env-file "$ENV_FILE" --profile jobs run --rm alert-retry 2>&1) || true
+flag true
+off=$(printf '%s' "$off" | grep -v '^ *Container ' | tail -n 1)
+case "$off" in
+*'switched off'*) printf '  ok    refuses to send while alerts.enabled is off: %s\n' "$off" ;;
+*)
+  printf '  FAIL  the kill switch did not stop it: %s\n' "$off" >&2
+  exit 1
+  ;;
+esac
+
 step "smoke tests through Caddy"
 base=http://127.0.0.1:8080
 printf 'home            %s\n' "$(curl -s -o /dev/null -w '%{http_code}' $base/)"
