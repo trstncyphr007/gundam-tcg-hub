@@ -155,6 +155,15 @@ function decode(bytes: Uint8Array): Pixels {
  */
 function resample(source: Pixels, width: number, height: number): Pixels {
   const out = new Uint8Array(width * height * 4);
+  /**
+   * Read through a DataView rather than by index.
+   *
+   * `getUint8` is typed `number`, where both `data[i]` and `data.at(i)` are
+   * `number | undefined` under `noUncheckedIndexedAccess`. The `?? 0` that difference forces
+   * is a branch on every channel of every pixel that no input can take and no test can cover —
+   * and it is a method call, so the no-computed-index rule is satisfied for free.
+   */
+  const view = new DataView(source.data.buffer, source.data.byteOffset, source.data.byteLength);
   const xRatio = source.width / width;
   const yRatio = source.height / height;
 
@@ -173,23 +182,27 @@ function resample(source: Pixels, width: number, height: number): Pixels {
         for (let sx = x0; sx < x1 && sx < source.width; sx += 1) {
           const at = (sy * source.width + sx) * 4;
           // Over white, so a transparent pixel reads as white rather than as black.
-          const alpha = (source.data.at(at + 3) ?? 255) / 255;
-          r += (source.data.at(at) ?? 0) * alpha + 255 * (1 - alpha);
-          g += (source.data.at(at + 1) ?? 0) * alpha + 255 * (1 - alpha);
-          b += (source.data.at(at + 2) ?? 0) * alpha + 255 * (1 - alpha);
+          const alpha = view.getUint8(at + 3) / 255;
+          const onWhite = 255 * (1 - alpha);
+          r += view.getUint8(at) * alpha + onWhite;
+          g += view.getUint8(at + 1) * alpha + onWhite;
+          b += view.getUint8(at + 2) * alpha + onWhite;
           n += 1;
         }
       }
 
+      /**
+       * `n` is never zero.
+       *
+       * `x1` is `max(x0 + 1, …)` and `x0 < source.width` for every `x < width`, so the inner
+       * loops always run at least once — same for `y`. An `n === 0` guard here would be a
+       * branch no input can reach and no test can cover, which is worse than no guard: it
+       * reads as a handled case and is actually dead code.
+       */
       // `.set()` rather than four index assignments: the offset is computed, and an index
       // expression with a computed key is the shape the lint rule exists to ask about.
       const to = (y * width + x) * 4;
-      out.set(
-        n === 0
-          ? [255, 255, 255, 255]
-          : [Math.round(r / n), Math.round(g / n), Math.round(b / n), 255],
-        to,
-      );
+      out.set([Math.round(r / n), Math.round(g / n), Math.round(b / n), 255], to);
     }
   }
   return { width, height, data: out };

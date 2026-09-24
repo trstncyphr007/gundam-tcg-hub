@@ -190,6 +190,16 @@ describe('the size it is stored at', () => {
     expect(displaySize(320, 240)).toEqual({ width: 320, height: 240 });
   });
 
+  it('leaves one that is exactly at the limit alone', () => {
+    // The boundary, which is where an off-by-one puts a 1600-pixel image through a pointless
+    // resample or lets a 1601-pixel one through untouched.
+    expect(displaySize(DISPLAY_MAX_DIMENSION, 900)).toEqual({
+      width: DISPLAY_MAX_DIMENSION,
+      height: 900,
+    });
+    expect(displaySize(DISPLAY_MAX_DIMENSION + 1, 800).width).toBe(DISPLAY_MAX_DIMENSION);
+  });
+
   it('actually resizes the picture, not just the number', () => {
     const out = reencodePhoto(realJpeg(2400, 1800));
     expect(Math.max(out.width, out.height)).toBe(DISPLAY_MAX_DIMENSION);
@@ -236,6 +246,21 @@ describe('files it refuses', () => {
       reencodePhoto(text);
     } catch (error) {
       expect((error as ReencodeError).reason).toBe('unsupported_format');
+    }
+  });
+
+  it('refuses a JPEG the decoder cannot make sense of', () => {
+    // A real SOI marker and then nothing that follows the format. The decoder's own exception
+    // is caught and turned into a typed refusal, because a route should not be answering with
+    // whatever a decoding library felt like throwing.
+    const broken = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, ...bytesOf('not a jpeg')]);
+    try {
+      reencodePhoto(broken);
+      expect.unreachable('a broken JPEG was accepted');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ReencodeError);
+      expect((error as ReencodeError).reason).toBe('undecodable');
+      expect((error as ReencodeError).cause).toBeDefined();
     }
   });
 
