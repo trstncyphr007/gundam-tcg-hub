@@ -1,3 +1,4 @@
+import { FREE_TIER_LIMITS } from '@gth/core';
 import { secondsUntilUtcMidnight } from '@gth/db';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
@@ -31,8 +32,13 @@ export interface QuotaTier {
   perDay: number;
 }
 
-/** The only tier today. Named, because a second one should be a table entry, not a branch. */
-export const FREE_TIER: QuotaTier = { perMinute: 60, perDay: 1000 };
+/**
+ * The only tier today. Named, because a second one should be a table entry, not a branch.
+ *
+ * The numbers come from `@gth/core` because `/terms` publishes them to the people building
+ * against this API, and it used to hold its own copy with a comment claiming the two agreed.
+ */
+export const FREE_TIER: QuotaTier = FREE_TIER_LIMITS;
 
 export const TIERS = new Map<string, QuotaTier>([['free', FREE_TIER]]);
 

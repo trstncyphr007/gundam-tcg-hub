@@ -42,5 +42,13 @@ export const INDEX_LICENCE = {
   url: 'https://creativecommons.org/licenses/by/4.0/',
 } as const;
 
-/** The free API tier, as the quota plugin actually enforces it. */
-export const API_LIMITS = { perMinute: 60, perDay: 1000 } as const;
+/**
+ * The free API tier, as the quota plugin actually enforces it — now by importing the same
+ * constant it enforces, rather than by a comment saying so above a second copy of the numbers.
+ *
+ * `/terms` states these to anybody building a client. A published limit that is higher than
+ * the enforced one is not a documentation bug; it is a promise the server breaks with a 429.
+ */
+// The subpath, like the other two this app imports: a page has no business pulling in the
+// environment parser to render a sentence about rate limits.
+export { FREE_TIER_LIMITS as API_LIMITS } from '@gth/core/api-tiers';
