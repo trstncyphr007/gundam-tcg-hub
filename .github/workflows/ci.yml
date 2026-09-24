@@ -225,9 +225,19 @@ jobs:
         # A script edited from a Windows editor comes back as mode 100644 and nobody notices
         # until it will not run on the server. Three fixes by hand was two too many.
         run: bash scripts/check-exec-bits.sh
+      - name: shellcheck
+        # Every tracked shell script, including the one that deploys and the one that says the
+        # server is ready. None of them had ever been linted: the `run:` blocks in these
+        # workflows were covered by actionlint, and the seventeen real scripts by nothing.
+        #
+        # --severity=warning, not the default: the pass/fail idiom these scripts use
+        # throughout is `check && pass || fail`, which is right here and which shellcheck
+        # reports at info level.
+        run: git ls-files '*.sh' | xargs -r shellcheck --severity=warning
       - name: scheduled jobs are defined everywhere they need to be
-        # A job lives in four places — the timer, the runner's allowlist, the compose profile
-        # and the image. Miss one and it exists, is documented, has tests, and never runs.
+        # A job lives in five places — the timer, the runner's allowlist, the compose profile,
+        # the image, and preflight's list. Miss one and it exists, is documented, has tests,
+        # and never runs.
         run: bash scripts/check-jobs.sh
       - name: actionlint
         run: docker run --rm -v "$PWD:/repo" -w /repo "$ACTIONLINT_IMAGE" -color

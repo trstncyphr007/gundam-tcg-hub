@@ -2,7 +2,11 @@
 # Run the CI security gates locally (plan §18.2). Uses the CLIs installed by
 # setup/bootstrap-wsl.sh. Exits non-zero if any gate fails.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+# There is no `set -e` here on purpose — every gate runs and the failures are counted at the
+# end. Which means a failed `cd` would not stop anything: this would scan whatever directory it
+# happened to be in and report on that, and a security scan that reports clean about the wrong
+# tree is worse than one that does not run.
+cd "$(dirname "$0")/.." || exit 1
 mkdir -p reports
 
 status=0

@@ -16,6 +16,11 @@ pre-commit:
       # exists and the fix is another commit. Here it is a message before the commit lands.
       glob: '*.sh'
       run: bash scripts/check-exec-bits.sh
+    shellcheck:
+      # Same severity as CI. The shell in this repo deploys, backs up and decides whether the
+      # server is ready, and it was the only language here with no linter at all.
+      glob: '*.sh'
+      run: shellcheck --severity=warning {staged_files}
 
 commit-msg:
   commands:
