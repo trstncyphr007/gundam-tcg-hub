@@ -44,6 +44,8 @@ export type Action =
   | 'profile:write'
   | 'live_sale:read'
   | 'live_sale:write'
+  | 'listing:read'
+  | 'listing:write'
   | 'admin:access';
 
 const BASE_ACTIONS: readonly Action[] = [
@@ -57,6 +59,24 @@ const BASE_ACTIONS: readonly Action[] = [
   // site and again by row-level security.
   'collection:read',
   'collection:write',
+  /**
+   * Selling a card (FR-5.2) is not a role.
+   *
+   * The obvious design is to gate this on the `seller` role, and it is wrong: role changes are
+   * admin-only and audited (SR-X.9), so every person who wanted to sell one card would wait
+   * for somebody to promote them. A marketplace with a queue at the door is not one.
+   *
+   * The real gate is Stripe's. FR-5.1 says a listing may go on sale only once
+   * `charges_enabled` and `payouts_enabled` are both true, which means the identity check has
+   * been done by the people whose job that is — and the answer arrives on a webhook rather
+   * than from anything a seller can assert. That is a stronger gate than a row in our own
+   * table, and it is checked where publishing happens rather than here.
+   *
+   * So: anybody signed in may draft and manage a listing. Whether it can go live is a question
+   * for the connected account, and whether it can be paid for is a question for Stripe.
+   */
+  'listing:read',
+  'listing:write',
 ];
 
 /**

@@ -125,6 +125,15 @@ const WRITES: Call[] = [
 
   {
     method: 'POST',
+    url: '/v1/listings',
+    payload: { cardVariantId: GHOST, condition: 'nm', priceCents: 2500 },
+  },
+  { method: 'PATCH', url: `/v1/listings/${GHOST}`, payload: { priceCents: 2500, quantity: 1 } },
+  { method: 'POST', url: `/v1/listings/${GHOST}/status`, payload: { status: 'active' } },
+  { method: 'DELETE', url: `/v1/listings/${GHOST}` },
+
+  {
+    method: 'POST',
     url: '/v1/developer/keys',
     payload: { name: 'A key', scopes: ['catalog:read'] },
   },

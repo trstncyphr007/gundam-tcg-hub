@@ -30,6 +30,7 @@ import { type BreakDeps, registerBreakRoutes } from './routes/breaks.js';
 import { registerCollectionRoutes } from './routes/collections.js';
 import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
 import { type LiveSaleDeps, registerLiveSaleRoutes } from './routes/live-sales.js';
+import { registerMarketRoutes } from './routes/market.js';
 import { registerProfileRoutes } from './routes/profile.js';
 import { registerSessionRoutes } from './routes/sessions.js';
 import { registerUnsubscribeRoutes } from './routes/unsubscribe.js';
@@ -479,6 +480,7 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     registerWatchRoutes(app, deps.writeDb);
     registerCollectionRoutes(app, deps.writeDb);
     registerProfileRoutes(app, deps.writeDb);
+    registerMarketRoutes(app, deps.writeDb);
     if (deps.moderationDb) {
       registerAdminRoutes(app, {
         db: deps.writeDb,
