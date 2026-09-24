@@ -1,10 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { type BreakerProfile, type RarityComparison, api } from '@/lib/api';
-
-function dollars(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
+import { dollars } from '@/lib/money';
 
 /** "1 in 12" reads as odds; "0.083" reads as a spreadsheet. */
 function asOneIn(rate: number | null): string {
