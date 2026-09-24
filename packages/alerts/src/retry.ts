@@ -43,6 +43,19 @@ export interface RetryDeps {
     detectedAt: Date,
   ) => Promise<RestockMessage | null>;
   logger?: { warn: (obj: Record<string, unknown>, msg: string) => void };
+  /**
+   * The alerts kill switch (§22), read once before anything is claimed.
+   *
+   * Fan-out has consulted `alerts.enabled` since the switches were built, and this job did
+   * not, which made the switch a half-measure: an operator who pulled it at 2am stopped new
+   * alerts while this timer kept draining the backlog to the same inboxes every five minutes.
+   * It went unnoticed because until #76 the job had no timer, so there was nothing to notice.
+   *
+   * Checked *before* the claim on purpose. A run that is not going to send must not touch the
+   * rows: attempts it never made must not count against the five, and the backlog must be
+   * exactly what it was when the switch goes back on.
+   */
+  sendingEnabled?: () => Promise<boolean>;
   maxAttempts?: number;
   staleAfterSeconds?: number;
   eventWithinHours?: number;
@@ -54,9 +67,15 @@ export interface RetryResult {
   sent: number;
   stillOwed: number;
   abandoned: number;
+  /** The run stopped before claiming anything because `alerts.enabled` is off. */
+  switchedOff: boolean;
 }
 
 export async function retryOwedDeliveries(deps: RetryDeps): Promise<RetryResult> {
+  if (deps.sendingEnabled && !(await deps.sendingEnabled())) {
+    return { considered: 0, sent: 0, stillOwed: 0, abandoned: 0, switchedOff: true };
+  }
+
   const maxAttempts = deps.maxAttempts ?? 5;
   const owed = await claimRetryableDeliveries(deps.db, {
     maxAttempts,
@@ -64,7 +83,13 @@ export async function retryOwedDeliveries(deps: RetryDeps): Promise<RetryResult>
     ...(deps.eventWithinHours === undefined ? {} : { eventWithinHours: deps.eventWithinHours }),
     ...(deps.limit === undefined ? {} : { limit: deps.limit }),
   });
-  const result: RetryResult = { considered: owed.length, sent: 0, stillOwed: 0, abandoned: 0 };
+  const result: RetryResult = {
+    considered: owed.length,
+    sent: 0,
+    stillOwed: 0,
+    abandoned: 0,
+    switchedOff: false,
+  };
   if (owed.length === 0) return result;
 
   // One message and one target lookup per event, however many deliveries it owes.
@@ -146,6 +171,9 @@ export async function retryOwedDeliveries(deps: RetryDeps): Promise<RetryResult>
 /** Summary lines, in the shape the other scheduled jobs print. */
 export async function alertRetryJob(deps: RetryDeps): Promise<string[]> {
   const result = await retryOwedDeliveries(deps);
+  // Not the same thing as an empty backlog, and the difference is what an operator needs from
+  // this line during the incident that made them pull the switch.
+  if (result.switchedOff) return ['alert delivery is switched off (alerts.enabled); nothing sent'];
   if (result.considered === 0) return ['no alerts owed'];
   return [
     `considered ${String(result.considered)}`,

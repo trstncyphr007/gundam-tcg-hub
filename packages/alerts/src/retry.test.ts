@@ -285,8 +285,60 @@ describe('trying again', () => {
 
     const result = await retryOwedDeliveries(deps(transport, { buildMessage }));
 
-    expect(result).toEqual({ considered: 0, sent: 0, stillOwed: 0, abandoned: 0 });
+    expect(result).toEqual({
+      considered: 0,
+      sent: 0,
+      stillOwed: 0,
+      abandoned: 0,
+      switchedOff: false,
+    });
     expect(buildMessage).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing, and claims nothing, while alert delivery is switched off', async () => {
+    // The switch an operator pulls at 2am to stop an alert loop (§22). It gated fan-out and
+    // nothing else, so this job kept draining the backlog out the door while the console said
+    // alerts were off — every five minutes, from the moment it was given a timer (#76).
+    //
+    // Something is owed here on purpose: a version of this test with an empty backlog would
+    // pass whether or not the switch is read at all.
+    const s = await state();
+    s.rows = [row()];
+    s.targets = [target];
+    s.marks = [];
+    const { transport, sent } = transportThat({ ok: true });
+
+    const result = await retryOwedDeliveries(
+      deps(transport, { sendingEnabled: () => Promise.resolve(false) }),
+    );
+
+    expect(sent).toEqual([]);
+    // Nothing written either. An attempt not made must not be counted against the five.
+    expect(s.marks).toEqual([]);
+    expect(result).toEqual({
+      considered: 0,
+      sent: 0,
+      stillOwed: 0,
+      abandoned: 0,
+      switchedOff: true,
+    });
+  });
+
+  it('sends what is still owed once the switch is back on', async () => {
+    // Off is a pause, not a cancellation: the row is untouched, so the first run after the
+    // incident owes exactly what it owed before it.
+    const s = await state();
+    s.rows = [row()];
+    s.targets = [target];
+    s.marks = [];
+    const { transport, sent } = transportThat({ ok: true });
+
+    const result = await retryOwedDeliveries(
+      deps(transport, { sendingEnabled: () => Promise.resolve(true) }),
+    );
+
+    expect(sent).toHaveLength(1);
+    expect(result).toMatchObject({ considered: 1, sent: 1, switchedOff: false });
   });
 });
 
@@ -299,6 +351,20 @@ describe('what the job prints', () => {
     const { transport } = transportThat({ ok: true });
 
     await expect(alertRetryJob(deps(transport))).resolves.toEqual(['no alerts owed']);
+  });
+
+  it('says which switch stopped it, not just that it did nothing', async () => {
+    // "no alerts owed" would be a lie here — alerts *are* owed — and the operator reading the
+    // timer's log during an incident is the person who most needs to know which is which.
+    const s = await state();
+    s.rows = [row()];
+    s.targets = [target];
+    s.marks = [];
+    const { transport } = transportThat({ ok: true });
+
+    await expect(
+      alertRetryJob(deps(transport, { sendingEnabled: () => Promise.resolve(false) })),
+    ).resolves.toEqual(['alert delivery is switched off (alerts.enabled); nothing sent']);
   });
 
   it('counts what it did', async () => {

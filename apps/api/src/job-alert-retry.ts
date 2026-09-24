@@ -5,7 +5,7 @@ import {
   createUnsupportedTransport,
 } from '@gth/alerts';
 import { parseEnv } from '@gth/core';
-import { createDb, getRestockContext } from '@gth/db';
+import { FLAGS, createDb, createFlagReader, getRestockContext } from '@gth/db';
 import { createTransport } from 'nodemailer';
 import { z } from 'zod';
 import { unsubscribeUrl } from './routes/unsubscribe.js';
@@ -60,9 +60,13 @@ const mailer = config.SMTP_URL ? createTransport(config.SMTP_URL) : null;
 if (!mailer) console.log('no SMTP_URL: email deliveries will be recorded as unsupported');
 
 const { db, close } = createDb({ url: config.DATABASE_URL_WORKER, max: 1 });
+// The same switch fan-out reads (§22). `app_worker` has SELECT on `app.feature_flags` and the
+// table has no row-level security, so a one-shot container reads it without declaring a user.
+const flags = createFlagReader(db);
 try {
   const lines = await alertRetryJob({
     db,
+    sendingEnabled: () => flags.isEnabled(FLAGS.alertsEnabled),
     transports: {
       email: mailer
         ? createEmailTransport({
