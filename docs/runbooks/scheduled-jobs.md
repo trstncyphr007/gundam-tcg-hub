@@ -1,14 +1,15 @@
 # Runbook: scheduled jobs
 
-Two things have to run nightly. Both are ordinary commands, run as the **worker** role, whose
-grants are the point: it can do these jobs and nothing else.
+Several things have to run on a schedule. All of them are ordinary commands, run as the
+**worker** role, whose grants are the point: it can do these jobs and nothing else.
 
-| Job            | Command             | When         | If it stops                                                                                                   |
-| -------------- | ------------------- | ------------ | ------------------------------------------------------------------------------------------------------------- |
-| Price index    | `pnpm price:rollup` | 03:30 UTC    | Prices go stale. Visible, recoverable — the rollup recomputes, so a missed night is picked up by the next run |
-| Data retention | `pnpm db:retention` | 04:30 UTC    | **Personal data is kept past its retention period.** Not visible, not recoverable after the fact              |
-| Ops watchdog   | (server only)       | every 15 min | Nothing tells you anything is wrong. Its own daily "all clear" going quiet is the sign it has stopped         |
-| Alert retry    | (server only)       | every 5 min  | **Alerts that failed once are never sent.** Silent: the person who asked to be told simply is not told        |
+| Job             | Command             | When         | If it stops                                                                                                   |
+| --------------- | ------------------- | ------------ | ------------------------------------------------------------------------------------------------------------- |
+| Price index     | `pnpm price:rollup` | 03:30 UTC    | Prices go stale. Visible, recoverable — the rollup recomputes, so a missed night is picked up by the next run |
+| Data retention  | `pnpm db:retention` | 04:30 UTC    | **Personal data is kept past its retention period.** Not visible, not recoverable after the fact              |
+| Ops watchdog    | (server only)       | every 15 min | Nothing tells you anything is wrong. Its own daily "all clear" going quiet is the sign it has stopped         |
+| Alert retry     | (server only)       | every 5 min  | **Alerts that failed once are never sent.** Silent: the person who asked to be told simply is not told        |
+| Complete orders | (server only)       | 05:30 UTC    | **Sellers are never paid.** Orders sit in `delivered` forever, and nothing anywhere reports an error          |
 
 ## Why retention is its own command
 
@@ -124,6 +125,31 @@ of "the retry job has stopped". The two were written months apart and happen to 
 Without `DISCORD_OPS_WEBHOOK_URL` it still runs, prints what it would have said, and exits 0 —
 a host that is not wired up yet should show that in its journal rather than fail a timer every
 fifteen minutes until somebody silences it.
+
+## Completing delivered orders (FR-5.4, FR-5.6)
+
+```bash
+docker compose --profile jobs run --rm complete-orders
+```
+
+This is the `system` actor the order state machine talks about — the clock, and nothing else.
+It is the only path from `delivered` to `completed` that does not involve an admin, and it
+exists because **neither party may finish their own sale**: a seller marking it complete would
+be marking their own homework, and a buyer doing it is AC-5.4's explicit "cannot".
+
+It completes orders whose `delivered_at` is more than `AUTO_COMPLETE_AFTER_DAYS` (7) old. The
+window is counted from delivery rather than from payment, because the buyer's chance to complain
+starts when the card arrives — a parcel that took three weeks should not turn up with its dispute
+window already spent.
+
+**One order failing does not stop the rest.** An order that moved since it was listed — disputed
+a minute ago, say — throws on the state machine, is named in the output, and the job carries on.
+A job that abandons ninety-nine orders because the hundredth was awkward is a job that quietly
+stops paying sellers.
+
+The failure mode to watch for is the quiet one: if this never runs, nothing errors. Orders simply
+accumulate in `delivered` and no seller is ever paid out. A count of delivered orders older than
+the window is the number to put on a dashboard.
 
 ## Alerting
 

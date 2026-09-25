@@ -211,6 +211,30 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
+  # Finish delivered orders whose hold window has passed (FR-5.4, FR-5.6). This is the `system`
+  # actor the order state machine talks about — the clock, and nothing else.
+  #
+  # It is the only path from `delivered` to `completed` that does not involve an admin, and it
+  # exists because neither party may finish their own sale. If this never runs, sellers are
+  # never paid out and nothing anywhere reports an error: the orders simply sit in `delivered`.
+  #
+  # `internal` only: it talks to Postgres and to nothing else.
+  complete-orders:
+    <<: *hardening
+    profiles: [jobs]
+    image: ${API_IMAGE:?set API_IMAGE to a signed digest}
+    user: '65532:65532'
+    command: ['dist/job-complete-orders.js']
+    environment:
+      NODE_ENV: production
+      # The worker role, which is the only one that can write `completed` at all. Wired to the
+      # web role by mistake, every statement would be refused rather than quietly succeeding.
+      DATABASE_URL_WORKER: ${DATABASE_URL_WORKER:?}
+    networks: [internal]
+    restart: 'no'
+    depends_on:
+      postgres: { condition: service_healthy }
+
   postgres:
     <<: *hardening
     image: postgres:17-bookworm@sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652
