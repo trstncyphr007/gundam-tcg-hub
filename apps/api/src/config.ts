@@ -83,6 +83,31 @@ const apiEnvSchema = z.object({
    * number nobody can reconcile, and this one is subtracted from what a seller is owed.
    */
   MARKETPLACE_FEE_BPS: z.coerce.number().int().min(0).max(2000).default(500),
+
+  /**
+   * Listing photos (Phase 5, SR-5.5, open item O4).
+   *
+   * All optional, like Stripe: uploads are simply off until storage is configured, and every
+   * other part of this API runs without it. A route that exists and answers 500 because a
+   * bucket is missing is worse than one that is not mounted.
+   *
+   * No default for the credentials, for the same reason there is no default Stripe key.
+   */
+  S3_ENDPOINT: optional(z.url()),
+  S3_BUCKET: optional(z.string().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/u)),
+  S3_REGION: z.string().min(1).default('us-east-1'),
+  S3_ACCESS_KEY_ID: optional(z.string().min(3)),
+  S3_SECRET_ACCESS_KEY: optional(z.string().min(8)),
+
+  /**
+   * The virus scanner (SR-5.5).
+   *
+   * Optional, and its absence is **not** permission to skip scanning: the pipeline leaves a
+   * photo `pending` when it cannot get a verdict. Configuring this is what lets an upload
+   * finish, not what makes it safe.
+   */
+  CLAMAV_HOST: optional(z.string().min(1)),
+  CLAMAV_PORT: z.coerce.number().int().min(1).max(65_535).default(3310),
 });
 
 export type ApiConfig = z.infer<typeof apiEnvSchema>;

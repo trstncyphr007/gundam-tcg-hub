@@ -21,6 +21,7 @@
     "@types/node": "24.13.4",
     "@types/pngjs": "6.0.5",
     "@vitest/coverage-v8": "5.0.0",
+    "testcontainers": "11.7.1",
     "typescript": "6.0.3",
     "vitest": "5.0.0"
   }

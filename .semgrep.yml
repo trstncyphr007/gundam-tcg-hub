@@ -48,6 +48,16 @@ rules:
       # which is what ADR-030 asks for: "add it to that module, or change this rule on
       # purpose."
       - pattern-regex: (from|require\()\s*['"]stripe['"]
+      # A raw socket is an outbound request with no URL at all. The virus scanner speaks its
+      # own protocol over TCP, which this rule would have missed entirely for the same reason
+      # it missed the Stripe SDK: it enumerated HTTP libraries rather than outbound capability.
+      #
+      # Named imports only, and only the ones that open a connection. `node:net` also exports
+      # `isIP`, which is a pure predicate used by the IP-hashing helper and the config loader —
+      # matching the whole module flagged both of them for doing nothing of the kind.
+      - pattern-regex: import\s*\{[^}]*\b(connect|createConnection|createServer|Socket)\b[^}]*\}\s*from\s*['"](node:)?(net|tls)['"]
+      - pattern-regex: import\s+\*\s+as\s+\w+\s+from\s*['"](node:)?(net|tls)['"]
+      - pattern-regex: require\(\s*['"](node:)?(net|tls)['"]\s*\)
     paths:
       include:
         - apps/api/src/**
@@ -58,6 +68,12 @@ rules:
         # user-supplied URL anywhere in it — so the questions this rule exists to ask have the
         # same answer they have for the Discord transport: there is nothing to point at.
         - apps/api/src/payments/stripe.ts
+        # Object storage (Phase 5, slice 4). Endpoint and bucket from configuration, object
+        # keys built from ids we generated, redirects refused outright. Same answer again.
+        - packages/photos/src/storage.ts
+        # The virus scanner, over TCP to a host from configuration. It sends bytes and reads a
+        # verdict; there is no URL and nothing a request can steer.
+        - packages/photos/src/scanner.ts
         - '**/*.test.ts'
         - packages/db/src/test/**
 
