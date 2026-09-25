@@ -37,6 +37,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <Link href="/account/collections" className="text-sm text-muted">
               My collections
             </Link>
+            <Link href="/account/selling" className="text-sm text-muted">
+              Selling
+            </Link>
             <Link href="/creator/breaks" className="text-sm text-muted">
               Breaks
             </Link>

@@ -89,6 +89,41 @@ test.describe('security headers (SR-X.14)', () => {
     // other production-build checks below.
   });
 
+  /**
+   * The photo bucket, named exactly, in both directives that the upload flow needs.
+   *
+   * This is here rather than only in the unit tests because the failure it guards against is
+   * not a wrong string — it is the origin never reaching the middleware at all. Next inlines
+   * `process.env` at build time for edge middleware and leaves bracket accesses undefined, so
+   * a change of runtime, or of how the web app is given its environment, would silently empty
+   * both directives. The symptom is an upload that fails in the browser console, on a page
+   * that otherwise looks fine, which is precisely what nothing on the server would notice.
+   */
+  test('names the photo bucket as a source when one is configured', async ({ page }) => {
+    const configured = process.env['PHOTO_STORAGE_ORIGIN'];
+    test.skip(
+      configured === undefined || configured === '',
+      'no photo storage configured for this run',
+    );
+
+    const response = await page.goto('/');
+    const csp = response?.headers()['content-security-policy'] ?? '';
+    const origin = new URL(configured ?? '');
+
+    const directives = new Map(
+      csp
+        .split(';')
+        .map((part) => part.trim().split(/\s+/))
+        .map((parts) => [parts[0] ?? '', parts.slice(1)] as const),
+    );
+
+    for (const directive of ['img-src', 'connect-src']) {
+      expect(directives.get(directive) ?? [], `${directive} must name the bucket`).toContain(
+        `${origin.protocol}//${origin.host}`,
+      );
+    }
+  });
+
   // The dev server needs un-nonced inline scripts for fast refresh, so the strict policy is
   // only asserted against a production build (which is what CI and prod actually run).
   test('uses a strict nonce policy in production builds', async ({ page }) => {

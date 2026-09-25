@@ -451,7 +451,98 @@ async function adminGet<T extends object>(path: string): Promise<AdminResult<T>>
   }
 }
 
+/* ----------------------------------------------------------------------------------------- *
+ * The marketplace (Phase 5).
+ * ----------------------------------------------------------------------------------------- */
+
+export interface SellerStatus {
+  onboarded: boolean;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+}
+
+export interface Listing {
+  id: string;
+  cardVariantId: string;
+  condition: string;
+  priceCents: number;
+  currency: string;
+  quantity: number;
+  status: 'draft' | 'active' | 'sold' | 'withdrawn';
+  photoRequired: boolean;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface ListingPhoto {
+  id: string;
+  status: 'pending' | 'approved' | 'rejected';
+  position: number;
+  width: number | null;
+  height: number | null;
+  rejectionReason: string | null;
+  /** Short-lived and signed. Null until the pipeline has something to serve. */
+  url: string | null;
+}
+
+export interface Order {
+  id: string;
+  buyerId: string;
+  sellerId: string;
+  condition: string;
+  quantity: number;
+  status:
+    | 'created'
+    | 'paid'
+    | 'shipped'
+    | 'delivered'
+    | 'completed'
+    | 'cancelled'
+    | 'refunded'
+    | 'disputed';
+  amountCents: number;
+  currency: string;
+  trackingCarrier: string | null;
+  trackingNumber: string | null;
+  createdAt: string;
+}
+
+export interface OrderEvent {
+  id: string;
+  fromStatus: string;
+  toStatus: string;
+  actor: string;
+  reason: string | null;
+  at: string;
+}
+
+export interface Reputation {
+  sellerId: string;
+  /** Null, never zero, when nobody has rated them — see `getReputation`. */
+  average: number | null;
+  count: number;
+  distribution: Record<string, number>;
+}
+
 export const api = {
+  sellerStatus: () => getAuthed<SellerStatus>('/v1/seller'),
+
+  myListings: () => getAuthed<{ items: Listing[] }>('/v1/listings'),
+
+  listingPhotos: (listingId: string) =>
+    getAuthed<{ items: ListingPhoto[] }>(`/v1/listings/${listingId}/photos`),
+
+  myOrders: () => getAuthed<{ items: Order[] }>('/v1/orders'),
+
+  orderEvents: (orderId: string) =>
+    getAuthed<{ items: OrderEvent[] }>(`/v1/orders/${orderId}/events`),
+
+  sellerRatings: (sellerId: string) =>
+    getAuthed<{
+      reputation: Reputation;
+      items: { id: string; stars: number; comment: string | null; createdAt: string }[];
+    }>(`/v1/sellers/${sellerId}/ratings`),
+
   cards: (query: string) =>
     getPublic<Page<Card>>(`/v1/cards?limit=24${query ? `&q=${encodeURIComponent(query)}` : ''}`),
   card: (id: string) =>

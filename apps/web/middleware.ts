@@ -1,46 +1,25 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { buildCsp } from './lib/csp';
 
 /**
  * Per-request Content-Security-Policy with a nonce (SR-2.3/SR-X.14).
  *
- * No 'unsafe-inline' for scripts: Next picks up the nonce from this header and stamps it on
- * its own inline bootstrap. 'strict-dynamic' lets those trusted scripts load their chunks
- * while still blocking injected ones.
+ * The policy itself is built in `lib/csp.ts`, where it can be tested. This file supplies the
+ * two things that only exist at request time: the nonce, and the configured photo origin.
+ *
+ * `PHOTO_STORAGE_ORIGIN` is the public origin of the listing-photo bucket — the one the
+ * *browser* reaches, which is not necessarily the one the API uses (locally they differ by
+ * nothing, in production the API may talk to R2 over an internal name). It is deliberately a
+ * separate variable from `S3_ENDPOINT` for that reason, and the web app is given only it.
  */
 export function middleware(request: NextRequest): NextResponse {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
-  const isDev = process.env.NODE_ENV === 'development';
 
-  // The dev server injects its own un-nonced inline scripts (fast refresh), and
-  // 'strict-dynamic' makes browsers ignore 'unsafe-inline', so dev gets a looser policy.
-  // Production keeps the strict nonce policy, which the e2e suite asserts.
-  const scriptSrc = isDev
-    ? `script-src 'self' 'unsafe-inline' 'unsafe-eval'`
-    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`;
-  // No inline styles either, in production (ADR-031). Components style with classes from the
-  // build's stylesheet; a style *attribute* anywhere is refused, which closes CSS injection —
-  // selector-based exfiltration and UI redress — as well as script injection. The dev server
-  // injects its own unnonced <style> tags for hot reload, so dev keeps the looser policy, as
-  // it does for scripts.
-  const styleSrc = isDev ? `style-src 'self' 'unsafe-inline'` : `style-src 'self' 'nonce-${nonce}'`;
-
-  const csp = [
-    `default-src 'self'`,
-    scriptSrc,
-    styleSrc,
-    // No `https:` here. That is a wildcard: it permits an image from any HTTPS origin,
-    // which is both an exfiltration channel (the path carries data) and a tracking one.
-    // We render no remote images -- card art is linked, not embedded (plan §23) -- so when
-    // an approved image host does arrive, name it here rather than reopening the scheme.
-    `img-src 'self' data:`,
-    `font-src 'self'`,
-    `connect-src 'self'`,
-    `object-src 'none'`,
-    `base-uri 'none'`,
-    `form-action 'self'`,
-    `frame-ancestors 'none'`,
-    `upgrade-insecure-requests`,
-  ].join('; ');
+  const csp = buildCsp({
+    nonce,
+    dev: process.env.NODE_ENV === 'development',
+    photoOrigin: process.env['PHOTO_STORAGE_ORIGIN'],
+  });
 
   const headers = new Headers(request.headers);
   headers.set('x-nonce', nonce);
@@ -55,6 +34,15 @@ export function middleware(request: NextRequest): NextResponse {
 }
 
 export const config = {
+  /**
+   * Node, not edge, because the policy reads configuration.
+   *
+   * On the edge runtime Next inlines `process.env.X` at build time and leaves anything it
+   * cannot see statically — which includes every bracket access — as undefined at run time.
+   * The photo origin would then be baked into the image in CI, where it is not known, and the
+   * symptom would be uploads that fail in the browser with a console message nobody sees.
+   */
+  runtime: 'nodejs',
   matcher: [
     // Everything except static assets and the proxied API paths.
     '/((?!_next/static|_next/image|favicon.ico|api/auth|v1).*)',
