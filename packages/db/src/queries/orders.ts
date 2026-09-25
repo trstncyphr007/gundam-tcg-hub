@@ -529,3 +529,102 @@ export async function ordersReadyToComplete(
       .limit(200)
   );
 }
+
+/**
+ * Stripe says the money went back (FR-5.5). Worker role only.
+ *
+ * `refunded` is reachable by `stripe` and nobody else, which is the same rule as `paid` and for
+ * the same reason: an admin can *ask* Stripe to refund, and what moves the order is the webhook
+ * that follows. The difference between those two sentences is the whole control — an admin who
+ * could write `refunded` directly could mark an order refunded without any money moving, and
+ * the row would look exactly like one where it had.
+ *
+ * Idempotent on the status: Stripe sends `charge.refunded` for each refund, and a partially
+ * refunded charge that is later refunded in full sends it twice.
+ */
+export async function markOrderRefunded(
+  db: Database,
+  input: { orderId: string; reason?: string | undefined },
+): Promise<{ applied: boolean; order?: Order }> {
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(orders)
+      .where(eq(orders.id, input.orderId))
+      .for('update')
+      .limit(1);
+    if (!existing) return { applied: false };
+    if (existing.status === 'refunded') return { applied: false };
+
+    const order = await move(tx as unknown as Database, {
+      orderId: input.orderId,
+      to: 'refunded',
+      actor: 'stripe',
+      reason: input.reason ?? null,
+    });
+    return { applied: true, order };
+  });
+}
+
+/**
+ * A chargeback (FR-5.5, T11). Worker role only.
+ *
+ * The buyer went to their bank instead of to us. `completed → disputed` lists `stripe` among
+ * its actors precisely for this: a sale can go wrong after it is finished, and a chargeback
+ * arrives whenever it arrives.
+ *
+ * Not an error when the order is already disputed — a buyer who complained here and then went
+ * to their bank anyway is the common case, not a contradiction.
+ */
+export async function markOrderChargedBack(
+  db: Database,
+  input: { paymentIntentId: string; reason?: string | undefined },
+): Promise<{ applied: boolean; order?: Order }> {
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(orders)
+      .where(eq(orders.stripePaymentIntentId, input.paymentIntentId))
+      .for('update')
+      .limit(1);
+    if (!existing) return { applied: false };
+    if (existing.status === 'disputed' || existing.status === 'refunded') {
+      return { applied: false };
+    }
+
+    const order = await move(tx as unknown as Database, {
+      orderId: existing.id,
+      to: 'disputed',
+      actor: 'stripe',
+      reason: input.reason ?? 'chargeback opened with the buyer’s bank',
+    });
+    return { applied: true, order };
+  });
+}
+
+/** The order a payment belongs to, for a webhook that knows only Stripe's identifier. */
+export async function getOrderByPaymentIntent(
+  db: Database,
+  paymentIntentId: string,
+): Promise<Order | null> {
+  const [row] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.stripePaymentIntentId, paymentIntentId))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * One order, with no viewer. Worker role only.
+ *
+ * There is no `asUser` here because there is no user: an admin acting through the console and
+ * a webhook acting on Stripe's word are both looking at an order neither of them is a party to.
+ * On the web role this returns nothing at all, because `orders` FORCEs row-level security and a
+ * connection that has not said who it is matches no rows — so wiring this to the wrong pool
+ * fails visibly rather than quietly widening what a session can see.
+ */
+export async function getOrderById(db: Database, id: string): Promise<Order | null> {
+  const [row] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
+  return row ?? null;
+}

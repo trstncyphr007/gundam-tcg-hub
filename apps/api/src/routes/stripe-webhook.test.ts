@@ -1,4 +1,11 @@
-import { createDb, seedSample } from '@gth/db';
+import {
+  createDb,
+  createListing,
+  createOrder,
+  markOrderPaid,
+  seedSample,
+  setListingStatus,
+} from '@gth/db';
 import { type TestDatabase, startTestDatabase } from '@gth/db/test';
 import type { FastifyInstance } from 'fastify';
 import Stripe from 'stripe';
@@ -73,9 +80,11 @@ beforeAll(async () => {
     },
   });
 
-  await tdb.db.execute(
-    `insert into app.users (id, name, email) values ('${SELLER}', 'S', 's@example.invalid')`,
-  );
+  for (const id of [SELLER, BUYER]) {
+    await tdb.db.execute(
+      `insert into app.users (id, name, email) values ('${id}', '${id}', '${id}@example.invalid')`,
+    );
+  }
 }, 180_000);
 
 afterAll(async () => {
@@ -86,7 +95,9 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await tdb.db.execute(`truncate app.webhook_events, app.seller_accounts, app.audit_log cascade`);
+  await tdb.db.execute(
+    `truncate app.webhook_events, app.seller_accounts, app.audit_log, app.orders, app.listings cascade`,
+  );
   await workerPool.db.execute(
     `insert into app.seller_accounts (user_id, stripe_account_id) values ('${SELLER}', '${ACCOUNT}')`,
   );
@@ -253,5 +264,152 @@ describe('what a session can do with this table', () => {
       refused = true;
     }
     expect(refused).toBe(true);
+  });
+});
+
+/**
+ * Refunds and chargebacks (FR-5.5, T11).
+ *
+ * Signed for real, like everything else in this file. What is under test is the half that
+ * decides whether to believe a claim that money moved *back* — the same question as `paid`,
+ * asked in the other direction, and with the same answer: only a verified webhook may say so.
+ */
+const BUYER = 'webhook-buyer';
+
+/** A paid order, built on the roles actually permitted to build one. */
+async function aPaidOrder(paymentIntentId: string): Promise<string> {
+  const [variant] = await tdb.db.execute<{ id: string }>(
+    `select id from app.card_variants limit 1`,
+  );
+  const listing = await createListing(webPool.db, SELLER, {
+    cardVariantId: String(variant?.id),
+    condition: 'nm',
+    priceCents: 2000,
+    quantity: 1,
+  });
+  await setListingStatus(webPool.db, SELLER, listing.id, 'active');
+  const order = await createOrder(webPool.db, BUYER, {
+    sellerId: SELLER,
+    listingId: listing.id,
+    cardVariantId: String(variant?.id),
+    condition: 'nm',
+    quantity: 1,
+    amountCents: 2000,
+    feeCents: 100,
+    currency: 'USD',
+  });
+  await markOrderPaid(workerPool.db, {
+    orderId: order.id,
+    paymentIntentId,
+    checkoutSessionId: `cs_${paymentIntentId}`,
+  });
+  return order.id;
+}
+
+function refunded(paymentIntentId: string, eventId: string, amountRefunded = 2000) {
+  return {
+    id: eventId,
+    object: 'event',
+    type: 'charge.refunded',
+    data: {
+      object: {
+        id: 'ch_1',
+        object: 'charge',
+        payment_intent: paymentIntentId,
+        amount: 2000,
+        amount_refunded: amountRefunded,
+      },
+    },
+  };
+}
+
+function disputeOpened(paymentIntentId: string, eventId: string) {
+  return {
+    id: eventId,
+    object: 'event',
+    type: 'charge.dispute.created',
+    data: {
+      object: {
+        id: 'dp_1',
+        object: 'dispute',
+        payment_intent: paymentIntentId,
+        reason: 'product_not_received',
+      },
+    },
+  };
+}
+
+async function statusOf(orderId: string): Promise<string> {
+  const [row] = await workerPool.db.execute<{ status: string }>(
+    `select status from app.orders where id = '${orderId}'`,
+  );
+  return String(row?.status);
+}
+
+describe('money going back', () => {
+  it('marks an order refunded when Stripe says the whole charge went back', async () => {
+    const orderId = await aPaidOrder('pi_wh_refund');
+    const { payload, header } = delivery(refunded('pi_wh_refund', 'evt_refund_1'));
+
+    expect((await post(payload, header)).statusCode).toBe(200);
+    expect(await statusOf(orderId)).toBe('refunded');
+  });
+
+  it('leaves a partly refunded order where it is', async () => {
+    /**
+     * A partial refund is not a refunded order. The buyer has not been made whole and the sale
+     * has not been undone — it wants a person, not a status change.
+     */
+    const orderId = await aPaidOrder('pi_wh_partial');
+    const { payload, header } = delivery(refunded('pi_wh_partial', 'evt_refund_2', 500));
+
+    expect((await post(payload, header)).statusCode).toBe(200);
+    expect(await statusOf(orderId)).toBe('paid');
+  });
+
+  it('shrugs at a refund for a payment we have no order for', async () => {
+    const { payload, header } = delivery(refunded('pi_not_ours', 'evt_refund_3'));
+    expect((await post(payload, header)).statusCode).toBe(200);
+  });
+
+  it('will not refund on a forged signature', async () => {
+    // The whole marketplace in one assertion, in the direction that gives money away.
+    const orderId = await aPaidOrder('pi_wh_forged');
+    const { payload, header } = delivery(refunded('pi_wh_forged', 'evt_refund_4'), {
+      secret: 'whsec_somebody_elses_secret',
+    });
+
+    expect((await post(payload, header)).statusCode).toBe(400);
+    expect(await statusOf(orderId)).toBe('paid');
+  });
+});
+
+describe('a chargeback', () => {
+  it('moves the order to disputed and says which reason the bank gave', async () => {
+    const orderId = await aPaidOrder('pi_wh_dispute');
+    const { payload, header } = delivery(disputeOpened('pi_wh_dispute', 'evt_dispute_1'));
+
+    expect((await post(payload, header)).statusCode).toBe(200);
+    expect(await statusOf(orderId)).toBe('disputed');
+
+    const [entry] = await workerPool.db.execute<{ diff: { reason?: string } }>(
+      `select diff from app.audit_log where action = 'order.chargeback'`,
+    );
+    // Stripe's own vocabulary, prefixed so nobody reads it as something a person typed.
+    expect(entry?.diff.reason).toBe('chargeback:product_not_received');
+  });
+
+  it('reaches an order that was only just paid for', async () => {
+    /**
+     * The gap this found. `stripe` was originally an actor for `disputed` only from
+     * `completed`, so a chargeback on a freshly paid order was refused by the state machine
+     * and the handler could do nothing with it. A buyer goes to their bank when the charge
+     * appears on a statement, not when we decide the sale is finished.
+     */
+    const orderId = await aPaidOrder('pi_wh_early');
+    const { payload, header } = delivery(disputeOpened('pi_wh_early', 'evt_dispute_2'));
+
+    await post(payload, header);
+    expect(await statusOf(orderId)).toBe('disputed');
   });
 });

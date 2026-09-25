@@ -2,7 +2,10 @@ import { IllegalTransitionError } from '@gth/core';
 import {
   type Database,
   claimWebhookEvent,
+  getOrderByPaymentIntent,
+  markOrderChargedBack,
   markOrderPaid,
+  markOrderRefunded,
   markWebhookProcessed,
   updateSellerCapabilities,
   writeAuditLog,
@@ -126,6 +129,128 @@ type StripeEvent = { type: string; data: { object: unknown } };
 async function handle(db: Database, request: FastifyRequest, event: StripeEvent): Promise<void> {
   if (event.type === 'account.updated') return accountUpdated(db, event);
   if (event.type === 'checkout.session.completed') return checkoutCompleted(db, request, event);
+  if (event.type === 'charge.refunded') return chargeRefunded(db, request, event);
+  if (event.type === 'charge.dispute.created') return chargeDisputed(db, request, event);
+}
+
+/** The `payment_intent` on a charge, which arrives as an id or as an expanded object. */
+function paymentIntentOf(charge: { payment_intent?: unknown }): string | null {
+  if (typeof charge.payment_intent === 'string') return charge.payment_intent;
+  if (
+    typeof charge.payment_intent === 'object' &&
+    charge.payment_intent !== null &&
+    typeof (charge.payment_intent as { id?: unknown }).id === 'string'
+  ) {
+    return (charge.payment_intent as { id: string }).id;
+  }
+  return null;
+}
+
+/**
+ * The money went back (FR-5.5).
+ *
+ * The **only** path to `refunded`. An admin asking Stripe to refund does not move the order;
+ * this does, when Stripe confirms it happened. An admin who could write the status directly
+ * could mark an order refunded with no money moving, and the row would be indistinguishable
+ * from one where it had.
+ *
+ * A partial refund is not a refunded order. Stripe sends this event for each one, with
+ * `amount_refunded` running up to `amount`; anything short of the full amount leaves the order
+ * where it is, because the buyer has not been made whole and the sale has not been undone.
+ */
+async function chargeRefunded(
+  db: Database,
+  request: FastifyRequest,
+  event: StripeEvent,
+): Promise<void> {
+  const charge = event.data.object as {
+    payment_intent?: unknown;
+    amount?: unknown;
+    amount_refunded?: unknown;
+  };
+  const paymentIntentId = paymentIntentOf(charge);
+  if (paymentIntentId === null) return;
+
+  if (
+    typeof charge.amount !== 'number' ||
+    typeof charge.amount_refunded !== 'number' ||
+    charge.amount_refunded < charge.amount
+  ) {
+    // Partial, or a shape we did not expect. Recorded rather than acted on: a partial refund
+    // is a real thing that wants a human, and guessing at an unfamiliar payload is how an
+    // order gets refunded because a field was missing.
+    request.log.info({ paymentIntentId }, 'partial or unrecognised refund, order left as it is');
+    return;
+  }
+
+  const order = await getOrderByPaymentIntent(db, paymentIntentId);
+  if (!order) return;
+
+  let result;
+  try {
+    result = await markOrderRefunded(db, { orderId: order.id, reason: 'refunded by Stripe' });
+  } catch (error) {
+    if (!(error instanceof IllegalTransitionError)) throw error;
+    // A refund for an order that cannot legally be refunded — one still `created`, say.
+    // Recorded and acknowledged: the money has genuinely moved, so somebody has to look.
+    request.log.error({ orderId: order.id, from: error.from }, 'refund for an unrefundable order');
+    await writeAuditLog(db, {
+      action: 'order.refund_refused',
+      targetType: 'order',
+      targetId: order.id,
+      diff: { from: error.from, reason: error.reason },
+    });
+    return;
+  }
+
+  if (!result.applied) return;
+  await writeAuditLog(db, {
+    action: 'order.refunded',
+    targetType: 'order',
+    targetId: order.id,
+    diff: { amountCents: charge.amount_refunded },
+  });
+}
+
+/**
+ * The buyer went to their bank instead of to us (T11).
+ *
+ * `completed → disputed` lists `stripe` among its actors precisely for this: a sale can go
+ * wrong after it is finished, and a chargeback arrives whenever it arrives. The order is moved
+ * to `disputed` rather than `refunded` because nothing has been decided yet — the bank will
+ * take weeks, and the money may come back.
+ */
+async function chargeDisputed(
+  db: Database,
+  request: FastifyRequest,
+  event: StripeEvent,
+): Promise<void> {
+  const dispute = event.data.object as { payment_intent?: unknown; reason?: unknown };
+  const paymentIntentId = paymentIntentOf(dispute);
+  if (paymentIntentId === null) return;
+
+  // Stripe's own vocabulary — `product_not_received`, `fraudulent` — prefixed so nobody reads
+  // it as something a person typed.
+  const reason =
+    typeof dispute.reason === 'string' ? `chargeback:${dispute.reason}` : 'chargeback opened';
+
+  let result;
+  try {
+    result = await markOrderChargedBack(db, { paymentIntentId, reason });
+  } catch (error) {
+    if (!(error instanceof IllegalTransitionError)) throw error;
+    request.log.error({ paymentIntentId, from: error.from }, 'chargeback on an unmovable order');
+    return;
+  }
+
+  if (!result.applied || !result.order) return;
+  request.log.warn({ orderId: result.order.id }, 'chargeback opened');
+  await writeAuditLog(db, {
+    action: 'order.chargeback',
+    targetType: 'order',
+    targetId: result.order.id,
+    diff: { reason },
+  });
 }
 
 async function accountUpdated(db: Database, event: StripeEvent): Promise<void> {

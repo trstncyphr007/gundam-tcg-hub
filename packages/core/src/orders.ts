@@ -102,7 +102,19 @@ const TABLE: Readonly<
     // The one transition the seller owns outright: they are the one with the parcel.
     shipped: ['seller'],
     refunded: ['stripe'],
-    disputed: ['buyer', 'admin'],
+    /**
+     * `stripe` is here for a chargeback, not for anything a webhook decides on its own.
+     *
+     * A buyer can go to their bank the moment the charge appears on a statement — they do not
+     * wait for the card to arrive, and they certainly do not wait for us to mark the sale
+     * complete. This actor was originally listed only on `completed`, which meant a chargeback
+     * on a freshly paid order had nowhere to go and was refused by the state machine. A test
+     * for the chargeback handler found it.
+     *
+     * The same reasoning as `refunded`: a fact about money arrives when it arrives, and the
+     * table has to have somewhere to put it.
+     */
+    disputed: ['buyer', 'admin', 'stripe'],
     // Paid but never shipped, cancelled by an admin: the refund that follows is a separate
     // transition from `cancelled`, because the money has to come back through Stripe.
     cancelled: ['admin'],
@@ -111,13 +123,13 @@ const TABLE: Readonly<
     // Carrier confirmation or an admin. Not the seller — see the header.
     delivered: ['system', 'admin'],
     refunded: ['stripe'],
-    disputed: ['buyer', 'admin'],
+    disputed: ['buyer', 'admin', 'stripe'],
   },
   delivered: {
     // The clock, once the hold has passed. Or an admin closing it early.
     completed: ['system', 'admin'],
     refunded: ['stripe'],
-    disputed: ['buyer', 'admin'],
+    disputed: ['buyer', 'admin', 'stripe'],
   },
   completed: {
     // A sale can still go wrong after it is finished: the dispute window outlives

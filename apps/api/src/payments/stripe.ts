@@ -52,6 +52,33 @@ export interface StripeClient {
   constructEvent: (rawBody: Buffer | string, signature: string) => Stripe.Event;
   /** A hosted Checkout session for one order (FR-5.3). */
   createCheckoutSession: (input: CheckoutInput) => Promise<{ id: string; url: string }>;
+  /**
+   * Ask Stripe to give the money back (FR-5.5).
+   *
+   * **This does not refund the order.** It asks Stripe to refund the payment; the order moves
+   * when the resulting `charge.refunded` webhook arrives. Those are two different sentences and
+   * the difference is the control — see `markOrderRefunded`.
+   */
+  refundPayment: (input: RefundInput) => Promise<{ id: string; status: string | null }>;
+}
+
+export interface RefundInput {
+  paymentIntentId: string;
+  /** Ours, so the refund is traceable to the order without a lookup. */
+  orderId: string;
+  /** Omitted refunds the whole payment, which is the only case slice 6 offers. */
+  amountCents?: number | undefined;
+  reason?: 'duplicate' | 'fraudulent' | 'requested_by_customer' | undefined;
+  /**
+   * Whether the seller gives back their share too.
+   *
+   * `true` claws the transfer back from the connected account, which is right when the seller
+   * is at fault — they had the money for a card that never arrived. `false` leaves them paid
+   * and the platform out of pocket, which is a goodwill decision somebody makes deliberately.
+   */
+  reverseTransfer?: boolean | undefined;
+  /** And whether we give our fee back with it. Refunding a sale we earned nothing on. */
+  refundApplicationFee?: boolean | undefined;
 }
 
 export interface CheckoutInput {
@@ -211,6 +238,27 @@ export function createStripeClient(options: StripeOptions): StripeClient {
       // a buyer, so a missing one is a failure here rather than a redirect to "null" there.
       if (session.url === null) throw new Error('stripe returned a session with no url');
       return { id: session.id, url: session.url };
+    },
+
+    refundPayment: async (input) => {
+      const refund = await stripe.refunds.create(
+        {
+          payment_intent: input.paymentIntentId,
+          ...(input.amountCents === undefined ? {} : { amount: input.amountCents }),
+          ...(input.reason === undefined ? {} : { reason: input.reason }),
+          // On a destination charge these decide who actually bears it. Defaulting both to
+          // true means a refund costs the seller their proceeds and us our fee, which is the
+          // honest arrangement when a sale is being undone: nobody keeps a share of a
+          // transaction that did not happen.
+          reverse_transfer: input.reverseTransfer ?? true,
+          refund_application_fee: input.refundApplicationFee ?? true,
+          metadata: { orderId: input.orderId },
+        },
+        // Keyed on the order, so a double-clicked refund button refunds once. Without this a
+        // retry after a timeout is a second refund, and the money is gone twice.
+        idempotency('refund', input.orderId),
+      );
+      return { id: refund.id, status: refund.status };
     },
   };
 }
