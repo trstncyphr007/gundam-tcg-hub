@@ -34,6 +34,7 @@ import { registerMarketRoutes } from './routes/market.js';
 import { type CheckoutDeps, registerCheckoutRoutes } from './routes/checkout.js';
 import { type PhotoDeps, registerPhotoRoutes } from './routes/photos.js';
 import { registerFulfilmentRoutes } from './routes/fulfilment.js';
+import { registerRatingRoutes } from './routes/ratings.js';
 import { type SellerDeps, registerSellerRoutes } from './routes/seller.js';
 import { type StripeWebhookDeps, registerStripeWebhookRoutes } from './routes/stripe-webhook.js';
 import { registerProfileRoutes } from './routes/profile.js';
@@ -527,6 +528,9 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
      * is a seller whose buyer is waiting for nothing.
      */
     registerFulfilmentRoutes(app, { db: deps.writeDb });
+    // Reputation (FR-5.7). Mounted with the rest of the session routes: a rating needs no
+    // Stripe and no bucket, only a completed order — and the policy is what decides that.
+    registerRatingRoutes(app, { db: deps.writeDb });
     if (deps.seller) registerSellerRoutes(app, deps.seller);
     if (deps.checkout) {
       registerCheckoutRoutes(app, { ...deps.checkout, ...(flags ? { flags } : {}) });
