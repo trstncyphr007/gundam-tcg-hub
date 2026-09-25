@@ -485,25 +485,33 @@ export interface ListingPhoto {
   url: string | null;
 }
 
+export type OrderStatus =
+  | 'created'
+  | 'paid'
+  | 'shipped'
+  | 'delivered'
+  | 'completed'
+  | 'cancelled'
+  | 'refunded'
+  | 'disputed';
+
 export interface Order {
   id: string;
   buyerId: string;
   sellerId: string;
+  cardVariantId: string;
   condition: string;
   quantity: number;
-  status:
-    | 'created'
-    | 'paid'
-    | 'shipped'
-    | 'delivered'
-    | 'completed'
-    | 'cancelled'
-    | 'refunded'
-    | 'disputed';
+  status: OrderStatus;
   amountCents: number;
+  feeCents: number;
+  taxCents: number;
   currency: string;
   trackingCarrier: string | null;
   trackingNumber: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  completedAt: string | null;
   createdAt: string;
 }
 
@@ -514,6 +522,13 @@ export interface OrderEvent {
   actor: string;
   reason: string | null;
   at: string;
+}
+
+export interface Rating {
+  id: string;
+  stars: number;
+  comment: string | null;
+  createdAt: string;
 }
 
 export interface Reputation {
@@ -538,10 +553,10 @@ export const api = {
     getAuthed<{ items: OrderEvent[] }>(`/v1/orders/${orderId}/events`),
 
   sellerRatings: (sellerId: string) =>
-    getAuthed<{
-      reputation: Reputation;
-      items: { id: string; stars: number; comment: string | null; createdAt: string }[];
-    }>(`/v1/sellers/${sellerId}/ratings`),
+    getAuthed<{ reputation: Reputation; items: Rating[] }>(`/v1/sellers/${sellerId}/ratings`),
+
+  /** Null when this buyer has not rated that order — a 404, which `getAuthed` already flattens. */
+  myRating: (orderId: string) => getAuthed<Rating>(`/v1/orders/${orderId}/rating`),
 
   cards: (query: string) =>
     getPublic<Page<Card>>(`/v1/cards?limit=24${query ? `&q=${encodeURIComponent(query)}` : ''}`),
