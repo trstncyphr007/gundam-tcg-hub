@@ -1,6 +1,7 @@
 import { AUTO_COMPLETE_AFTER_DAYS, type OrderActor, type OrderStatus, transition } from '@gth/core';
-import { and, eq, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
+import { users } from '../schema/auth.js';
 import { listings, orderEvents, orders } from '../schema/market.js';
 import { MissingReferenceError, isForeignKeyViolation, isUniqueViolation } from './pg-errors.js';
 import { asUser } from './watches.js';
@@ -627,4 +628,65 @@ export async function getOrderByPaymentIntent(
 export async function getOrderById(db: Database, id: string): Promise<Order | null> {
   const [row] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
   return row ?? null;
+}
+
+/**
+ * Everything the fraud rules need about a buyer, in one round trip (SR-5.6).
+ *
+ * Age and both counts together, because they are always wanted together and three queries on
+ * the checkout path is three chances for one of them to be forgotten.
+ *
+ * The counts go through the buyer's own policy, so they see exactly their orders and nobody
+ * else's — correct, and the reason this cannot be used to measure somebody else's activity.
+ * The age comes from `users`, which the web role may read.
+ */
+export interface BuyerRisk {
+  accountAgeMs: number;
+  ordersLastDay: number;
+  ordersLastHour: number;
+}
+
+export async function getBuyerRisk(
+  db: Database,
+  buyerId: string,
+  now: Date = new Date(),
+): Promise<BuyerRisk> {
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+  return asUser(db, buyerId, async (tx) => {
+    const [account] = await tx
+      .select({ createdAt: users.createdAt })
+      .from(users)
+      .where(eq(users.id, buyerId))
+      .limit(1);
+
+    /**
+     * The window conditions are built with `gte` rather than written into the template.
+     *
+     * A raw `Date` interpolated into a `sql` template binds with a type postgres.js will not
+     * serialise — the same trap `ordersReadyToComplete` fell into. Passing the builder's own
+     * comparison keeps the column's type information, and it encodes correctly.
+     */
+    const rows = await tx
+      .select({
+        day: sql<number>`count(*) filter (where ${gte(orders.createdAt, dayAgo)})::int`,
+        hour: sql<number>`count(*) filter (where ${gte(orders.createdAt, hourAgo)})::int`,
+      })
+      .from(orders)
+      .where(eq(orders.buyerId, buyerId));
+
+    return {
+      /**
+       * An account we cannot find is treated as brand new, not as ancient.
+       *
+       * It should not happen — the session named it. But the failure mode of the other default
+       * is that an unreadable row buys anything it likes, and "we could not tell" should never
+       * resolve to "allow".
+       */
+      accountAgeMs: account ? now.getTime() - account.createdAt.getTime() : 0,
+      ordersLastDay: rows[0]?.day ?? 0,
+      ordersLastHour: rows[0]?.hour ?? 0,
+    };
+  });
 }

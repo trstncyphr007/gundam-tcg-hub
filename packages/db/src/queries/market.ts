@@ -1,5 +1,5 @@
 import { type ListingDraft, photosRequiredFor, validateListing } from '@gth/core';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gte, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { cardVariants, cards, sets } from '../schema/catalog.js';
 import { listings } from '../schema/market.js';
@@ -240,5 +240,20 @@ export async function deleteDraftListing(
       )
       .returning();
     return rows.length > 0;
+  });
+}
+
+/** How many listings this seller has created since a moment (SR-5.6). */
+export async function countSellerListingsSince(
+  db: Database,
+  sellerId: string,
+  since: Date,
+): Promise<number> {
+  return asUser(db, sellerId, async (tx) => {
+    const rows = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(listings)
+      .where(and(eq(listings.sellerId, sellerId), gte(listings.createdAt, since)));
+    return rows[0]?.n ?? 0;
   });
 }
