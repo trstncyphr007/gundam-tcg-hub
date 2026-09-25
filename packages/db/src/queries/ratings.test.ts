@@ -3,7 +3,7 @@ import { createDb } from '../client.js';
 import { seedSample } from '../seed/sample.js';
 import { expectDbError } from '../test/expect.js';
 import { type TestDatabase, startTestDatabase } from '../test/harness.js';
-import { createListing, setListingStatus } from './market.js';
+import { browseListingsForCard, createListing, setListingStatus } from './market.js';
 import {
   completeOrder,
   createOrder,
@@ -18,6 +18,7 @@ import {
   getReputation,
   listSellerRatings,
   rateOrder,
+  reputationOf,
   updateRating,
 } from './ratings.js';
 import { asUser } from './watches.js';
@@ -49,6 +50,7 @@ const OTHER_SELLER = 'rate-seller-2';
 const BUYER = 'rate-buyer';
 const STRANGER = 'rate-stranger';
 let variantId = '';
+let cardId = '';
 let counter = 0;
 
 /** An order carried all the way to `completed`, which is the only kind that can be rated. */
@@ -128,10 +130,12 @@ beforeAll(async () => {
       `insert into app.users (id, name, email) values ('${id}', '${id}', '${id}@example.invalid')`,
     );
   }
-  const [variant] = await tdb.db.execute<{ id: string }>(
-    `select id from app.card_variants limit 1`,
+  const [variant] = await tdb.db.execute<{ id: string; card_id: string }>(
+    `select id, card_id from app.card_variants limit 1`,
   );
   variantId = String(variant?.id);
+  // The card the browse page is *for*: listings are per printing, a buyer asks per card.
+  cardId = String(variant?.card_id);
 }, 180_000);
 
 afterAll(async () => {
@@ -323,6 +327,78 @@ describe('the number under a seller’s name', () => {
 
     expect((await getReputation(web, SELLER)).average).toBe(1);
     expect((await getReputation(web, OTHER_SELLER)).average).toBe(5);
+  });
+});
+
+describe('several sellers at once, for a browse page', () => {
+  it('gives the same answer as asking one at a time', async () => {
+    // The whole risk of a second implementation: a card page showing 4.3 and the seller's own
+    // page showing 4.33 is a bug somebody writes in to report. Asserted against the original
+    // rather than against a hard-coded number, so the two cannot drift apart later.
+    for (const stars of [5, 4, 4]) {
+      await rateOrder(web, BUYER, { orderId: await completedOrder(SELLER), stars });
+    }
+    await rateOrder(web, BUYER, { orderId: await completedOrder(OTHER_SELLER), stars: 2 });
+
+    const batched = await reputationOf(anonymous, [SELLER, OTHER_SELLER]);
+    for (const sellerId of [SELLER, OTHER_SELLER]) {
+      const one = await getReputation(anonymous, sellerId);
+      expect(batched.get(sellerId)).toEqual({ average: one.average, count: one.count });
+    }
+  });
+
+  it('leaves out a seller nobody has rated, rather than scoring them zero', async () => {
+    // Absent, so the caller has to decide what to show. Present-with-zero would let a browse
+    // page render "0.0" under a new seller's first listing, which is the worst score there is.
+    const standing = await reputationOf(anonymous, [SELLER]);
+    expect(standing.has(SELLER)).toBe(false);
+  });
+
+  it('asks nothing at all for an empty list', async () => {
+    expect(await reputationOf(anonymous, [])).toEqual(new Map());
+  });
+
+  it('is readable by the role the public API runs as', async () => {
+    // Migration 0045 grants SELECT on order_ratings to app_readonly with USING (true), because
+    // reputation is public. If that ever changes, the card page loses its seller column.
+    await rateOrder(web, BUYER, { orderId: await completedOrder(SELLER), stars: 5 });
+    expect((await reputationOf(anonymous, [SELLER])).get(SELLER)).toEqual({
+      average: 5,
+      count: 1,
+    });
+  });
+});
+
+describe('what a browse page shows about a seller', () => {
+  it('carries the real reputation onto the listing', async () => {
+    await rateOrder(web, BUYER, { orderId: await completedOrder(SELLER), stars: 4 });
+
+    const listing = await createListing(web, SELLER, {
+      cardVariantId: variantId,
+      condition: 'nm',
+      priceCents: 4200,
+      quantity: 1,
+    });
+    await setListingStatus(web, SELLER, listing.id, 'active');
+
+    const [forSale] = await browseListingsForCard(anonymous, cardId);
+    expect(forSale?.seller).toEqual({ average: 4, count: 1 });
+  });
+
+  it('never names the seller', async () => {
+    // The reason the browse response has no sellerId: this route is public, with CORS `*` and
+    // no session, and a user id there is a list of everyone selling anything.
+    await rateOrder(web, BUYER, { orderId: await completedOrder(SELLER), stars: 4 });
+    const listing = await createListing(web, SELLER, {
+      cardVariantId: variantId,
+      condition: 'nm',
+      priceCents: 4200,
+      quantity: 1,
+    });
+    await setListingStatus(web, SELLER, listing.id, 'active');
+
+    const forSale = await browseListingsForCard(anonymous, cardId);
+    expect(JSON.stringify(forSale)).not.toContain(SELLER);
   });
 });
 

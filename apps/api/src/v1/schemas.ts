@@ -112,6 +112,37 @@ export const cardDetailSchema = cardSchema.extend({
   variants: z.array(variantSchema),
 });
 
+/**
+ * One listing on a public browse page (FR-5.2, FR-5.7).
+ *
+ * The registrar parses every response through its schema before sending it, so what is *not*
+ * declared here cannot escape however the query changes. Two absences are deliberate:
+ *
+ * - **No seller id.** This route is public — CORS `*`, no session — and a user id here would
+ *   hand a scraper a list of everyone selling anything. A buyer choosing between two listings
+ *   needs the price, the condition and whether the seller can be trusted, none of which
+ *   requires knowing which seller it is.
+ * - **No notes.** Free text a seller typed, on a route that answers to anyone and is cached at
+ *   the edge. It can come back when there is a reason for it and somebody moderating it.
+ */
+export const listingForSaleSchema = z.object({
+  id: z.uuid(),
+  cardVariantId: z.uuid(),
+  finish: z.enum(['normal', 'parallel', 'alt_art', 'promo']),
+  language: z.enum(['en', 'ja']),
+  condition: z.enum(['nm', 'lp', 'mp', 'hp', 'dmg']),
+  priceCents: z.int(),
+  currency: z.string(),
+  quantity: z.int(),
+  seller: z.object({
+    /** Null, never zero, when nobody has rated them. Zero is a score, and it is not one. */
+    average: z.number().nullable(),
+    count: z.int(),
+  }),
+});
+
+export const listingsForSaleSchema = z.object({ items: z.array(listingForSaleSchema) });
+
 export const productSchema = z.object({
   id: z.uuid(),
   gameId: z.uuid(),

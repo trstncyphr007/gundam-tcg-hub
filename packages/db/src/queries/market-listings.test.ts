@@ -6,6 +6,7 @@ import { expectDbError } from '../test/expect.js';
 import { type TestDatabase, startTestDatabase } from '../test/harness.js';
 import {
   ListingNotFoundError,
+  browseListingsForCard,
   createListing,
   deleteDraftListing,
   getListing,
@@ -35,6 +36,7 @@ let workerDb: TestDatabase['db'];
 const SELLER = 'listing-seller';
 const OTHER = 'listing-other';
 let variantId = '';
+let cardId = '';
 
 const draft = { priceCents: 1000, quantity: 1, condition: 'nm' as const };
 
@@ -53,10 +55,12 @@ beforeAll(async () => {
       `insert into app.users (id, name, email) values ('${id}', '${id}', '${id}@example.invalid')`,
     );
   }
-  const [variant] = await tdb.db.execute<{ id: string }>(
-    `select id from app.card_variants limit 1`,
+  const [variant] = await tdb.db.execute<{ id: string; card_id: string }>(
+    `select id, card_id from app.card_variants limit 1`,
   );
   variantId = String(variant?.id);
+  // Listings are per printing; a buyer browses per card.
+  cardId = String(variant?.card_id);
 }, 180_000);
 
 afterAll(async () => {
@@ -182,6 +186,68 @@ describe('who can see what', () => {
 
     const forSale = await listActiveForVariant(anonymous, variantId);
     expect(forSale.map((l) => l.priceCents)).toEqual([1000, 2000, 3000]);
+  });
+
+  /**
+   * The browse page, which is how anybody finds anything to buy.
+   *
+   * Read on the read-only role throughout, because that is the role the public route runs as
+   * and the only one whose policy on `listings` is `status = 'active'` alone. A draft hidden
+   * here is hidden by Postgres, not by a `where` clause somebody could remove.
+   */
+  it('shows every printing of a card, cheapest first', async () => {
+    for (const priceCents of [3000, 1000, 2000]) {
+      const l = await createListing(web, SELLER, {
+        ...draft,
+        cardVariantId: variantId,
+        priceCents,
+      });
+      await setListingStatus(web, SELLER, l.id, 'active');
+    }
+
+    const forSale = await browseListingsForCard(anonymous, cardId);
+    expect(forSale.map((l) => l.priceCents)).toEqual([1000, 2000, 3000]);
+    // The printing is a column in the answer rather than something to choose first.
+    expect(forSale[0]?.cardVariantId).toBe(variantId);
+    expect(typeof forSale[0]?.finish).toBe('string');
+    expect(typeof forSale[0]?.language).toBe('string');
+  });
+
+  it('cannot return a draft, because the role cannot see one', async () => {
+    await createListing(web, SELLER, { ...draft, cardVariantId: variantId, priceCents: 1 });
+    const live = await createListing(web, SELLER, { ...draft, cardVariantId: variantId });
+    await setListingStatus(web, SELLER, live.id, 'active');
+
+    const forSale = await browseListingsForCard(anonymous, cardId);
+    expect(forSale).toHaveLength(1);
+    expect(forSale[0]?.id).toBe(live.id);
+  });
+
+  it('drops one that has been taken off sale', async () => {
+    const listing = await createListing(web, SELLER, { ...draft, cardVariantId: variantId });
+    await setListingStatus(web, SELLER, listing.id, 'active');
+    expect(await browseListingsForCard(anonymous, cardId)).toHaveLength(1);
+
+    await setListingStatus(web, SELLER, listing.id, 'withdrawn');
+    expect(await browseListingsForCard(anonymous, cardId)).toEqual([]);
+  });
+
+  it('says nothing about a card that does not exist', async () => {
+    // An empty list rather than a 404. Which cards exist is answered by GET /v1/cards/{id},
+    // and making this route answer it twice would be a second thing to keep in agreement.
+    expect(await browseListingsForCard(anonymous, '00000000-0000-7000-8000-000000000000')).toEqual(
+      [],
+    );
+  });
+
+  it('shows an unrated seller as unrated rather than as bad', async () => {
+    const listing = await createListing(web, SELLER, { ...draft, cardVariantId: variantId });
+    await setListingStatus(web, SELLER, listing.id, 'active');
+
+    const [forSale] = await browseListingsForCard(anonymous, cardId);
+    // Null, never 0. Zero is a score — the worst one — and a new seller's first customer
+    // reading it would be reading a lie that costs them the sale.
+    expect(forSale?.seller).toEqual({ average: null, count: 0 });
   });
 
   it('shows a seller all of their own, in any state', async () => {

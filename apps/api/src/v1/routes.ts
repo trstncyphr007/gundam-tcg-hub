@@ -1,4 +1,5 @@
 import {
+  browseListingsForCard,
   getBreakerProfile,
   getCardById,
   listGames,
@@ -22,6 +23,7 @@ import {
   gameQuery,
   handleParam,
   idParam,
+  listingsForSaleSchema,
   priceQuery,
   productPageSchema,
   setPageSchema,
@@ -40,6 +42,13 @@ const PRICE_CACHE = 'public, max-age=60';
  * has just been found broken, must not keep reading as fine for five minutes.
  */
 const PROFILE_CACHE = 'public, max-age=30';
+/**
+ * A listing is the most perishable thing this API serves: a seller can change a price or
+ * withdraw a card at any moment, and a buyer who clicks through to a listing that has gone gets
+ * a 409 instead of a checkout. Thirty seconds is short enough that this is rare and long enough
+ * that a card page being shared does not become a query per visitor.
+ */
+const MARKET_CACHE = 'public, max-age=30';
 
 export const publicRoutes: readonly PublicRoute[] = [
   {
@@ -99,6 +108,25 @@ export const publicRoutes: readonly PublicRoute[] = [
     response: cardDetailSchema,
     cache: CATALOG_CACHE,
     handler: ({ db, params }) => getCardById(db, params['id'] as string),
+  },
+  {
+    path: '/v1/cards/:id/listings',
+    operationId: 'getCardListings',
+    summary: 'What is for sale for a card',
+    description:
+      'Active listings for every printing of this card, cheapest first. This is the entry ' +
+      'point to buying: the id of an item here is what `POST /v1/listings/:id/buy` takes. ' +
+      'Drafts and withdrawn listings are not omitted by this route — the read-only database ' +
+      'role it runs as cannot see them at all. A card with nothing for sale, and a card that ' +
+      'does not exist, both answer with an empty list; `GET /v1/cards/{id}` is where you find ' +
+      'out which.',
+    tags: ['marketplace'],
+    params: idParam,
+    response: listingsForSaleSchema,
+    cache: MARKET_CACHE,
+    handler: async ({ db, params }) => ({
+      items: await browseListingsForCard(db, params['id'] as string),
+    }),
   },
   {
     path: '/v1/cards/:id/prices',

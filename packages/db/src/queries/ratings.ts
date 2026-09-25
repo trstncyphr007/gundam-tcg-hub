@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { orderRatings, orders } from '../schema/market.js';
 import { isInsufficientPrivilege, isUniqueViolation } from './pg-errors.js';
@@ -206,7 +206,7 @@ export async function getReputation(db: Database, sellerId: string): Promise<Rep
 
   return {
     sellerId,
-    average: count === 0 ? null : Math.round((total / count) * 10) / 10,
+    average: averageStars(total, count),
     count,
     distribution: {
       1: counts.get(1) ?? 0,
@@ -216,4 +216,53 @@ export async function getReputation(db: Database, sellerId: string): Promise<Rep
       5: counts.get(5) ?? 0,
     },
   };
+}
+
+/**
+ * The one place the average is worked out.
+ *
+ * Extracted because there are now two callers, and a reputation that reads 4.3 on the card page
+ * and 4.33 on the seller's page is a bug people write in to report. Null rather than zero for
+ * no ratings, for the reason above.
+ */
+export function averageStars(totalStars: number, count: number): number | null {
+  return count === 0 ? null : Math.round((totalStars / count) * 10) / 10;
+}
+
+/**
+ * The standing of several sellers at once.
+ *
+ * For a browse page, where the alternative is one round trip per listing to compute one number
+ * each. No distribution: a browse page shows "4.8 from 23", and the breakdown belongs on the
+ * seller's own page where there is room to draw it.
+ *
+ * Sellers with no ratings are simply absent from the map rather than present with a zero, so a
+ * caller has to decide what to show — which is the right thing to be forced to think about.
+ *
+ * No `asUser`: migration 0045 grants SELECT on `order_ratings` to `app_readonly` with
+ * `USING (true)`, because reputation is public. `rater_id` is never selected — who bought what
+ * is not (SR-3.8), and on this table the query choosing not to ask is the whole protection.
+ */
+export async function reputationOf(
+  db: Database,
+  sellerIds: readonly string[],
+): Promise<Map<string, { average: number | null; count: number }>> {
+  const wanted = [...new Set(sellerIds)];
+  // `inArray` with an empty list is not a query worth sending, and some drivers make it an
+  // error rather than an empty result.
+  if (wanted.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      sellerId: orderRatings.sellerId,
+      total: sql<number>`sum(${orderRatings.stars})::int`,
+      n: sql<number>`count(*)::int`,
+    })
+    .from(orderRatings)
+    .where(inArray(orderRatings.sellerId, wanted))
+    .groupBy(orderRatings.sellerId);
+
+  return new Map(
+    rows.map((row) => [row.sellerId, { average: averageStars(row.total, row.n), count: row.n }]),
+  );
 }

@@ -153,6 +153,9 @@ export function buildOpenApiDocument(
     tags: [
       { name: 'catalog', description: 'Games, sets, cards and sealed products.' },
       { name: 'prices', description: 'The published price index.' },
+      { name: 'marketplace', description: 'What is for sale, and by whom it is trusted.' },
+      // Undeclared until now, which made the generated document name a tag it never described.
+      { name: 'breakers', description: 'Public breaker profiles and their verified breaks.' },
     ],
   };
 }
