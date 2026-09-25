@@ -273,6 +273,20 @@ file — written down in the tests. Our decoders are pure JavaScript and dormant
 mitigations are memory-safety by construction, explicit decoder limits, and the fact that this
 runs in a bounded background job.
 
+**Who may send bytes to the bucket at all** (added 2026-09-26). The row above assumes an upload
+arrives; two browser-enforced controls decide whether one can. The site's CSP must name the
+bucket in `connect-src`, and the bucket must return a CORS policy naming the site — otherwise
+the browser refuses to send the presigned PUT and `fetch` rejects with nothing a server can see.
+Both were missing, and both were found by an end-to-end test rather than by any of the proofs in
+this table (ADR-043). The origin list is the part that matters for this model: a signed URL that
+leaked could otherwise be spent from any page on the internet, and now cannot be spent from a
+browser on any origin but ours.
+
+**A note on this table's method.** Every "Proof" above is a server-side test or a raw SQL probe.
+None of them is a browser, so none of them can see a control the browser enforces — CSP, CORS,
+SameSite, permissions policy. That blind spot produced two real defects in the upload path. The
+end-to-end suite is the compensating control and is now part of CI.
+
 ### T11 — marketplace fraud
 
 | Attack                                  | Mitigation                                                                        | Proof                                                       |
