@@ -32,6 +32,7 @@ import { type IngestDeps, registerIngestRoutes } from './routes/ingest.js';
 import { type LiveSaleDeps, registerLiveSaleRoutes } from './routes/live-sales.js';
 import { registerMarketRoutes } from './routes/market.js';
 import { type CheckoutDeps, registerCheckoutRoutes } from './routes/checkout.js';
+import { type PhotoDeps, registerPhotoRoutes } from './routes/photos.js';
 import { type SellerDeps, registerSellerRoutes } from './routes/seller.js';
 import { type StripeWebhookDeps, registerStripeWebhookRoutes } from './routes/stripe-webhook.js';
 import { registerProfileRoutes } from './routes/profile.js';
@@ -126,6 +127,11 @@ export interface AppDeps {
    * can be paid, and the route that takes money should be the last one mounted, not the first.
    */
   checkout?: CheckoutDeps | undefined;
+  /**
+   * Listing photos (FR-5.2, SR-5.5). Absent when no bucket is configured, which means the
+   * upload routes are not mounted rather than mounted and unable to store anything.
+   */
+  photos?: PhotoDeps | undefined;
   /**
    * Stripe's webhooks (SR-5.2). Runs on the worker role and needs the raw body, so it is
    * registered in its own scope. Absent means the endpoint does not exist — better than one
@@ -515,6 +521,7 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     if (deps.checkout) {
       registerCheckoutRoutes(app, { ...deps.checkout, ...(flags ? { flags } : {}) });
     }
+    if (deps.photos) registerPhotoRoutes(app, deps.photos);
     if (deps.moderationDb) {
       registerAdminRoutes(app, {
         db: deps.writeDb,
