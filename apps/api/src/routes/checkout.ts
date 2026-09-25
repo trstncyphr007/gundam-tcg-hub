@@ -1,4 +1,4 @@
-import { applicationFeeCents } from '@gth/core';
+import { applicationFeeCents, checkPurchase, explainRefusal } from '@gth/core';
 import { authorize } from '@gth/auth';
 import {
   type Database,
@@ -7,6 +7,7 @@ import {
   ListingUnavailableError,
   attachCheckoutSession,
   canSell,
+  getBuyerRisk,
   createOrder,
   describeCardVariant,
   getListing,
@@ -130,6 +131,36 @@ export function registerCheckoutRoutes(app: FastifyInstance, deps: CheckoutDeps)
      */
     const amountCents = listing.priceCents * listing.quantity;
     const feeCents = applicationFeeCents(amountCents, deps.feeBps);
+
+    /**
+     * Velocity and new-account limits (SR-5.6), checked after the listing is known and before
+     * anything is created.
+     *
+     * Not a rate limit. The per-minute limiter above exists so one client cannot exhaust a
+     * server; this exists because a stolen card is worth the most in the first hour of an
+     * account's life, and three purchases in ten minutes is not fast enough for any
+     * per-minute rule to notice.
+     */
+    const risk = await getBuyerRisk(deps.db, buyerId);
+    const refusal = checkPurchase({ ...risk, amountCents });
+    if (refusal !== null) {
+      /**
+       * Audited with the numbers, answered without them.
+       *
+       * A refusal that names the threshold tells a fraudster exactly how to stay under it. The
+       * audit entry is where the people who set the limit can see what it caught, and it is
+       * what SR-X.22's alerting reads when the same account is refused repeatedly.
+       */
+      await writeAuditLog(deps.db, {
+        actorId: buyerId,
+        action: 'order.refused',
+        targetType: 'listing',
+        targetId: listing.id,
+        diff: { reason: refusal, amountCents, ...risk },
+      });
+      request.log.warn({ buyerId, reason: refusal }, 'purchase refused by a fraud rule');
+      return reply.code(403).send({ error: refusal, message: explainRefusal(refusal) });
+    }
 
     let order;
     try {

@@ -1,9 +1,10 @@
-import { ListingError, canPublish } from '@gth/core';
+import { ListingError, canPublish, checkListing, explainRefusal } from '@gth/core';
 import { authorize } from '@gth/auth';
 import {
   type Database,
   ListingNotFoundError,
   countApprovedPhotos,
+  countSellerListingsSince,
   createListing,
   deleteDraftListing,
   getListing,
@@ -91,6 +92,32 @@ export function registerMarketRoutes(app: FastifyInstance, db: Database): void {
     const parsed = createSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_request', details: issuesOf(parsed.error) });
+    }
+
+    /**
+     * Listing velocity (SR-5.6), above the per-minute rate limit and below what a person does.
+     *
+     * This bounds a scraper republishing somebody else's inventory. It is deliberately more
+     * generous than the purchase limits: photographing and posting thirty cards after a break
+     * is an ordinary evening for a real seller, and pacing them would be the wrong trade.
+     */
+    const listingsLastHour = await countSellerListingsSince(
+      db,
+      request.subject.userId,
+      new Date(Date.now() - 60 * 60 * 1000),
+    );
+    const refusal = checkListing({ listingsLastHour });
+    if (refusal !== null) {
+      // The count in the log, not in the answer: a refusal that names the threshold tells
+      // somebody exactly how to stay under it.
+      await writeAuditLog(db, {
+        actorId: request.subject.userId,
+        action: 'listing.refused',
+        targetType: 'user',
+        targetId: request.subject.userId,
+        diff: { reason: refusal, listingsLastHour },
+      });
+      return reply.code(403).send({ error: refusal, message: explainRefusal(refusal) });
     }
 
     let listing;

@@ -1,6 +1,7 @@
 export * from './api-tiers.js';
 export * from './env.js';
 export * from './fees.js';
+export * from './fraud.js';
 export * from './pricing.js';
 export * from './collections.js';
 export * from './fairness.js';

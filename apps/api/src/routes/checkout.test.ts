@@ -459,3 +459,82 @@ describe('the payment arriving', () => {
     expect(order?.status).toBe('created');
   });
 });
+
+describe('velocity and new-account limits (SR-5.6)', () => {
+  /**
+   * An expensive listing, put on sale through the worker.
+   *
+   * Above $25 a listing needs photos before it can go live, and this file has no pipeline to
+   * approve any. The worker may set the status directly, which is the shortest honest route to
+   * the starting position these tests need — the photo rule is exercised properly in
+   * `photos.test.ts`.
+   */
+  async function expensiveListing(priceCents: number): Promise<string> {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/listings',
+      headers: { cookie: sellerCookie, origin: ORIGIN },
+      payload: { cardVariantId: variantId, condition: 'nm', priceCents, quantity: 1 },
+    });
+    const id = created.json<{ id: string }>().id;
+    await workerPool.db.execute(`update app.listings set status = 'active' where id = '${id}'`);
+    return id;
+  }
+
+  it('refuses a brand new account something expensive', async () => {
+    /**
+     * The pattern this exists for: an account created minutes ago going straight for the most
+     * expensive thing it can find. Every buyer in this file is minutes old, which makes it the
+     * right place to check.
+     */
+    const listingId = await expensiveListing(40_000);
+    const refused = await buy(listingId);
+
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json<{ error: string }>().error).toBe('new_account_order_too_large');
+    // Refused before Stripe was asked for anything, and before an order row existed.
+    expect(sessions).toHaveLength(0);
+  });
+
+  it('never tells them where the line is', async () => {
+    // A refusal that names the threshold tells a fraudster exactly how to stay under it.
+    const listingId = await expensiveListing(40_000);
+    const body = (await buy(listingId)).body;
+
+    expect(body).not.toContain('15000');
+    expect(body).not.toContain('150');
+  });
+
+  it('records the numbers in the audit log, where they belong', async () => {
+    const listingId = await expensiveListing(40_000);
+    await buy(listingId);
+
+    const [entry] = await workerPool.db.execute<{ diff: Record<string, unknown> }>(
+      `select diff from app.audit_log where action = 'order.refused'`,
+    );
+    expect(entry?.diff).toMatchObject({
+      reason: 'new_account_order_too_large',
+      amountCents: 40_000,
+    });
+  });
+
+  it('lets the same new account buy something ordinary', async () => {
+    // The rule is about size, not about being new. A new buyer spending $25 is the customer
+    // this marketplace exists for.
+    expect((await buy(await listForSale(2500))).statusCode).toBe(201);
+  });
+
+  it('stops a new account after its third order of the day', async () => {
+    /**
+     * Each purchase needs its own listing, because one open order per listing is enforced by a
+     * unique index. Three succeed; the fourth is refused for the count rather than the size.
+     */
+    for (let i = 0; i < 3; i += 1) {
+      expect((await buy(await listForSale(1000))).statusCode).toBe(201);
+    }
+    const fourth = await buy(await listForSale(1000));
+
+    expect(fourth.statusCode).toBe(403);
+    expect(fourth.json<{ error: string }>().error).toBe('new_account_daily_limit');
+  });
+});
