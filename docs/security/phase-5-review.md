@@ -134,6 +134,19 @@ used on our origin. If an embedded Elements flow is ever added, this has to chan
 - Session route (`/v1/orders`) with a hostile `Origin`: **no CORS headers at all**, so a page on
   another site cannot read it even with `credentials: 'include'`.
 
+**Amended 2026-09-26.** The above is still true and was not the whole question. It examined CORS
+on _our_ origins and never asked whether the browser was allowed to speak to **the bucket** —
+which is where the upload actually goes. It was not: no CORS policy existed on the bucket at all,
+so the preflight for every presigned PUT answered 404 and no upload could ever have been made
+from a browser. See "The finding this review missed" below, and ADR-043.
+
+- Bucket preflight, from the site, asking for `content-type`: **200** with
+  `Access-Control-Allow-Origin` naming the site.
+- The same preflight from `https://evil.test`: **403**, no headers.
+- The same preflight asking for `content-length, content-type` — which Chromium sends whether the
+  page asks for it or not: **200** only because the policy allows any request header. An
+  enumerated header list answered 403 and broke every upload.
+
 ### WSTG-BUSL-09 — resource bounds
 
 - A 1.2 MB body on a JSON route → **413**.
@@ -184,6 +197,51 @@ it is.
 - **No legal review.** §23 requires one before launch and it has not happened.
 - **Photo moderation.** Uploads are scanned for malware and re-encoded; nobody checks whether a
   photograph is of a card, or is somebody else's, beyond an exact-digest duplicate report.
+- **~~Anything a browser enforces.~~** Every probe here was `curl` and every test in the suite
+  runs on a server, so CSP, CORS and their relatives were outside what this method could reach.
+  **Partly closed 2026-09-26:** an end-to-end suite now drives a real browser through selling,
+  buying and a photo upload, and asserts the CSP names the photo bucket. It found two defects
+  immediately. It is still not a substitute for the external test the plan asks for.
+
+---
+
+## The finding this review missed
+
+_Added 2026-09-26, after an end-to-end test found it._
+
+**The photo upload could not work in a browser, and this review said the upload path was sound.**
+
+The bucket had no CORS policy. A presigned PUT is cross-origin and carries a `Content-Type`, so
+the browser sends a preflight first; a bucket with no policy answers 404, the browser refuses to
+send the PUT, and `fetch` rejects into a console. Nothing had ever set a policy — `ensureBucket`
+was called only from tests.
+
+Read back, this document's own words on the subject are exactly right and exactly beside the
+point:
+
+> Photo uploads never pass through the API; a presigned PUT pins both content type and
+> content-length, and a body disagreeing with either is refused **by the storage server** —
+> tested against a real one.
+
+Every clause of that is true. The request it describes was never sent.
+
+**Why the method could not see it.** Every probe in this review was made with `curl` and every
+test in the suite runs on a server. A server does not send preflights, so a missing CORS policy
+is invisible to all of them. The control was enforced by the browser, and nothing here was a
+browser.
+
+This is the second finding of that exact shape. The first was the site's own CSP: `connect-src`
+had to name the bucket or the same request never left the page. Both live in the four lines that
+upload a file, both were found by writing an end-to-end test that drives a real browser, and
+neither was reachable by any other method available here.
+
+**Severity.** Not an exposure — a feature that did not work. Recorded in a security review
+because the _reason_ it was missed is a gap in the review's method, and that gap applies to every
+browser-enforced control: CSP, CORS, SameSite, subresource integrity, permissions policy.
+
+**Closed by** PR #113: the bucket carries a policy scoped to our origins (ADR-043), `pnpm
+photos:bucket` applies it, CI runs the storage profile with `E2E_EXPECT_PHOTOS=1` so a regression
+fails the build, and a browser now uploads a real JPEG end to end on every run.
 
 ---
 
@@ -191,7 +249,9 @@ it is.
 
 No exploitable defect was found in this pass. That sentence is worth less than it looks — the
 person who wrote the controls is the worst-placed person to find the gap in them, which is the
-argument for the external test the plan asks for.
+argument for the external test the plan asks for. It also proved too generous: a non-exploitable
+but real defect was sitting in the upload path the whole time, and the section above says why
+this method could not have found it.
 
 The four things recorded as residual risk, in order of how much they matter:
 

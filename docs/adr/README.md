@@ -47,3 +47,4 @@ New decisions get their own file.
 | 040 | [Measure the speed promises, and leave the index alone](040-measure-before-optimising.md)                       | Accepted                    |
 | 041 | [The overlay keeps polling, and here is what that costs](041-the-overlay-polls.md)                              | Accepted                    |
 | 042 | [The quota outlives the process, and Valkey leaves the stack](042-the-quota-outlives-the-process.md)            | Accepted                    |
+| 043 | [The bucket has to say yes too](043-the-bucket-has-to-say-yes-too.md)                                           | Accepted                    |
