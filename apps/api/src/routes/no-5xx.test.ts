@@ -149,6 +149,29 @@ const WRITES: Call[] = [
   { method: 'PATCH', url: `/v1/listings/${GHOST}/photos`, payload: { photoIds: [GHOST] } },
   { method: 'DELETE', url: `/v1/listings/${GHOST}/photos/${GHOST}` },
 
+  {
+    method: 'POST',
+    url: `/v1/orders/${GHOST}/ship`,
+    payload: { carrier: 'Royal Mail', trackingNumber: 'AB123456789GB' },
+  },
+  { method: 'POST', url: `/v1/orders/${GHOST}/cancel`, payload: {} },
+  { method: 'POST', url: `/v1/orders/${GHOST}/dispute`, payload: { reason: 'nothing arrived' } },
+
+  // Admin. Reached with an admin session, so the refusal is on the merits rather than
+  // stopping at the role check with the code behind it unvisited.
+  {
+    method: 'POST',
+    url: `/v1/admin/orders/${GHOST}/deliver`,
+    payload: { reason: 'carrier confirmed' },
+    as: 'admin',
+  },
+  {
+    method: 'POST',
+    url: `/v1/admin/orders/${GHOST}/complete`,
+    payload: { reason: 'resolved' },
+    as: 'admin',
+  },
+
   // Unsigned, which is what every caller who is not Stripe looks like.
   { method: 'POST', url: '/v1/webhooks/stripe', payload: { id: 'evt_x', type: 'account.updated' } },
 

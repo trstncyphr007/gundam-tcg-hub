@@ -1,8 +1,11 @@
 import { authorize, requireAdminStepUp } from '@gth/auth';
+import { IllegalTransitionError, ORDER_REASON_MAX_LENGTH } from '@gth/core';
 import {
   type Database,
   MAX_REASON_LENGTH,
   ModerationError,
+  OrderNotFoundError,
+  completeOrder,
   decideFlag,
   decideReport,
   getModerationQueue,
@@ -11,6 +14,7 @@ import {
   getSecuritySummary,
   isKnownFlag,
   listFlags,
+  markOrderDelivered,
   normaliseReason,
   setFlag,
   writeAuditLog,
@@ -55,6 +59,11 @@ const reportDecisionSchema = z
     decision: z.enum(['approve', 'reject']),
     reason: z.string().max(MAX_REASON_LENGTH + 50),
   })
+  .strict();
+
+/** An admin moving an order says why, every time (SR-5.9). */
+const adminOrderSchema = z
+  .object({ reason: z.string().min(1).max(ORDER_REASON_MAX_LENGTH) })
   .strict();
 
 const killSwitchSchema = z
@@ -253,4 +262,69 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminDeps): void
         .send({ id: params.data.id, decision: body.data.decision });
     },
   );
+
+  /**
+   * The two order transitions neither party may make (FR-5.4, SR-5.9).
+   *
+   * `delivered` starts the clock and `completed` releases the seller's payout, so both are
+   * reachable only by the carrier's confirmation — which this system does not have yet — by the
+   * clock, or by an admin who has looked at the evidence.
+   *
+   * On the **worker** pool, because the web role cannot write either status at all (migration
+   * 0041). Behind the same four gates as everything else here, and audited with a reason,
+   * because SR-5.9 asks that of any admin action that moves money.
+   */
+  for (const step of [
+    { path: 'deliver', run: markOrderDelivered, action: 'order.delivered' },
+    { path: 'complete', run: completeOrder, action: 'order.completed' },
+  ] as const) {
+    app.post(
+      `/v1/admin/orders/:id/${step.path}`,
+      { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+      async (request, reply) => {
+        const actor = guard(request, reply);
+        if (actor === null) return reply;
+
+        const params = idParamSchema.safeParse(request.params);
+        if (!params.success) return reply.code(404).send({ error: 'not_found' });
+        const body = adminOrderSchema.safeParse(request.body);
+        if (!body.success) {
+          return reply.code(400).send({ error: 'invalid_request', details: issuesOf(body.error) });
+        }
+
+        let order;
+        try {
+          order = await step.run(workerDb, params.data.id, {
+            actor: 'admin',
+            actorId: actor,
+            reason: body.data.reason,
+          });
+        } catch (error) {
+          if (error instanceof OrderNotFoundError) {
+            return reply.code(404).send({ error: 'not_found' });
+          }
+          // The state machine refused it. An admin is powerful, not exempt: there is no move
+          // from `cancelled` to `delivered` for anybody.
+          if (error instanceof IllegalTransitionError) {
+            return reply.code(409).send({
+              error: 'illegal_transition',
+              from: error.from,
+              to: error.to,
+              why: error.reason,
+            });
+          }
+          throw error;
+        }
+
+        await writeAuditLog(db, {
+          actorId: actor,
+          action: step.action,
+          targetType: 'order',
+          targetId: order.id,
+          diff: { reason: body.data.reason },
+        });
+        return reply.header('cache-control', 'no-store').send(order);
+      },
+    );
+  }
 }

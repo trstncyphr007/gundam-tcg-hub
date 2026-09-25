@@ -1,5 +1,5 @@
-import { type OrderStatus, transition } from '@gth/core';
-import { eq, sql } from 'drizzle-orm';
+import { AUTO_COMPLETE_AFTER_DAYS, type OrderActor, type OrderStatus, transition } from '@gth/core';
+import { and, eq, lte, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { listings, orderEvents, orders } from '../schema/market.js';
 import { MissingReferenceError, isForeignKeyViolation, isUniqueViolation } from './pg-errors.js';
@@ -252,4 +252,280 @@ export async function markOrderPaid(db: Database, input: OrderPaidInput): Promis
 
     return { applied: true, order: updated };
   });
+}
+
+/* ------------------------------------------------------------------------------------------ *
+ * What happens after the money moves (FR-5.4).
+ * ------------------------------------------------------------------------------------------ */
+
+/** Raised when the acting user is a party to the order, but not the party who may do this. */
+export class WrongPartyError extends Error {
+  constructor(readonly expected: 'buyer' | 'seller') {
+    super(`only the ${expected} may do that`);
+    this.name = 'WrongPartyError';
+  }
+}
+
+/** Columns a transition may also set. Deliberately small: a move is not an edit. */
+interface TransitionSet {
+  trackingCarrier?: string;
+  trackingNumber?: string;
+  shippedAt?: Date;
+  deliveredAt?: Date;
+  completedAt?: Date;
+}
+
+interface MoveInput {
+  orderId: string;
+  to: OrderStatus;
+  actor: OrderActor;
+  /** The person, when it was one. `stripe` and `system` are not people and a CHECK says so. */
+  actorId?: string | null | undefined;
+  reason?: string | null | undefined;
+  set?: TransitionSet | undefined;
+  /**
+   * Checked against the order before the move, so "you are a party to this" and "you are the
+   * party who may do this" stay different questions. Row-level security answers the first; it
+   * has no opinion on the second, because both parties can see the same row.
+   */
+  mustBe?: 'buyer' | 'seller' | undefined;
+}
+
+/**
+ * Move an order, or refuse to.
+ *
+ * Every transition in this file goes through here, so there is exactly one place where the
+ * order is locked, the state machine is consulted, the row is written and the history is
+ * appended — and no route can perform three of those four.
+ *
+ * `for update` before the decision: two requests that both read `paid` would otherwise both
+ * decide they may ship it, and the second would overwrite the first's tracking number with its
+ * own. Locking makes them queue and the second one lose on the state machine, which is the
+ * correct answer rather than a race.
+ */
+async function move(tx: Database, input: MoveInput): Promise<Order> {
+  const [existing] = await tx
+    .select()
+    .from(orders)
+    .where(eq(orders.id, input.orderId))
+    .for('update')
+    .limit(1);
+  if (!existing) throw new OrderNotFoundError();
+
+  if (input.mustBe !== undefined) {
+    const party = input.mustBe === 'buyer' ? existing.buyerId : existing.sellerId;
+    if (party !== input.actorId) throw new WrongPartyError(input.mustBe);
+  }
+
+  // Throws `IllegalTransitionError` from `@gth/core` when the move is not one, or not this
+  // actor's to make. The database refuses the same thing again from the other direction:
+  // migration 0041's policy will not let a session write `delivered` or `completed` at all.
+  const to = transition(existing.status, input.to, input.actor);
+
+  const [updated] = await tx
+    .update(orders)
+    .set({ status: to, ...(input.set ?? {}), updatedAt: new Date() })
+    .where(eq(orders.id, input.orderId))
+    .returning();
+  if (!updated) throw new Error('order vanished mid-transaction');
+
+  await tx.insert(orderEvents).values({
+    orderId: input.orderId,
+    fromStatus: existing.status,
+    toStatus: to,
+    actor: input.actor,
+    // `stripe` and `system` are machines. `order_events_actor_identified` refuses to let one
+    // claim to be a person.
+    actorId: input.actor === 'stripe' || input.actor === 'system' ? null : (input.actorId ?? null),
+    reason: input.reason ?? null,
+  });
+
+  return updated;
+}
+
+/**
+ * The seller posted it (FR-5.4).
+ *
+ * **Tracking is always required, not only above a threshold.** The plan allows it above a
+ * configurable value; the database CHECK from migration 0041 requires it for every shipped
+ * order, and that is the stricter rule kept on purpose. An untracked parcel is a dispute with
+ * no evidence in it, and the person who loses that argument is the seller — so the requirement
+ * protects the party it inconveniences.
+ */
+export async function shipOrder(
+  db: Database,
+  sellerId: string,
+  orderId: string,
+  tracking: { carrier: string; trackingNumber: string },
+): Promise<Order> {
+  return asUser(db, sellerId, async (tx) =>
+    move(tx, {
+      orderId,
+      to: 'shipped',
+      actor: 'seller',
+      actorId: sellerId,
+      mustBe: 'seller',
+      set: {
+        trackingCarrier: tracking.carrier,
+        trackingNumber: tracking.trackingNumber,
+        shippedAt: new Date(),
+      },
+    }),
+  );
+}
+
+/**
+ * Either side walks away before anything was paid.
+ *
+ * The actor is derived from the order rather than taken from the caller: a buyer cannot cancel
+ * "as the seller" to get a different transition, because there is no field in which to say so.
+ * After `paid` this refuses — the state machine only lets an admin cancel a paid order, and
+ * the money has to come back through Stripe rather than through a status change.
+ */
+export async function cancelOrder(
+  db: Database,
+  userId: string,
+  orderId: string,
+  reason?: string,
+): Promise<Order> {
+  return asUser(db, userId, async (tx) => {
+    const [existing] = await tx
+      .select({ buyerId: orders.buyerId, sellerId: orders.sellerId })
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    if (!existing) throw new OrderNotFoundError();
+
+    const actor: OrderActor = existing.buyerId === userId ? 'buyer' : 'seller';
+    return move(tx, {
+      orderId,
+      to: 'cancelled',
+      actor,
+      actorId: userId,
+      ...(reason === undefined ? {} : { reason }),
+    });
+  });
+}
+
+/** The buyer says something is wrong (FR-5.5). Only the buyer; a seller cannot dispute a sale. */
+export async function disputeOrder(
+  db: Database,
+  buyerId: string,
+  orderId: string,
+  reason: string,
+): Promise<Order> {
+  return asUser(db, buyerId, async (tx) =>
+    move(tx, {
+      orderId,
+      to: 'disputed',
+      actor: 'buyer',
+      actorId: buyerId,
+      mustBe: 'buyer',
+      reason,
+    }),
+  );
+}
+
+/**
+ * It arrived (FR-5.4). Worker role only.
+ *
+ * Never the seller, who benefits from it: `delivered` starts the clock that ends in
+ * `completed`, which releases their payout. It comes from carrier confirmation — `system` —
+ * or from an admin looking at the evidence.
+ *
+ * The web role cannot write this status at all (migration 0041), so the restriction is not a
+ * convention this function keeps.
+ */
+export async function markOrderDelivered(
+  db: Database,
+  orderId: string,
+  by: { actor: 'system' | 'admin'; actorId?: string | undefined; reason?: string | undefined },
+): Promise<Order> {
+  return db.transaction(async (tx) =>
+    move(tx as unknown as Database, {
+      orderId,
+      to: 'delivered',
+      actor: by.actor,
+      actorId: by.actorId ?? null,
+      reason: by.reason ?? null,
+      set: { deliveredAt: new Date() },
+    }),
+  );
+}
+
+/**
+ * The sale is finished and the seller may be paid (FR-5.6). Worker role only.
+ *
+ * `system` when the hold window has passed, `admin` when a dispute was resolved in the seller's
+ * favour. Neither party can reach it: a seller marking their own sale complete would be marking
+ * their own homework, and a buyer doing it is AC-5.4's explicit "cannot".
+ */
+export async function completeOrder(
+  db: Database,
+  orderId: string,
+  by: { actor: 'system' | 'admin'; actorId?: string | undefined; reason?: string | undefined },
+): Promise<Order> {
+  return db.transaction(async (tx) =>
+    move(tx as unknown as Database, {
+      orderId,
+      to: 'completed',
+      actor: by.actor,
+      actorId: by.actorId ?? null,
+      reason: by.reason ?? null,
+      set: { completedAt: new Date() },
+    }),
+  );
+}
+
+export interface OrderEvent {
+  id: string;
+  orderId: string;
+  fromStatus: OrderStatus;
+  toStatus: OrderStatus;
+  actor: OrderActor;
+  actorId: string | null;
+  reason: string | null;
+  at: Date;
+}
+
+/**
+ * Everything that happened to this order, oldest first.
+ *
+ * Visible to the two parties and nobody else, which the policy enforces through a subquery on
+ * `orders` — so this cannot be used to read somebody else's history sideways.
+ */
+export async function listOrderEvents(
+  db: Database,
+  viewerId: string,
+  orderId: string,
+): Promise<OrderEvent[]> {
+  return asUser(db, viewerId, async (tx) =>
+    tx.select().from(orderEvents).where(eq(orderEvents.orderId, orderId)).orderBy(orderEvents.at),
+  );
+}
+
+/**
+ * Delivered orders whose hold window has passed. Worker role only.
+ *
+ * What the nightly job asks for. The window is counted from `delivered_at` rather than from the
+ * payment, because the buyer's chance to complain starts when the card arrives — and a parcel
+ * that took three weeks should not arrive with its dispute window already spent.
+ */
+export async function ordersReadyToComplete(
+  db: Database,
+  now: Date = new Date(),
+  afterDays: number = AUTO_COMPLETE_AFTER_DAYS,
+): Promise<Order[]> {
+  const cutoff = new Date(now.getTime() - afterDays * 24 * 60 * 60 * 1000);
+  return (
+    db
+      .select()
+      .from(orders)
+      // `lte` rather than a `sql` template: a raw Date interpolated into one binds with a type
+      // postgres.js will not serialise, and the error names neither the column nor the value.
+      // The builder knows this column is a timestamp and encodes it properly.
+      .where(and(eq(orders.status, 'delivered'), lte(orders.deliveredAt, cutoff)))
+      .orderBy(orders.deliveredAt)
+      .limit(200)
+  );
 }
