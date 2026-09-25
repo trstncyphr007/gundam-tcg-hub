@@ -231,7 +231,13 @@ export default async function CardPage({
 
       <section>
         <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-muted">Printings</h2>
-        <ul className="flex flex-wrap gap-2">
+        {/*
+          Named, because "normal · EN" is not unique on this page and keeps becoming less so.
+          The chart legend names the printings, and now so does every listing for sale. A test
+          that finds this list by its text has twice been a test that passed for the wrong
+          reason, so it finds it by name instead.
+        */}
+        <ul className="flex flex-wrap gap-2" data-testid="printings">
           {card.variants.map((variant) => (
             <li
               key={`${variant.finish}-${variant.language}`}

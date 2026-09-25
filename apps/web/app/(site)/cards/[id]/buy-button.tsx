@@ -28,6 +28,10 @@ function messageFor(error: string | undefined, status: number): string {
       return 'Buying is paused for a moment. Try again shortly.';
     case 'not_found':
       return 'That listing is no longer there.';
+    // Fastify's own 404: the checkout routes are registered only when Stripe is configured,
+    // so this means "buying does not exist here" rather than "that listing is gone".
+    case 'Not Found':
+      return 'Buying is not set up on this site yet.';
     case 'purchase_velocity':
     case 'new_account_cap':
       return 'That is more buying than a new account can do in one go. Try again later.';

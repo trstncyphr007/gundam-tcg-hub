@@ -46,6 +46,14 @@ function messageFor(error: string | undefined, status: number): string {
       return 'That photo has already been checked.';
     case 'not_found':
       return 'That listing is no longer there.';
+    /*
+     * Fastify's own 404, which means the route is not registered — photos and payments are
+     * both optional at boot. Distinct from our `not_found`, which means the row is missing.
+     * Without this the two are indistinguishable, and somebody on a deployment with no object
+     * storage is told their listing has vanished.
+     */
+    case 'Not Found':
+      return 'That part of the marketplace is not set up on this site yet.';
     case 'processing_unavailable':
       return 'Photos cannot be checked right now. The upload is saved and will be picked up shortly.';
     case 'trailing_data':
@@ -108,7 +116,8 @@ export function SellingManager({
   status,
   initialListings,
 }: {
-  status: SellerStatus;
+  /** Null when this deployment has no payment provider configured at all. */
+  status: SellerStatus | null;
   initialListings: Listing[];
 }): React.JSX.Element {
   const [listings, setListings] = useState(initialListings);
@@ -169,7 +178,17 @@ export function SellingManager({
         }),
       });
       if (!response.ok) {
-        setProblem(await problemOf(response));
+        /*
+         * On this form specifically, a 404 is about the card rather than the listing: a
+         * variant id that names nothing reaches the app's handler as a missing reference. The
+         * shared message ("that listing is no longer there") would be nonsense here — there is
+         * no listing yet, that is what the button was for.
+         */
+        setProblem(
+          response.status === 404
+            ? 'No card printing has that id. Copy it from the card page and try again.'
+            : await problemOf(response),
+        );
         return;
       }
       element.reset();
@@ -258,7 +277,17 @@ export function SellingManager({
     <div className="space-y-8">
       <section className="space-y-3" data-testid="seller-status">
         <h2 className="text-lg font-medium">Taking payments</h2>
-        {status.chargesEnabled && status.payoutsEnabled ? (
+        {status === null ? (
+          /*
+           * No payment provider on this deployment. Said here rather than by hiding the page,
+           * because everything below still works: a draft, a photograph and a price are all
+           * ours to store, and none of them involves Stripe.
+           */
+          <p className="text-sm text-muted" data-testid="payments-unavailable">
+            Taking payments is not set up on this site yet, so nothing can actually be sold. You can
+            still prepare listings and add photographs — they will be waiting when it is.
+          </p>
+        ) : status.chargesEnabled && status.payoutsEnabled ? (
           <p className="text-sm text-muted" data-testid="seller-ready">
             Stripe has cleared this account to take payments and receive payouts. A new
             seller&rsquo;s payouts are held for a few days after delivery on their first orders.

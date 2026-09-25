@@ -1,0 +1,248 @@
+import { randomUUID } from 'node:crypto';
+import { type APIRequestContext, expect, test } from '@playwright/test';
+import { signInOnce } from './helpers';
+
+/**
+ * Selling and buying, through the browser (FR-5.2, FR-5.3, SR-5.5).
+ *
+ * The marketplace was the only part of this system with no end-to-end test, and it is the only
+ * part that moves money. Every other area — the catalogue, collections, breaks, passkeys, the
+ * legal pages — had one.
+ *
+ * ## What this can and cannot reach
+ *
+ * Payments are configured per deployment: `registerSellerRoutes` and `registerCheckoutRoutes`
+ * are registered only when the API has a Stripe client, and CI has none. **Listings are not**:
+ * `registerMarketRoutes` is unconditional, because a draft, a photograph and a price are all
+ * ours to store and none of them involves Stripe.
+ *
+ * So this suite covers the whole of selling up to the moment money changes hands: preparing a
+ * listing, the photograph requirement above the threshold, putting it on sale, and a stranger
+ * finding it. The purchase itself needs Stripe Connect enabled in a real dashboard, which is
+ * recorded as blocked rather than faked — a test that mocked Stripe here would be testing the
+ * mock, and the interesting failures are all in the real one.
+ */
+const SELLER_EMAIL = process.env['E2E_SELLER_EMAIL'] ?? 'market-seller@example.test';
+const BUYER_EMAIL = process.env['E2E_BUYER_EMAIL'] ?? 'market-buyer@example.test';
+
+/**
+ * Fill in the form and hand back the id of what it created.
+ *
+ * By id, not by price. The first version of this suite found its listing by filtering on the
+ * price it had just typed, which works exactly until two runs pick the same one — and the
+ * local database keeps every listing every run has ever made. Under $25 there are only a few
+ * thousand prices to go round, so "unique enough" was a matter of time rather than of design.
+ */
+async function createListing(
+  page: import('@playwright/test').Page,
+  variantId: string,
+  price: string,
+): Promise<string> {
+  await page.getByTestId('listing-variant').fill(variantId);
+  await page.getByTestId('listing-price').fill(price);
+  await page.getByTestId('listing-create').click();
+
+  // The list is newest first, so the one just made is the one at the top.
+  const mine = await page.request.get('/v1/listings');
+  const id = ((await mine.json()) as { items: { id: string }[] }).items[0]?.id;
+  if (id === undefined) throw new Error('the listing was not created');
+  return id;
+}
+
+/** A card from the sample seed, and the variant id the listing form takes. */
+async function firstVariant(
+  request: APIRequestContext,
+): Promise<{ cardId: string; variantId: string }> {
+  const cards = await request.get('/v1/cards?limit=1');
+  const cardId = ((await cards.json()) as { items: { id: string }[] }).items[0]?.id;
+  if (cardId === undefined) throw new Error('the sample seed has no cards');
+
+  const detail = await request.get(`/v1/cards/${cardId}`);
+  const variantId = ((await detail.json()) as { variants: { id: string }[] }).variants[0]?.id;
+  if (variantId === undefined) throw new Error('that card has no printings');
+  return { cardId, variantId };
+}
+
+test.describe('selling', () => {
+  test('is usable before payments are set up', async ({ page }) => {
+    /**
+     * The regression this suite was written for.
+     *
+     * The first version of the selling page asked Stripe whether this person could take money
+     * and, when the answer was "there is no Stripe here", rendered a single sentence saying the
+     * marketplace did not exist — hiding the listing form, which never needed Stripe at all. On
+     * a stock local install, and in CI, selling was a dead page.
+     *
+     * Written so it holds either way: where payments *are* configured the onboarding button is
+     * shown instead, and the listing form is present in both cases. That is the actual claim —
+     * preparing to sell does not depend on a payment provider.
+     */
+    await signInOnce(page, SELLER_EMAIL);
+    await page.goto('/account/selling');
+
+    await expect(page.getByTestId('listing-variant')).toBeVisible();
+    await expect(page.getByTestId('listing-create')).toBeVisible();
+
+    const unavailable = page.getByTestId('payments-unavailable');
+    const onboard = page.getByTestId('onboard');
+    const ready = page.getByTestId('seller-ready');
+    await expect(unavailable.or(onboard).or(ready)).toBeVisible();
+  });
+
+  test('saves a draft rather than publishing it', async ({ page }) => {
+    // Saving is not publishing. Somebody filling in a form has not agreed to sell anything yet.
+    await signInOnce(page, SELLER_EMAIL);
+    const { variantId } = await firstVariant(page.request);
+
+    await page.goto('/account/selling');
+    await page.getByTestId('listing-variant').fill(variantId);
+    await page.getByTestId('listing-price').fill('4.00');
+    await page.getByTestId('listing-create').click();
+
+    const listing = page.getByTestId('listing-list').locator('li').first();
+    await expect(listing).toContainText('$4.00');
+    await expect(listing).toContainText('draft');
+    await expect(listing.getByRole('button', { name: 'Put on sale' })).toBeVisible();
+  });
+
+  test('will not put an expensive card on sale without a photograph', async ({ page }) => {
+    /**
+     * The control from FR-5.2, seen from the browser.
+     *
+     * $40 is over the $25 threshold, so publishing must be refused until an *approved*
+     * photograph exists. A pending upload is a file nobody has inspected; letting one satisfy
+     * the requirement would turn the control into "did somebody send us bytes".
+     *
+     * The refusal is the database's and the domain rule's; what is asserted here is that a
+     * seller is told which rule they hit, in words they can act on.
+     */
+    await signInOnce(page, SELLER_EMAIL);
+    const { variantId } = await firstVariant(page.request);
+
+    await page.goto('/account/selling');
+    const id = await createListing(page, variantId, '40.00');
+
+    await page.getByTestId(`publish-${id}`).click();
+
+    await expect(page.getByTestId('selling-problem')).toBeVisible();
+    await expect(page.getByTestId('selling-problem')).toContainText(/photo/i);
+    // And it really did not go on sale, rather than merely being complained about.
+    await expect(page.getByTestId(`status-${id}`)).toHaveText('draft');
+  });
+
+  test('puts a cheap card on sale, and a stranger can find it', async ({ page, browser }) => {
+    await signInOnce(page, SELLER_EMAIL);
+    const { cardId, variantId } = await firstVariant(page.request);
+
+    await page.goto('/account/selling');
+    const id = await createListing(page, variantId, '7.50');
+
+    await page.getByTestId(`publish-${id}`).click();
+    await expect(page.getByTestId(`status-${id}`)).toHaveText('active');
+
+    /**
+     * Now the half that did not exist until recently: somebody else finding it.
+     *
+     * A separate browser context, so this is a different visitor with no session — which is
+     * the point. The shop window has to be readable without signing in, or nobody arrives.
+     */
+    const stranger = await browser.newContext();
+    try {
+      const strangerPage = await stranger.newPage();
+      await strangerPage.goto(`/cards/${cardId}`);
+
+      const forSale = strangerPage.getByTestId('for-sale');
+      await expect(forSale).toBeVisible();
+      const row = strangerPage.getByTestId(`listing-${id}`);
+      await expect(row).toBeVisible();
+      await expect(row).toContainText('$7.50');
+
+      // Unrated, and said as "no ratings yet" rather than as nought out of five.
+      await expect(row).toContainText(/no ratings yet/i);
+      // Signed out, so the button asks for a sign-in before it asks for money.
+      await expect(row.getByRole('link', { name: /sign in to buy/i })).toBeVisible();
+      // And the seller is not named on a page that answers to anybody (SR-3.8).
+      expect(await forSale.innerText()).not.toContain('@');
+    } finally {
+      await stranger.close();
+    }
+  });
+
+  test('takes it off sale again', async ({ page }) => {
+    await signInOnce(page, SELLER_EMAIL);
+    const { cardId, variantId } = await firstVariant(page.request);
+
+    await page.goto('/account/selling');
+    const id = await createListing(page, variantId, '9.25');
+
+    await page.getByTestId(`publish-${id}`).click();
+    await expect(page.getByTestId(`status-${id}`)).toHaveText('active');
+
+    await page.getByTestId(`withdraw-${id}`).click();
+    await expect(page.getByTestId(`status-${id}`)).toHaveText('withdrawn');
+
+    // Gone from the shop window too, not merely relabelled on the seller's own page.
+    await page.goto(`/cards/${cardId}`);
+    await expect(page.getByTestId(`listing-${id}`)).toHaveCount(0);
+  });
+
+  test('refuses a card variant id that is not one', async ({ page }) => {
+    await signInOnce(page, SELLER_EMAIL);
+    await page.goto('/account/selling');
+
+    await page.getByTestId('listing-variant').fill(randomUUID());
+    await page.getByTestId('listing-price').fill('5.00');
+    await page.getByTestId('listing-create').click();
+
+    // A well-formed uuid for a printing that does not exist: refused by the foreign key, and
+    // reported as something the seller can act on rather than as a stack trace. Specifically
+    // *not* "that listing is no longer there" — there is no listing yet, that was the point.
+    await expect(page.getByTestId('selling-problem')).toContainText(
+      /no card printing has that id/i,
+    );
+  });
+});
+
+test.describe('buying', () => {
+  test('shows a signed-in visitor a real buy button', async ({ page }) => {
+    await signInOnce(page, SELLER_EMAIL);
+    const { cardId, variantId } = await firstVariant(page.request);
+
+    await page.goto('/account/selling');
+    const id = await createListing(page, variantId, '5.25');
+    await page.getByTestId(`publish-${id}`).click();
+    await expect(page.getByTestId(`status-${id}`)).toHaveText('active');
+
+    // A different person, so the seller's cookie has to go first: `signInOnce` adds a cached
+    // session, it does not replace one, and the old cookie would otherwise win.
+    await page.context().clearCookies();
+    await signInOnce(page, BUYER_EMAIL);
+    await page.goto(`/cards/${cardId}`);
+
+    const row = page.getByTestId(`listing-${id}`);
+    const buy = row.getByRole('button', { name: 'Buy' });
+    await expect(buy).toBeVisible();
+
+    /**
+     * Pressed, and the refusal read.
+     *
+     * Where Stripe is not configured the checkout route is not registered at all, and the
+     * answer is Fastify's own 404 — which must not be reported as "that listing is gone".
+     * Where it *is* configured this reaches Stripe and navigates away. Both are acceptable;
+     * what is not acceptable is the button silently doing nothing, which is what an untested
+     * error path looks like from the outside.
+     */
+    await buy.click();
+    const problem = page.getByTestId(/^buy-problem-/);
+    await expect
+      .poll(async () => (await problem.count()) > 0 || !page.url().includes('/cards/'), {
+        message: 'the buy button neither navigated to a checkout nor explained why it could not',
+      })
+      .toBe(true);
+
+    const text = await page.locator('body').innerText();
+    expect(text, 'a missing checkout must not be reported as a missing listing').not.toContain(
+      'That listing is no longer there',
+    );
+  });
+});

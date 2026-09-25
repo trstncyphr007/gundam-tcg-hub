@@ -109,7 +109,12 @@ jobs:
           . ./.env
           set +a
           NODE_ENV=production node apps/api/dist/index.js > /tmp/api.log 2>&1 &
+          # PHOTO_STORAGE_ORIGIN explicitly: the standalone server runs from the repo root and
+          # does not read apps/web/.env.local, so the value that names the photo bucket in the
+          # site's CSP would be absent here and nowhere else. Without it the browser refuses
+          # the upload and the photo, in the console, where nothing on the server would see it.
           NODE_ENV=production PORT=3000 HOSTNAME=127.0.0.1 \
+            PHOTO_STORAGE_ORIGIN="${PHOTO_STORAGE_ORIGIN:-}" \
             node apps/web/.next/standalone/apps/web/server.js > /tmp/web.log 2>&1 &
           for _ in $(seq 1 60); do
             if curl -sf http://127.0.0.1:4000/healthz >/dev/null && curl -sf http://127.0.0.1:3000/ >/dev/null; then
@@ -127,8 +132,12 @@ jobs:
           # than sourcing .env: some values contain spaces and would break a shell source.
           # TOKEN_PEPPER as well: the restock spec mints the scanner's API key the way the
           # CLI does, and the key is stored as a hash keyed with the pepper (SR-3.1).
+          # PHOTO_STORAGE_ORIGIN as well: the CSP assertion in catalog.spec.ts skips itself
+          # when it does not know what origin to look for, and a check that quietly skips is
+          # worse than no check at all.
           DATABASE_URL_MIGRATOR="$(grep -m1 '^DATABASE_URL_MIGRATOR=' .env | cut -d= -f2-)" \
           TOKEN_PEPPER="$(grep -m1 '^TOKEN_PEPPER=' .env | cut -d= -f2-)" \
+          PHOTO_STORAGE_ORIGIN="$(grep -m1 '^PHOTO_STORAGE_ORIGIN=' .env | cut -d= -f2-)" \
             pnpm --filter @gth/web e2e
 
       - if: failure()
