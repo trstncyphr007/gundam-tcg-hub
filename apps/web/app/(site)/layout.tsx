@@ -40,6 +40,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <Link href="/account/selling" className="text-sm text-muted">
               Selling
             </Link>
+            <Link href="/account/orders" className="text-sm text-muted">
+              Orders
+            </Link>
             <Link href="/creator/breaks" className="text-sm text-muted">
               Breaks
             </Link>
