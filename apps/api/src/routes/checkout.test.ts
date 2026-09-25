@@ -6,7 +6,12 @@ import Stripe from 'stripe';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { type ApiConfig, loadConfig } from '../config.js';
-import { type CheckoutInput, type StripeClient, createStripeClient } from '../payments/stripe.js';
+import {
+  type CheckoutInput,
+  type RefundInput,
+  type StripeClient,
+  createStripeClient,
+} from '../payments/stripe.js';
 import { TEST_PASSKEY } from '../test/auth-fixtures.js';
 
 /**
@@ -44,6 +49,8 @@ const sentLinks: { email: string; url: string }[] = [];
 
 /** Every Checkout session the route asked for, so a test can read what Stripe was told. */
 const sessions: CheckoutInput[] = [];
+/** And every refund, for the same reason. */
+const refunds: RefundInput[] = [];
 
 const fakeStripe: StripeClient = {
   createConnectedAccount: ({ userId }) =>
@@ -53,6 +60,10 @@ const fakeStripe: StripeClient = {
     Promise.resolve({ chargesEnabled: true, payoutsEnabled: true, detailsSubmitted: true }),
   constructEvent: () => {
     throw new Error('the webhook uses a real client');
+  },
+  refundPayment: (input) => {
+    refunds.push(input);
+    return Promise.resolve({ id: `re_test_${String(refunds.length)}`, status: 'succeeded' });
   },
   createCheckoutSession: (input) => {
     sessions.push(input);

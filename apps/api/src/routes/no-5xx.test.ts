@@ -171,6 +171,12 @@ const WRITES: Call[] = [
     payload: { reason: 'resolved' },
     as: 'admin',
   },
+  {
+    method: 'POST',
+    url: `/v1/admin/orders/${GHOST}/refund`,
+    payload: { reason: 'the card never arrived' },
+    as: 'admin',
+  },
 
   // Unsigned, which is what every caller who is not Stripe looks like.
   { method: 'POST', url: '/v1/webhooks/stripe', payload: { id: 'evt_x', type: 'account.updated' } },
@@ -229,6 +235,7 @@ function fakeStripe(): StripeClient {
     },
     createCheckoutSession: () =>
       Promise.resolve({ id: 'cs_no5xx', url: 'https://checkout.stripe.test/x' }),
+    refundPayment: () => Promise.resolve({ id: 're_no5xx', status: 'succeeded' }),
   };
 }
 

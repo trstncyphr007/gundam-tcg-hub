@@ -209,3 +209,33 @@ describe('whether the buyer is owed anything', () => {
     }
   });
 });
+
+describe('a chargeback can arrive at any point after payment', () => {
+  /**
+   * A buyer goes to their bank when they go to their bank. They do not wait for the card to
+   * arrive and they certainly do not wait for us to mark the sale complete.
+   *
+   * `stripe` was originally listed as an actor for `disputed` only from `completed`, so a
+   * chargeback on a freshly paid order was refused by the state machine and the handler could
+   * do nothing with it. A test of the handler found it; this is the rule stated directly, so
+   * the next person to narrow it has to delete an assertion that says why.
+   */
+  it.each(['paid', 'shipped', 'delivered', 'completed'] as const)(
+    'lets Stripe dispute an order that is %s',
+    (from) => {
+      expect(canTransition(from, 'disputed', 'stripe')).toBe(true);
+    },
+  );
+
+  it('still does not let Stripe dispute an order nobody has paid for', () => {
+    // Nothing to charge back. A `created` order has never been charged, so a chargeback on one
+    // is not a late fact — it is a nonsense.
+    expect(canTransition('created', 'disputed', 'stripe')).toBe(false);
+  });
+
+  it('still does not let a seller dispute anything, from anywhere', () => {
+    for (const from of ['paid', 'shipped', 'delivered', 'completed'] as const) {
+      expect(canTransition(from, 'disputed', 'seller')).toBe(false);
+    }
+  });
+});

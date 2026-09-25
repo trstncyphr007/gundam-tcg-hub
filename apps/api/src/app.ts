@@ -537,6 +537,10 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
         db: deps.writeDb,
         workerDb: deps.moderationDb,
         ...(flags ? { flags } : {}),
+        // The refund route exists only when there is something to refund with. It is taken
+        // from the checkout deps rather than configured twice: one Stripe client per process,
+        // built from one key.
+        ...(deps.checkout ? { stripe: deps.checkout.stripe } : {}),
       });
     }
     registerDeveloperRoutes(app, deps.writeDb, {

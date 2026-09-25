@@ -11,6 +11,7 @@ import {
   getModerationQueue,
   type FlagReader,
   getOperationsSummary,
+  getOrderById,
   getSecuritySummary,
   isKnownFlag,
   listFlags,
@@ -21,6 +22,7 @@ import {
 } from '@gth/db';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import type { StripeClient } from '../payments/stripe.js';
 
 /**
  * The admin moderation console's API (SR-3.5, SR-4.4, SR-1.10, SR-5.9).
@@ -50,6 +52,11 @@ export interface AdminDeps {
    * rather than after its cache expires. Other processes see it within ten seconds.
    */
   flags?: FlagReader | undefined;
+  /**
+   * The Stripe client, for refunds (FR-5.5). Absent means the refund route is not mounted —
+   * a console offering a button that cannot refund anything is worse than one without it.
+   */
+  stripe?: Pick<StripeClient, 'refundPayment'> | undefined;
 }
 
 const idParamSchema = z.object({ id: z.uuid() }).strict();
@@ -64,6 +71,21 @@ const reportDecisionSchema = z
 /** An admin moving an order says why, every time (SR-5.9). */
 const adminOrderSchema = z
   .object({ reason: z.string().min(1).max(ORDER_REASON_MAX_LENGTH) })
+  .strict();
+
+/**
+ * A refund says why, and says who bears it.
+ *
+ * `reverseTransfer` defaults to true — the seller gives back their share, which is right when
+ * the card never arrived. Setting it false leaves them paid and the platform out of pocket,
+ * which is a goodwill decision somebody should have to make on purpose and which the audit
+ * entry records either way.
+ */
+const refundSchema = z
+  .object({
+    reason: z.string().min(1).max(ORDER_REASON_MAX_LENGTH),
+    reverseTransfer: z.boolean().optional(),
+  })
   .strict();
 
 const killSwitchSchema = z
@@ -324,6 +346,85 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminDeps): void
           diff: { reason: body.data.reason },
         });
         return reply.header('cache-control', 'no-store').send(order);
+      },
+    );
+  }
+
+  /**
+   * Give the money back (FR-5.5, SR-5.9).
+   *
+   * **This route does not refund the order.** It asks Stripe to refund the payment, and the
+   * order moves when the `charge.refunded` webhook arrives. Those are two different sentences
+   * and the difference is the whole control: an admin who could write `refunded` directly
+   * could mark an order refunded with no money moving, and the row would be indistinguishable
+   * from one where it had.
+   *
+   * So the response says `requested`, not `refunded`, and means it.
+   *
+   * Only mounted when Stripe is configured. An admin console offering a refund button that
+   * cannot refund anything is worse than one without it.
+   */
+  if (deps.stripe) {
+    const stripe = deps.stripe;
+    app.post(
+      '/v1/admin/orders/:id/refund',
+      { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+      async (request, reply) => {
+        const actor = guard(request, reply);
+        if (actor === null) return reply;
+
+        const params = idParamSchema.safeParse(request.params);
+        if (!params.success) return reply.code(404).send({ error: 'not_found' });
+        const body = refundSchema.safeParse(request.body);
+        if (!body.success) {
+          return reply.code(400).send({ error: 'invalid_request', details: issuesOf(body.error) });
+        }
+
+        const order = await getOrderById(workerDb, params.data.id);
+        if (!order) return reply.code(404).send({ error: 'not_found' });
+        if (order.stripePaymentIntentId === null) {
+          // Nothing was ever charged, so there is nothing to give back. Cancelling is the
+          // move for an unpaid order, and it is a different one.
+          return reply.code(409).send({ error: 'nothing_to_refund', status: order.status });
+        }
+        if (order.status === 'refunded') {
+          return reply.code(409).send({ error: 'already_refunded' });
+        }
+
+        /**
+         * Audited **before** the call, not after.
+         *
+         * If Stripe times out we do not know whether the refund happened, and the entry saying
+         * an admin asked is the only record that survives either way. An audit written on
+         * success is an audit that is missing exactly when somebody needs it.
+         */
+        await writeAuditLog(db, {
+          actorId: actor,
+          action: 'order.refund_requested',
+          targetType: 'order',
+          targetId: order.id,
+          diff: {
+            reason: body.data.reason,
+            reverseTransfer: body.data.reverseTransfer ?? true,
+          },
+        });
+
+        const refund = await stripe.refundPayment({
+          paymentIntentId: order.stripePaymentIntentId,
+          orderId: order.id,
+          ...(body.data.reverseTransfer === undefined
+            ? {}
+            : { reverseTransfer: body.data.reverseTransfer }),
+        });
+
+        return reply.header('cache-control', 'no-store').send({
+          // Deliberately not `refunded`. The order moves on the webhook, and saying otherwise
+          // here would be the console reporting something that has not happened yet.
+          status: 'requested',
+          refundId: refund.id,
+          stripeStatus: refund.status,
+          orderStatus: order.status,
+        });
       },
     );
   }
