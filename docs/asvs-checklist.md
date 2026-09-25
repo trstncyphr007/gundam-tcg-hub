@@ -224,3 +224,58 @@ more behind the login than watches and breaks; **required before Phase 5.**
 At the start of every phase, and before any public launch. Phase 5 additionally requires
 ASVS **L3** for authentication, session management and business logic, plus an external
 pentest or a structured WSTG self-test (SR-5.10).
+
+---
+
+## Phase 5: money, uploads and business logic
+
+Assessed 2026-09-25, after slices 1–7a. The plan asks for Level 2 throughout and **Level 3 for
+money movement**, which in ASVS terms is V2 (business logic) and the authentication rows that
+guard it.
+
+The pattern below repeats deliberately: where a control could be a check in a route or a grant
+in the database, it is a grant. A route can be changed in an afternoon; a column the role holds
+no privilege on cannot be written however the code is persuaded to ask.
+
+| #   | Control                                                           | Status  | Evidence                                                                                                                                                                          |
+| --- | ----------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.1 | Business logic enforced server-side                               | **Met** | The order state machine is a pure table in `@gth/core`, exhaustively tested, and written a second time as RLS policies. Where they disagree the database wins, and a test says so |
+| 2.2 | Sequential steps cannot be skipped                                | **Met** | Every transition goes through one locked function; `created → shipped` and `paid → completed` are refused by the table and by the policy                                          |
+| 2.3 | Limits on business actions (L3)                                   | **Met** | New-account caps and velocity limits (SR-5.6), pure with 16 tests, plus route tests. Distinct from the per-minute rate limiter, which is about server load                        |
+| 2.4 | Transactions cannot be replayed                                   | **Met** | `webhook_events (provider, event_id)` unique, claimed inside the handling transaction; Stripe idempotency keys on every mutating call                                             |
+| 2.5 | Money-affecting actions come from a trusted source (L3)           | **Met** | `paid` and `refunded` are reachable by the `stripe` actor only, from a webhook verified against the raw body. Two tests that a session — buyer or seller — cannot write either    |
+| 2.6 | Users cannot act on their own behalf where a conflict exists (L3) | **Met** | Seller cannot confirm delivery, complete a sale, approve a photo, or dispute their own order. Buyer cannot mark completed or change the price. Each tested as raw SQL             |
+| 2.7 | Amounts are server-derived                                        | **Met** | The buy request body is **empty**; the amount is copied from the listing and the fee computed from it. `.strict()` would reject a body claiming otherwise                         |
+
+### V6 / V7 — authentication and session, for the money paths
+
+| #   | Control                                    | Status      | Evidence                                                                                                                                                                                                                                |
+| --- | ------------------------------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 6.x | Step-up for admin money actions (L3)       | **Met**     | Refund, deliver and complete sit behind four gates: session, admin role, passkey-opened session, opened within twelve hours                                                                                                             |
+| 6.x | Sellers hold MFA                           | **Partial** | Passkeys are available and required for admins. Selling is **not** gated on a role (see `authorize.ts`) — the real gate is Stripe's KYC — so a seller with only a magic link can list. SR-X.3 asks for MFA on seller accounts; not done |
+| 7.x | Session binding on state-changing requests | **Met**     | Origin / `Sec-Fetch-Site` checks plus `SameSite=Lax`, unchanged from Phase 1 and inherited by every Phase 5 route                                                                                                                       |
+
+### V5 — file upload
+
+| #   | Control                                               | Status  | Evidence                                                                                                                                                  |
+| --- | ----------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5.1 | Type validated from content, not from metadata        | **Met** | Magic bytes; declared type must match, and a mismatch is refused                                                                                          |
+| 5.2 | Size and dimension bounds before decoding             | **Met** | Header-only parse; a 30000 × 30000 PNG of seventy bytes is refused before any decoder is called                                                           |
+| 5.3 | Files re-encoded, metadata stripped                   | **Met** | Rebuilt from decoded pixels. EXIF proven absent with a real APP1 segment; a `tEXt` payload proven gone                                                    |
+| 5.4 | Malware scanning                                      | **Met** | ClamAV INSTREAM against real clamd. An unreachable scanner leaves the photo `pending` — never "clean"                                                     |
+| 5.5 | Uploads stored outside the webroot, served indirectly | **Met** | Private bucket, presigned PUT with content type **and** length signed; the original is deleted once processed and only the re-encoded copy is ever served |
+| 5.6 | Upload cannot be executed or served as another type   | **Met** | Fixed `Content-Type` on the stored object, `nosniff` on every response, and the served bytes start `FF D8` whatever was uploaded                          |
+
+### What is Open, stated plainly
+
+| Item                                         | Why it matters                                                                                                          | When                                                                            |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Payout holds (FR-5.6)**                    | `hold_until` exists and nothing writes it. Sellers are paid before buyers can complain — the empty-envelope trade works | Next slice; needs Stripe payout-schedule configuration, not a code change alone |
+| **Restricted API keys per service (SR-5.3)** | One key serves both the web and worker paths. The plan asks for a RAK per service so a leaked web key cannot refund     | Dashboard change plus config                                                    |
+| **Seller MFA (SR-X.3)**                      | A seller can list with a magic-link session                                                                             | Open decision: it conflicts with "selling is not a role"                        |
+| **Geo mismatch flagging (SR-5.6)**           | The address arrives with the payment, after the decision                                                                | Needs a review queue over paid orders                                           |
+| **External penetration test (SR-5.10)**      | The person who wrote the controls is the worst-placed person to find the gap                                            | Before real money                                                               |
+| **Legal review (§23)**                       | Policy pages are accurate, not lawyered                                                                                 | Before real money                                                               |
+
+The self-review that covers the rest is `docs/security/phase-5-review.md`, including what it
+deliberately did not test.

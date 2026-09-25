@@ -222,9 +222,84 @@ The index is the thing worth attacking: it is a number other people will make de
 - **CrowdSec bans and a refused deploy signature reach the ops channel from the host**, and
   nothing correlates them with the application's own view of an attack.
 - **The policy pages are accurate, not lawyered.** §23 requires a review before Phase 5.
-- **Phase 5 has no threat coverage here yet** — payments, uploads and disputes (T9–T11) arrive
-  with the feature, not before it.
+- **Phase 5 is now covered below** (T9–T11), and one thing about that coverage is worth saying
+  here rather than in a table: **no real payment has ever been taken.** Every control is tested
+  against real Postgres, a real S3 server, real clamd and Stripe's own signature verification,
+  but Connect is not enabled on the Stripe account, so the end-to-end purchase in AC-5.1 has
+  never run against Stripe's live test API. The controls are proven; the integration is not.
 - **The per-minute limiter is in-memory**, so it is per-process. That is correct for one
   instance and wrong the moment there are two; SR-X.27 moves it to a shared store then. The
   per-_day_ key quota no longer waits on that: it is in Postgres, because a limit that a
   restart refills was never a daily limit (ADR-042).
+
+---
+
+## Phase 5: the marketplace (T9–T11)
+
+Assessed 2026-09-25, after slices 1–7a. The pattern across all three rows is the same and is
+worth stating once: **the control that matters is a database grant or a policy, not a check in
+a route.** A route can be changed in an afternoon; a column the role has no privilege on cannot
+be written however the code is persuaded to ask.
+
+### T9 — forged or replayed payment webhooks
+
+| Attack                          | Mitigation                                                                                                                                                  | Proof                                                      |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Forged webhook claiming payment | Signature verified against the **raw** body before anything is read                                                                                         | Signing a `false` and delivering a `true`, refused         |
+| Replayed webhook                | `webhook_events (provider, event_id)` unique; claim, handle and mark in **one transaction**, so a failed handler rolls the claim back and the retry re-runs | Replay answered `200 {duplicate: true}` and not re-applied |
+| Stale capture                   | Stripe's five-minute tolerance                                                                                                                              | An hour-old timestamp, refused                             |
+| Session forging `paid`          | Migration 0041's policy permits four statuses to `app_web`, and `paid` is not among them; 0043 removes the payment columns from its UPDATE grant            | Raw SQL as buyer and as seller, both refused               |
+| Forged refund                   | Same rule in the other direction: `refunded` is reachable by `stripe` alone                                                                                 | A forged signature on a refund, order stays `paid`         |
+| Admin faking a refund           | The admin route asks Stripe and answers `requested`; only the webhook moves the order                                                                       | The route has no path to the status                        |
+
+**Residual.** The signing secret is a shared secret; its compromise is a full forgery capability.
+Rotation is the answer and is in the key-rotation runbook. Nothing here detects a _valid_
+webhook that Stripe was tricked into sending.
+
+### T10 — malicious upload
+
+| Attack                            | Mitigation                                                                                     | Proof                                                                          |
+| --------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Decompression bomb                | Dimensions read from the header; refused before any decoder is called                          | A 30000 × 30000 PNG of seventy bytes, refused                                  |
+| Polyglot (image + payload)        | Terminator check refuses trailing data; the re-encode discards everything that is not a pixel  | Tested twice — byte level, and end to end through the routes                   |
+| Payload inside the image          | The re-encode. `@gth/security` is explicit that it does **not** catch this                     | A `<script>` in a `tEXt` chunk: accepted by inspection, absent after re-encode |
+| EXIF / GPS leak                   | Re-encode from decoded pixels                                                                  | A real APP1 `Exif` segment, present in the fixture and absent after            |
+| Known malware in a valid image    | ClamAV over INSTREAM                                                                           | Real clamd; EICAR recognised                                                   |
+| Seller approving their own upload | `status`, `object_key`, `sha256`, dimensions and `scanned_at` are outside the web role's grant | Raw SQL, refused                                                               |
+| Serving the original bytes        | The original is deleted once processed; only the re-encoded copy has an `object_key`           | The served copy starts `FF D8` whatever was uploaded                           |
+
+**Residual.** ClamAV's EICAR signature is anchored, so it does not flag EICAR inside a larger
+file — written down in the tests. Our decoders are pure JavaScript and dormant since 2022; the
+mitigations are memory-safety by construction, explicit decoder limits, and the fact that this
+runs in a bounded background job.
+
+### T11 — marketplace fraud
+
+| Attack                                  | Mitigation                                                                        | Proof                                                       |
+| --------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Buying your own card to inflate a score | `orders_not_self_dealing` CHECK                                                   | Refused at the database                                     |
+| Two buyers, one card                    | `orders_one_open_per_listing` partial unique index, enforced **below** RLS        | A rival's purchase refused with 409                         |
+| Buyer editing the price after the fact  | Migration 0043's column-level UPDATE grant                                        | Raw SQL, refused                                            |
+| Seller confirming their own delivery    | `delivered` and `completed` are not writable by `app_web` at all                  | Raw SQL for both status and `delivered_at`                  |
+| Seller finishing their own sale         | `completed` is reachable by `system` or `admin` only                              | State machine, tested exhaustively                          |
+| Shipping with no evidence               | `orders_shipped_has_tracking` CHECK — stricter than the plan, deliberately        | Raw SQL, refused                                            |
+| Stolen-card rush on a new account       | New-account caps: $150 an order, three orders a day                               | Pure rules, sixteen tests, plus route tests                 |
+| Scripted buying                         | Ten orders an hour, above the per-minute limiter                                  | Tested                                                      |
+| Stolen listing photos                   | sha256 of the **processed** copy; duplicates audited, not refused                 | Reported, with the reasoning for not refusing               |
+| Reviews from people who did not buy     | The insert policy requires the order to be yours, completed, and yours as _buyer_ | Four refusals, each tested as raw SQL or through the policy |
+| A seller deleting a bad review          | No role has DELETE on `order_ratings`                                             | Refused for the rater themselves                            |
+
+**Residual, and these are real.**
+
+- **Geo mismatch is not implemented.** It needs the buyer's address, which arrives on the
+  payment — after the decision the fraud rules make. It belongs on a review queue over paid
+  orders and has not been built.
+- **Payout holds are not implemented.** `seller_accounts.hold_until` exists and nothing writes
+  it. With destination charges the transfer happens at payment, so holding a payout means
+  configuring the connected account's payout schedule through Stripe, not delaying our own
+  transfer. Until that is done, **a seller is paid before the buyer has any chance to complain**
+  — which is the single largest open risk in the marketplace.
+- **Every fraud threshold is a guess.** No real order has been placed, so the numbers are
+  starting points rather than anything measured.
+- **Nothing correlates a refused purchase with anything else.** The audit entries exist; no
+  alert reads them.
