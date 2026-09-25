@@ -50,6 +50,7 @@ const fakeStripe: StripeClient = {
   refundPayment: () => {
     throw new Error('not used here');
   },
+  setPayoutSchedule: () => Promise.resolve(),
 };
 
 let ipCounter = 0;

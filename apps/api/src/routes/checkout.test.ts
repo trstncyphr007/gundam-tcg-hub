@@ -61,6 +61,7 @@ const fakeStripe: StripeClient = {
   constructEvent: () => {
     throw new Error('the webhook uses a real client');
   },
+  setPayoutSchedule: () => Promise.resolve(),
   refundPayment: (input) => {
     refunds.push(input);
     return Promise.resolve({ id: `re_test_${String(refunds.length)}`, status: 'succeeded' });

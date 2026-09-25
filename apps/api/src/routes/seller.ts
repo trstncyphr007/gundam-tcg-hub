@@ -1,5 +1,12 @@
 import { authorize } from '@gth/auth';
-import { type Database, getSellerAccount, recordSellerAccount, writeAuditLog } from '@gth/db';
+import { HOLD_RELEASE_AFTER_DAYS } from '@gth/core';
+import {
+  type Database,
+  getSellerAccount,
+  holdSellerPayouts,
+  recordSellerAccount,
+  writeAuditLog,
+} from '@gth/db';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { StripeClient } from '../payments/stripe.js';
 
@@ -9,6 +16,12 @@ export interface SellerDeps {
   stripe: StripeClient;
   /** Where Stripe sends somebody back to. Ours, from configuration, never from a request. */
   appBaseUrl: string;
+  /**
+   * The worker pool, for recording the payout hold — `hold_until` is outside the web role's
+   * grant. Optional so a deployment without it still onboards sellers; they are held at Stripe
+   * either way, because the account is created with a manual schedule.
+   */
+  workerDb?: Database | undefined;
 }
 
 /**
@@ -84,6 +97,23 @@ export function registerSellerRoutes(app: FastifyInstance, deps: SellerDeps): vo
       // `recordSellerAccount` returns the row that won a race, which may not be the one we
       // just created — use whichever is actually stored.
       accountId = recorded.stripeAccountId;
+
+      /**
+       * The account is created with manual payouts (see `createConnectedAccount`), and the row
+       * records that it is held (FR-5.6). `hold_until` carries the earliest date the hold could
+       * be reconsidered — a guess, since the real decision is made from completed orders, but
+       * "this seller is held" has to be a fact the database states rather than one inferred
+       * from an absence.
+       *
+       * On the worker, because `hold_until` is outside what a session may write.
+       */
+      if (deps.workerDb) {
+        await holdSellerPayouts(
+          deps.workerDb,
+          accountId,
+          new Date(Date.now() + HOLD_RELEASE_AFTER_DAYS * 24 * 60 * 60 * 1000),
+        );
+      }
 
       await writeAuditLog(deps.db, {
         actorId: request.subject.userId,

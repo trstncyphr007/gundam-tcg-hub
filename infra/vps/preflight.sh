@@ -105,7 +105,7 @@ echo "== scheduled jobs"
 # now fails CI if it stops matching `jobs_schedule`.
 if have systemctl && [ -d /run/systemd/system ]; then
   for unit in gth-rollup.timer gth-retention.timer gth-watchdog.timer gth-alert-retry.timer \
-    gth-complete-orders.timer gth-backup.timer; do
+    gth-complete-orders.timer gth-release-payouts.timer gth-backup.timer; do
     if systemctl is-enabled "$unit" >/dev/null 2>&1; then
       pass "${unit} enabled"
     else

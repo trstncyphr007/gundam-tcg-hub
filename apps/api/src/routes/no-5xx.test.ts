@@ -239,6 +239,7 @@ function fakeStripe(): StripeClient {
     createCheckoutSession: () =>
       Promise.resolve({ id: 'cs_no5xx', url: 'https://checkout.stripe.test/x' }),
     refundPayment: () => Promise.resolve({ id: 're_no5xx', status: 'succeeded' }),
+    setPayoutSchedule: () => Promise.resolve(),
   };
 }
 

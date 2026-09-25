@@ -531,7 +531,12 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     // Reputation (FR-5.7). Mounted with the rest of the session routes: a rating needs no
     // Stripe and no bucket, only a completed order — and the policy is what decides that.
     registerRatingRoutes(app, { db: deps.writeDb });
-    if (deps.seller) registerSellerRoutes(app, deps.seller);
+    if (deps.seller) {
+      registerSellerRoutes(app, {
+        ...deps.seller,
+        ...(deps.moderationDb ? { workerDb: deps.moderationDb } : {}),
+      });
+    }
     if (deps.checkout) {
       registerCheckoutRoutes(app, { ...deps.checkout, ...(flags ? { flags } : {}) });
     }

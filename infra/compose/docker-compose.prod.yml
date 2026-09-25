@@ -235,6 +235,26 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
+  # Lifting a new seller's payout hold (FR-5.6). Connected accounts are created with a manual
+  # payout schedule, so a sale's money reaches the seller's Stripe balance and not their bank;
+  # this switches them to daily once they have enough completed orders and enough time.
+  #
+  # Needs `egress`: it is the one job that talks to Stripe.
+  release-payouts:
+    <<: *hardening
+    profiles: [jobs]
+    image: ${API_IMAGE:?set API_IMAGE to a signed digest}
+    user: '65532:65532'
+    command: ['dist/job-release-payouts.js']
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_WORKER: ${DATABASE_URL_WORKER:?}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?}
+    networks: [internal, egress]
+    restart: 'no'
+    depends_on:
+      postgres: { condition: service_healthy }
+
   postgres:
     <<: *hardening
     image: postgres:17-bookworm@sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652
