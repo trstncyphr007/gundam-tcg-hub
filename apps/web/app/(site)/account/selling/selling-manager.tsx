@@ -46,14 +46,6 @@ function messageFor(error: string | undefined, status: number): string {
       return 'That photo has already been checked.';
     case 'not_found':
       return 'That listing is no longer there.';
-    /*
-     * Fastify's own 404, which means the route is not registered — photos and payments are
-     * both optional at boot. Distinct from our `not_found`, which means the row is missing.
-     * Without this the two are indistinguishable, and somebody on a deployment with no object
-     * storage is told their listing has vanished.
-     */
-    case 'Not Found':
-      return 'That part of the marketplace is not set up on this site yet.';
     case 'processing_unavailable':
       return 'Photos cannot be checked right now. The upload is saved and will be picked up shortly.';
     case 'trailing_data':
@@ -237,7 +229,23 @@ export function SellingManager({
         body: JSON.stringify({ contentType: file.type, contentLength: file.size }),
       });
       if (!started.ok) {
-        setProblem(await problemOf(started));
+        /**
+         * A 404 here cannot be read as "your listing is gone", and not for want of trying.
+         *
+         * The API answers an unmatched route with exactly the body it uses for a missing row —
+         * `{error: 'not_found'}` — on purpose, so that "no such thing" and "not yours" stay
+         * indistinguishable (SR-3.3). The photo routes are registered only where object
+         * storage is configured, so both readings are live and the client cannot tell them
+         * apart. It should not try: what it can say is the thing that is true either way.
+         *
+         * The seller is looking at the listing, so "that listing is no longer there" is the
+         * one answer that is certainly wrong.
+         */
+        setProblem(
+          started.status === 404
+            ? 'Photographs cannot be added to this listing right now.'
+            : await problemOf(started),
+        );
         return;
       }
       const { photoId, uploadUrl, requiredHeaders } = (await started.json()) as {
