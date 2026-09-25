@@ -294,11 +294,17 @@ runs in a bounded background job.
 - **Geo mismatch is not implemented.** It needs the buyer's address, which arrives on the
   payment — after the decision the fraud rules make. It belongs on a review queue over paid
   orders and has not been built.
-- **Payout holds are not implemented.** `seller_accounts.hold_until` exists and nothing writes
-  it. With destination charges the transfer happens at payment, so holding a payout means
-  configuring the connected account's payout schedule through Stripe, not delaying our own
-  transfer. Until that is done, **a seller is paid before the buyer has any chance to complain**
-  — which is the single largest open risk in the marketplace.
+- **Payout holds are implemented, and what they promise is narrower than it sounds.** A
+  connected account is created with a **manual payout schedule**, so a sale's money reaches the
+  seller's Stripe balance and not their bank. A nightly job releases them once they have three
+  completed orders and seven days since the first completed — both required, because orders
+  alone allows three instant self-completing sales and time alone allows a week of idling before
+  one large payment. A seller cannot clear their own `hold_until`: the column is outside the web
+  role's grant, and there is a test.
+
+  What it does **not** do: stop a released seller absconding, or recover money already paid out.
+  It makes the first few sales safe, which is where the empty-envelope trade lives.
+
 - **Every fraud threshold is a guess.** No real order has been placed, so the numbers are
   starting points rather than anything measured.
 - **Nothing correlates a refused purchase with anything else.** The audit entries exist; no

@@ -12,6 +12,7 @@ export default defineConfig({
     'src/job-watchdog.ts',
     'src/job-alert-retry.ts',
     'src/job-complete-orders.ts',
+    'src/job-release-payouts.ts',
   ],
   format: ['esm'],
   platform: 'node',

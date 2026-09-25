@@ -33,18 +33,24 @@ accepted; it was refused for the account capability alone. Enabling Connect in t
 few minutes in the dashboard and is the single thing standing between this and a demonstrated
 purchase.
 
-### 2. Sellers are paid before buyers can complain
+### 2. ~~Sellers are paid before buyers can complain~~ — closed 2026-09-25
 
-`seller_accounts.hold_until` exists and **nothing writes it**. FR-5.6 asks for a seven-day hold
-on a new seller's first orders; with Stripe destination charges the transfer happens at payment,
-so implementing that hold means configuring the connected account's payout schedule through
-Stripe rather than delaying a transfer of ours.
+**Resolved after this review was first written**, which is the review doing its job.
 
-Until it is done, the empty-envelope trade works: list, be paid, do not post, and the money has
-already moved. The order state machine records it faithfully and the buyer can dispute — but the
-funds are gone.
+Connected accounts are now created with a **manual payout schedule**, so a sale's money reaches
+the seller's Stripe balance and not their bank. A nightly job releases them once they have three
+completed orders and seven days since the first of those completed — both required, because
+orders alone allows three instant self-completing sales, and time alone allows an account to idle
+for a week and then take one large payment with no history at all.
 
-**This is the largest open risk in the marketplace** and it is a missing feature, not a bug.
+A seller cannot clear their own hold: `hold_until` is outside the web role's grant, and there is
+a test that says so for their own row and for somebody else's.
+
+**What this does not promise.** It does not stop a released seller absconding, and it does not
+recover money already paid out. It makes the first few sales safe, which is where the
+empty-envelope trade lives.
+
+The remaining blocker is the first one: no payment has ever been taken.
 
 ---
 
@@ -212,7 +218,9 @@ The controls are in better shape than the integration. Every rule that decides w
 is enforced by a database grant or a policy, and each one has a test that bypasses the
 application code to prove it.
 
-**It should not take real money yet**, for the two reasons at the top: no payment has ever
-completed against Stripe, and sellers are paid before buyers can complain. The first is a
-dashboard setting. The second is a feature that has not been built, and building it is the next
-thing worth doing in this phase.
+**It should not take real money yet** — but for one reason now rather than two. No payment has
+ever completed against Stripe, and that is a dashboard setting away.
+
+The payout hold that was blocker 2 when this document was first written was built immediately
+afterwards, which is the most useful thing a review of one's own work can do: name the largest
+risk plainly enough that the next commit closes it.

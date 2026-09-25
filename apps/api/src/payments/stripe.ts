@@ -60,6 +60,14 @@ export interface StripeClient {
    * the difference is the control — see `markOrderRefunded`.
    */
   refundPayment: (input: RefundInput) => Promise<{ id: string; status: string | null }>;
+  /**
+   * Hold or release a connected account's payouts (FR-5.6).
+   *
+   * `manual` leaves the money in the seller's Stripe balance — visible to them, not yet in
+   * their bank. It is not a delayed transfer: with a destination charge Stripe has already
+   * transferred, and this is what "hold" can actually mean.
+   */
+  setPayoutSchedule: (accountId: string, schedule: 'manual' | 'daily') => Promise<void>;
 }
 
 export interface RefundInput {
@@ -140,6 +148,17 @@ export function createStripeClient(options: StripeOptions): StripeClient {
           // Stripe collects and keeps the identity details. We hold an id and two booleans,
           // which is the entire reason Express was chosen over building KYC ourselves.
           capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
+          /**
+           * New accounts start on a manual payout schedule (FR-5.6).
+           *
+           * Set at creation rather than afterwards, because a second call can fail and leave a
+           * seller taking payments with their payouts already running. The money reaching their
+           * Stripe balance is fine; the money reaching their bank before a buyer can complain
+           * is the empty-envelope trade.
+           *
+           * `releasePayoutHoldsJob` switches them to `daily` once they have earned it.
+           */
+          settings: { payouts: { schedule: { interval: 'manual' } } },
           ...(email === undefined ? {} : { email }),
           metadata: { userId },
         },
@@ -259,6 +278,12 @@ export function createStripeClient(options: StripeOptions): StripeClient {
         idempotency('refund', input.orderId),
       );
       return { id: refund.id, status: refund.status };
+    },
+
+    setPayoutSchedule: async (accountId, schedule) => {
+      await stripe.accounts.update(accountId, {
+        settings: { payouts: { schedule: { interval: schedule } } },
+      });
     },
   };
 }

@@ -77,16 +77,16 @@
     content: |
       #!/usr/bin/env bash
       # Managed by Ansible (infra/vps/ansible/roles/jobs).
-      # Usage: gth-job.sh <staging|production> <retention|rollup|watchdog|alert-retry|complete-orders>
+      # Usage: gth-job.sh <staging|production> <retention|rollup|watchdog|alert-retry|complete-orders|release-payouts>
       set -euo pipefail
 
-      environment="${1:?usage: gth-job.sh <staging|production> <retention|rollup|watchdog|alert-retry|complete-orders>}"
+      environment="${1:?usage: gth-job.sh <staging|production> <retention|rollup|watchdog|alert-retry|complete-orders|release-payouts>}"
       job="${2:?}"
 
       case "$environment" in staging|production) ;; *) echo "unknown environment: $environment" >&2; exit 1 ;; esac
       # An allowlist, not a pass-through: this string reaches `compose run`, and the list is
       # also the place a new job gets forgotten. It must match `jobs_schedule` in defaults.
-      case "$job" in retention|rollup|watchdog|alert-retry|complete-orders) ;; *) echo "unknown job: $job" >&2; exit 1 ;; esac
+      case "$job" in retention|rollup|watchdog|alert-retry|complete-orders|release-payouts) ;; *) echo "unknown job: $job" >&2; exit 1 ;; esac
 
       root="{{ app_root }}/${environment}"
       runtime_env="/run/gth/job-${environment}.env"

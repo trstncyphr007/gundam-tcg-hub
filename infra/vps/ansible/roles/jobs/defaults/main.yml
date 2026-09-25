@@ -27,3 +27,12 @@ jobs_schedule:
   - name: complete-orders
     description: Gundam TCG Hub order completion
     hour: '05:30:00'
+  # Lifting a new seller's payout hold (FR-5.6). Nightly, after the orders that might qualify
+  # them have been completed at 05:30 -- a seller whose third order completes this morning
+  # should not wait another day to be released.
+  #
+  # If this never runs nothing breaks and nobody is at risk: sellers simply stay held. That is
+  # the right way round for a job that releases money.
+  - name: release-payouts
+    description: Gundam TCG Hub payout hold release
+    hour: '06:00:00'
