@@ -18,19 +18,25 @@ function messageFor(error: string | undefined, status: number): string {
   switch (error) {
     case 'listing_unavailable':
       return 'That one has just gone. Reload to see what is still for sale.';
-    case 'listing_taken':
-      return 'Somebody is already part-way through buying that one.';
-    case 'own_listing':
+    case 'cannot_buy_own_listing':
       return 'That is your own listing.';
-    case 'seller_unavailable':
-      return 'That seller cannot take payments at the moment.';
+    case 'seller_not_ready':
+      return 'That seller cannot take payments yet, so this cannot be bought.';
     case 'checkout_unavailable':
       return 'Buying is paused for a moment. Try again shortly.';
+    case 'invalid_request':
+      return 'That request was not accepted. Reload the page and try again.';
+    /**
+     * Deliberately not "that listing is gone".
+     *
+     * The API answers an unmatched route with the same body as a missing row —
+     * `{error: 'not_found'}` — so that "no such thing" and "not yours" stay indistinguishable
+     * (SR-3.3). The checkout routes exist only where Stripe is configured, so a 404 here is
+     * either a listing that has just sold or a deployment that cannot take payments at all,
+     * and the client has no way to tell. This says the part that is true in both.
+     */
     case 'not_found':
-      return 'That listing is no longer there.';
-    case 'purchase_velocity':
-    case 'new_account_cap':
-      return 'That is more buying than a new account can do in one go. Try again later.';
+      return 'That listing cannot be bought right now. It may have just gone.';
     case 'unauthenticated':
       return 'Sign in to buy.';
     default:
@@ -71,9 +77,19 @@ export function BuyButton({
     try {
       const response = await fetch(`/v1/listings/${listingId}/buy`, { method: 'POST' });
       if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
+        const body = (await response.json().catch(() => null)) as {
+          error?: unknown;
+          message?: unknown;
+        } | null;
+        /*
+         * The API's own sentence when it wrote one. The fraud rules answer 403 with a message
+         * from `explainRefusal`, written next to the rule itself, which is better than
+         * anything repeated here — and repeating it is how the two drift apart.
+         */
         setProblem(
-          messageFor(typeof body?.error === 'string' ? body.error : undefined, response.status),
+          typeof body?.message === 'string' && body.message !== ''
+            ? body.message
+            : messageFor(typeof body?.error === 'string' ? body.error : undefined, response.status),
         );
         return;
       }

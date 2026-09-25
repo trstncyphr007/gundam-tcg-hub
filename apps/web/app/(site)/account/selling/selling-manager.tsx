@@ -108,7 +108,8 @@ export function SellingManager({
   status,
   initialListings,
 }: {
-  status: SellerStatus;
+  /** Null when this deployment has no payment provider configured at all. */
+  status: SellerStatus | null;
   initialListings: Listing[];
 }): React.JSX.Element {
   const [listings, setListings] = useState(initialListings);
@@ -169,7 +170,17 @@ export function SellingManager({
         }),
       });
       if (!response.ok) {
-        setProblem(await problemOf(response));
+        /*
+         * On this form specifically, a 404 is about the card rather than the listing: a
+         * variant id that names nothing reaches the app's handler as a missing reference. The
+         * shared message ("that listing is no longer there") would be nonsense here — there is
+         * no listing yet, that is what the button was for.
+         */
+        setProblem(
+          response.status === 404
+            ? 'No card printing has that id. Copy it from the card page and try again.'
+            : await problemOf(response),
+        );
         return;
       }
       element.reset();
@@ -218,7 +229,23 @@ export function SellingManager({
         body: JSON.stringify({ contentType: file.type, contentLength: file.size }),
       });
       if (!started.ok) {
-        setProblem(await problemOf(started));
+        /**
+         * A 404 here cannot be read as "your listing is gone", and not for want of trying.
+         *
+         * The API answers an unmatched route with exactly the body it uses for a missing row —
+         * `{error: 'not_found'}` — on purpose, so that "no such thing" and "not yours" stay
+         * indistinguishable (SR-3.3). The photo routes are registered only where object
+         * storage is configured, so both readings are live and the client cannot tell them
+         * apart. It should not try: what it can say is the thing that is true either way.
+         *
+         * The seller is looking at the listing, so "that listing is no longer there" is the
+         * one answer that is certainly wrong.
+         */
+        setProblem(
+          started.status === 404
+            ? 'Photographs cannot be added to this listing right now.'
+            : await problemOf(started),
+        );
         return;
       }
       const { photoId, uploadUrl, requiredHeaders } = (await started.json()) as {
@@ -258,7 +285,17 @@ export function SellingManager({
     <div className="space-y-8">
       <section className="space-y-3" data-testid="seller-status">
         <h2 className="text-lg font-medium">Taking payments</h2>
-        {status.chargesEnabled && status.payoutsEnabled ? (
+        {status === null ? (
+          /*
+           * No payment provider on this deployment. Said here rather than by hiding the page,
+           * because everything below still works: a draft, a photograph and a price are all
+           * ours to store, and none of them involves Stripe.
+           */
+          <p className="text-sm text-muted" data-testid="payments-unavailable">
+            Taking payments is not set up on this site yet, so nothing can actually be sold. You can
+            still prepare listings and add photographs — they will be waiting when it is.
+          </p>
+        ) : status.chargesEnabled && status.payoutsEnabled ? (
           <p className="text-sm text-muted" data-testid="seller-ready">
             Stripe has cleared this account to take payments and receive payouts. A new
             seller&rsquo;s payouts are held for a few days after delivery on their first orders.

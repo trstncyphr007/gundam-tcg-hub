@@ -51,6 +51,9 @@ async function forwardedFor(): Promise<Record<string, string>> {
  * `revalidate` is a parameter because not everything public ages at the same rate. A card's
  * name is the same tomorrow; what is for sale changes the moment a seller edits a price, and a
  * stale listing is a buyer clicking through to a checkout that answers 409.
+ *
+ * Zero means "do not hold it here at all", for the routes that already say how long they may
+ * be cached. Two caches in a row do not halve the load, they add their windows together.
  */
 async function getPublic<T>(path: string, revalidate = 60): Promise<T | null> {
   try {
@@ -571,11 +574,16 @@ export const api = {
   /**
    * What is for sale for a card. Public, so no session is needed to look.
    *
-   * Thirty seconds, matching the API's own `cache-control`, because a listing is the most
-   * perishable thing the API serves.
+   * **Not cached here, deliberately.** The route already answers with
+   * `cache-control: public, max-age=30`, which is what a CDN and the browser act on. Holding
+   * it for another thirty seconds in Next's data cache as well does not halve the load — the
+   * two windows compound, so a listing could be a minute stale by the time somebody reads it,
+   * and a seller who has just put a card on sale watches their own card page not show it.
+   *
+   * One cache layer, at the edge, where it belongs. The API is a process away.
    */
   cardListings: (cardId: string) =>
-    getPublic<{ items: ListingForSale[] }>(`/v1/cards/${cardId}/listings`, 30),
+    getPublic<{ items: ListingForSale[] }>(`/v1/cards/${cardId}/listings`, 0),
 
   listingPhotos: (listingId: string) =>
     getAuthed<{ items: ListingPhoto[] }>(`/v1/listings/${listingId}/photos`),

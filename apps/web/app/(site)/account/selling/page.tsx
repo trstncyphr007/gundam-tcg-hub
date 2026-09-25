@@ -15,8 +15,18 @@ export const metadata = {
  * own row — they are the ones who know, and a cached "yes" that has since become "no" is how
  * somebody takes a payment they cannot be paid for.
  *
- * `sellerStatus` returns null when the marketplace is not configured at all, which is a
- * different thing from "not onboarded" and is said differently below.
+ * `sellerStatus` returns null when payments are not configured on this deployment at all — the
+ * seller routes are registered only when there is a Stripe client to answer them with.
+ *
+ * **That is not the same as having no marketplace, and the first version of this page treated
+ * it as though it were.** Listings do not go through Stripe: `registerMarketRoutes` is
+ * unconditional, so creating drafts, adding photographs and arranging inventory all work with
+ * no payment provider anywhere. Hiding the whole page behind a Stripe check meant that on a
+ * stock local install — and in CI, which configures no Stripe — selling showed one sentence
+ * saying it did not exist, and nothing else. Preparing to sell is most of selling, and it is
+ * the part somebody does before they hand their identity documents to a payment processor.
+ *
+ * So the page always renders. What payments are is a question the payments section answers.
  */
 export default async function SellingPage(): Promise<React.JSX.Element> {
   const me = await api.me();
@@ -36,13 +46,7 @@ export default async function SellingPage(): Promise<React.JSX.Element> {
         </p>
       </header>
 
-      {status === null ? (
-        <p className="rounded border p-4 text-sm text-muted border-line" data-testid="market-off">
-          The marketplace is not switched on for this site yet.
-        </p>
-      ) : (
-        <SellingManager status={status} initialListings={listings?.items ?? []} />
-      )}
+      <SellingManager status={status} initialListings={listings?.items ?? []} />
     </div>
   );
 }

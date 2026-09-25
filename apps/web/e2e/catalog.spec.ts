@@ -21,9 +21,10 @@ test.describe('catalog', () => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Sample Unit Alpha' }).click();
     await expect(page.getByRole('heading', { name: 'Sample Unit Alpha' })).toBeVisible();
-    // Scoped to the printings list: the chart legend now names the same printings, and an
-    // unscoped match would pass for the wrong reason (or fail on strict mode, as it did).
-    const printings = page.getByRole('list').filter({ hasText: 'normal · EN' });
+    // Scoped by name rather than by text. The chart legend names the same printings and so
+    // does every listing for sale, so a text filter has twice resolved to more than one list —
+    // passing for the wrong reason until strict mode caught it.
+    const printings = page.getByTestId('printings');
     await expect(printings.getByText('normal · EN')).toBeVisible();
     await expect(printings.getByText('parallel · EN')).toBeVisible();
   });
