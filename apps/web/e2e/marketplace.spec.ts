@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { type APIRequestContext, expect, test } from '@playwright/test';
+import { type APIRequestContext, type Page, expect, test } from '@playwright/test';
 import { signInOnce } from './helpers';
 
 /**
@@ -33,19 +33,29 @@ const BUYER_EMAIL = process.env['E2E_BUYER_EMAIL'] ?? 'market-buyer@example.test
  * local database keeps every listing every run has ever made. Under $25 there are only a few
  * thousand prices to go round, so "unique enough" was a matter of time rather than of design.
  */
-async function createListing(
-  page: import('@playwright/test').Page,
-  variantId: string,
-  price: string,
-): Promise<string> {
+async function createListing(page: Page, variantId: string, price: string): Promise<string> {
   await page.getByTestId('listing-variant').fill(variantId);
   await page.getByTestId('listing-price').fill(price);
   await page.getByTestId('listing-create').click();
 
-  // The list is newest first, so the one just made is the one at the top.
-  const mine = await page.request.get('/v1/listings');
-  const id = ((await mine.json()) as { items: { id: string }[] }).items[0]?.id;
-  if (id === undefined) throw new Error('the listing was not created');
+  /**
+   * The id comes out of the page, not out of a second API call.
+   *
+   * Asking `GET /v1/listings` for it meant a request whose auth, rate limit and response shape
+   * were all extra things that could differ from the browser's — and in CI they did: the body
+   * had no `items`, and the failure was a TypeError in the helper rather than anything about
+   * the feature. The page already knows the id; every row's buttons are named with it.
+   *
+   * The list is newest first, so what was just created is at the top.
+   */
+  const newest = page.getByTestId('listing-list').locator('li').first();
+  await expect(newest).toContainText(`$${price}`);
+
+  const marker = await newest.getByTestId(/^publish-/).getAttribute('data-testid');
+  const id = marker?.slice('publish-'.length);
+  if (id === undefined || id === '') {
+    throw new Error('the new listing has no publish button to take an id from');
+  }
   return id;
 }
 
