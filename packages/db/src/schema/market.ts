@@ -421,6 +421,55 @@ export const orderEvents = app.table(
 );
 
 /**
+ * What a buyer thought of a sale (FR-5.7).
+ *
+ * **Only from a completed order, and only from the buyer** — a rule the database keeps rather
+ * than one the routes remember: migration 0045's INSERT policy joins to `orders` and requires
+ * `status = 'completed'` and `buyer_id = current_setting('app.user_id')`.
+ *
+ * That matters more than it looks. A reputation system where anybody can leave a review is one
+ * where competitors leave reviews, and one where a review can be left before the sale finishes
+ * is one where a rating is a threat to be withdrawn. Tying it to a completed order means every
+ * star had money behind it.
+ *
+ * One rating per order rather than per seller: a buyer who buys ten times may rate ten times,
+ * and each one is anchored to a transaction somebody can look up.
+ */
+export const orderRatings = app.table(
+  'order_ratings',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    orderId: uuid('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    /** Denormalised from the order so a seller's ratings can be counted without a join. */
+    sellerId: text('seller_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    raterId: text('rater_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** One to five. No half stars and no zero — a zero is a dispute, not a rating. */
+    stars: integer('stars').notNull(),
+    comment: text('comment'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One per order. Nobody rates the same sale twice, so nobody pads a score by re-rating.
+    uniqueIndex('order_ratings_order_key').on(t.orderId),
+    index('order_ratings_seller_idx').on(t.sellerId, t.createdAt.desc()),
+    check('order_ratings_stars_range', sql`${t.stars} between 1 and 5`),
+    check('order_ratings_comment_length', sql`${t.comment} is null or length(${t.comment}) <= 500`),
+    // Nobody rates their own sale. `orders_not_self_dealing` already forbids buying from
+    // yourself, so this is the second lock on the same door.
+    check('order_ratings_not_self', sql`${t.raterId} <> ${t.sellerId}`),
+  ],
+);
+
+/**
  * Every webhook we have already handled (SR-5.2).
  *
  * The idempotency table. Stripe retries, and a retry that is processed twice is an order

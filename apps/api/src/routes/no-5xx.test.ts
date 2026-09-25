@@ -178,6 +178,9 @@ const WRITES: Call[] = [
     as: 'admin',
   },
 
+  { method: 'POST', url: `/v1/orders/${GHOST}/rating`, payload: { stars: 5 } },
+  { method: 'PATCH', url: `/v1/ratings/${GHOST}`, payload: { stars: 1 } },
+
   // Unsigned, which is what every caller who is not Stripe looks like.
   { method: 'POST', url: '/v1/webhooks/stripe', payload: { id: 'evt_x', type: 'account.updated' } },
 

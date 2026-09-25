@@ -51,6 +51,22 @@ export function isForeignKeyViolation(error: unknown): boolean {
 }
 
 /**
+ * `42501`: the database said no.
+ *
+ * Covers both "permission denied for table" (a missing grant) and "new row violates row-level
+ * security policy" (a failed `WITH CHECK`). Postgres gives them the same SQLSTATE, because from
+ * the caller's side they are the same answer.
+ *
+ * Worth knowing, because the two halves of row-level security fail differently: a row excluded
+ * by `USING` is simply absent and the statement succeeds having done nothing, while a row
+ * refused by `WITH CHECK` **raises**. Code that assumes the first and gets the second turns a
+ * policy working exactly as designed into an unhandled 500.
+ */
+export function isInsufficientPrivilege(error: unknown): boolean {
+  return hasSqlState(error, '42501');
+}
+
+/**
  * A row referred to by a request does not exist.
  *
  * Carried as a type rather than a status so the query layer stays free of HTTP, and thrown
