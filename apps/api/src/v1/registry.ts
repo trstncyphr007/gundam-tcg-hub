@@ -28,7 +28,19 @@ export interface PublicRoute {
     params: Record<string, unknown>;
     query: Record<string, unknown>;
     request: FastifyRequest;
+    /**
+     * Sign a short-lived GET for a processed image, when object storage is configured.
+     *
+     * Undefined otherwise, and a handler must cope with that rather than assume it: photos are
+     * optional at boot, and a deployment without them should serve listings with no picture
+     * instead of failing to serve listings at all.
+     */
+    presignView?: ((key: string) => { url: string }) | undefined;
   }) => Promise<unknown>;
+}
+
+export interface PublicRouteExtras {
+  presignView?: ((key: string) => { url: string }) | undefined;
 }
 
 /** Field names and rule codes only: never echo the submitted value back (SR-X.10). */
@@ -43,6 +55,7 @@ export function registerPublicRoutes(
   app: FastifyInstance,
   db: Database,
   routes: readonly PublicRoute[],
+  extras: PublicRouteExtras = {},
 ): void {
   for (const route of routes) {
     app.get(route.path, async (request: FastifyRequest, reply: FastifyReply) => {
@@ -60,6 +73,7 @@ export function registerPublicRoutes(
         params: (params?.data ?? {}) as Record<string, unknown>,
         query: (query?.data ?? {}) as Record<string, unknown>,
         request,
+        ...(extras.presignView ? { presignView: extras.presignView } : {}),
       });
       if (result === null) return reply.code(404).send({ error: 'not_found' });
 

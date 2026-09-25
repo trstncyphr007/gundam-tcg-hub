@@ -301,6 +301,7 @@ beforeAll(async () => {
       workerDb: workerPool.db,
       storage: {
         ensureBucket: () => Promise.resolve(),
+        putCorsPolicy: () => Promise.resolve(),
         presignUpload: () => ({ url: 'https://bucket.test/upload', expiresInSeconds: 900 }),
         presignView: () => ({ url: 'https://bucket.test/view', expiresInSeconds: 300 }),
         getObject: () => Promise.reject(new Error('not reached in this sweep')),

@@ -120,6 +120,19 @@ describe('what is for sale for a card', () => {
     });
   });
 
+  it('answers with no picture when object storage is not configured', async () => {
+    /**
+     * This app is built without `photos`, so the registrar has no presigner to hand the route.
+     * The listing must still be served — a deployment without photographs is a deployment
+     * without photographs, not one that cannot show what is for sale.
+     */
+    await listFor(2500, true);
+
+    const res = await app.inject({ method: 'GET', url: `/v1/cards/${cardId}/listings` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ items: { photoUrl: unknown }[] }>().items[0]?.photoUrl).toBeNull();
+  });
+
   it('answers a card that does not exist with an empty list, not a 404', async () => {
     // Which cards exist is what GET /v1/cards/{id} is for. Answering it twice would be a
     // second thing to keep in agreement with the first.

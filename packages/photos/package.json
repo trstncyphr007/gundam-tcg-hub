@@ -9,7 +9,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "bucket": "tsx --env-file-if-exists=../../.env src/cli/bucket.ts"
   },
   "dependencies": {
     "jpeg-js": "0.4.4",

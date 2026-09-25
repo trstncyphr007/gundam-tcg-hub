@@ -255,12 +255,40 @@ export function SellingManager({
       };
 
       /**
-       * `content-length` is among the required headers because it is part of what was signed,
-       * but a browser will not let a page set it — it is a forbidden header name, and fetch
-       * drops it. The browser sends its own, computed from the body, which is the same number:
-       * the API signed `file.size` because that is what this call told it.
+       * Send only the headers the page is allowed to set, which is `content-type`.
+       *
+       * `content-length` is in `requiredHeaders` because the signature covers it, and the
+       * obvious thing is to pass the lot straight to `fetch`. That does not work, and it fails
+       * in a way no server-side test can see: Chromium does not quietly drop a forbidden
+       * header, it **lists it in the preflight's `Access-Control-Request-Headers`** — and the
+       * bucket's CORS policy allows `content-type` only, so the preflight is refused, the PUT
+       * is never sent, and `fetch` rejects with an opaque network error.
+       *
+       * Widening the policy to admit `content-length` would work and would be the wrong fix:
+       * the browser sets it itself, from the body, to the same number the API signed
+       * (`file.size`). There is nothing for the page to declare.
        */
-      const put = await fetch(uploadUrl, { method: 'PUT', headers: requiredHeaders, body: file });
+      const browserHeaders = Object.fromEntries(
+        Object.entries(requiredHeaders).filter(([name]) => name.toLowerCase() === 'content-type'),
+      );
+      /**
+       * Wrapped, because this is the one request that can fail without a response.
+       *
+       * It is cross-origin, so the browser sends a preflight first and refuses to send the PUT
+       * at all if the bucket has no CORS policy naming this site — and `fetch` then *rejects*
+       * rather than resolving with a status. Unwrapped, that exception escaped the handler and
+       * the page simply stopped: no message, no spinner, nothing to report. The upload had
+       * never worked and looked like it was still going.
+       */
+      let put: Response;
+      try {
+        put = await fetch(uploadUrl, { method: 'PUT', headers: browserHeaders, body: file });
+      } catch {
+        setProblem(
+          'The browser could not reach the photo storage. This site is not set up to accept uploads yet.',
+        );
+        return;
+      }
       if (!put.ok) {
         setProblem('The upload was refused by the storage service. Try again.');
         return;

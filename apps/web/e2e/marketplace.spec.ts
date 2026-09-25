@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { type APIRequestContext, type Page, expect, test } from '@playwright/test';
 import { signInOnce } from './helpers';
 
@@ -210,6 +211,79 @@ test.describe('selling', () => {
     await expect(page.getByTestId('selling-problem')).toContainText(
       /no card printing has that id/i,
     );
+  });
+});
+
+test.describe('photographs', () => {
+  /**
+   * The upload, all the way through, in a browser (SR-5.5).
+   *
+   * This is the one leg nothing else covers. The pipeline has unit tests and the routes have
+   * integration tests, but the middle step — **the browser PUTs the file straight to the
+   * bucket**, to another origin, with exactly the headers the signature covers — happens
+   * nowhere except here. It is also the leg the site's Content-Security-Policy can silently
+   * forbid: `connect-src` has to name the bucket or the request never leaves the page, and the
+   * failure appears only in a console nobody is reading.
+   *
+   * Needs object storage and a scanner, which are a compose profile rather than the default,
+   * so it says so and skips rather than failing where they are not running.
+   */
+  test('goes from the browser to the bucket, and comes back approved', async ({ page }) => {
+    test.setTimeout(120_000);
+    /**
+     * A blocked upload reports itself the same way whether the bucket is absent or merely
+     * misconfigured, because the browser will not say which to a page. So the *suite* is told
+     * which to expect: CI runs the storage profile and sets this, and there a failure is a
+     * failure. Without it — a checkout with no `--profile photos` — the test steps aside.
+     *
+     * This matters more than it looks. The bug this test was written to find was a CORS policy
+     * that did not exist, and a skip-on-anything version of it would have gone quiet on
+     * exactly that.
+     */
+    const required = process.env['E2E_EXPECT_PHOTOS'] === '1';
+    await signInOnce(page, SELLER_EMAIL);
+    const { cardId, variantId } = await firstVariant(page.request);
+
+    await page.goto('/account/selling');
+    // Over the $25 threshold on purpose: this listing cannot go on sale until a photograph
+    // has been approved, so publishing it at the end is the proof that one was.
+    const id = await createListing(page, variantId, '40.00');
+
+    await page
+      .getByTestId(`upload-${id}`)
+      .setInputFiles(fileURLToPath(new URL('./fixtures/card-photo.jpg', import.meta.url)));
+
+    const problem = page.getByTestId('selling-problem');
+    const gallery = page.getByTestId(`photo-list-${id}`);
+    await expect
+      .poll(async () => (await gallery.count()) > 0 || (await problem.count()) > 0, {
+        timeout: 60_000,
+        message: 'the upload neither produced a gallery nor explained itself',
+      })
+      .toBe(true);
+
+    if ((await problem.count()) > 0) {
+      const said = await problem.innerText();
+      if (required) throw new Error(`the upload failed and this run expects it to work: ${said}`);
+      test.skip(true, `photo storage is not running for this suite: ${said}`);
+    }
+
+    // Approved means a picture, not a word. A pending or refused photo renders text instead.
+    await expect(gallery.locator('img')).toBeVisible({ timeout: 60_000 });
+
+    // And the threshold opens: what was refused before the photograph is allowed after it.
+    await page.getByTestId(`publish-${id}`).click();
+    await expect(page.getByTestId(`status-${id}`)).toHaveText('active');
+
+    // Finally, the buyer's side of the same picture: a signed link on the public card page.
+    await page.goto(`/cards/${cardId}`);
+    const shown = page.getByTestId(`photo-${id}`);
+    await expect(shown).toBeVisible();
+    // Loaded, not merely present. A broken signature would render an empty box, and
+    // `naturalWidth` is how the browser says it actually decoded an image.
+    await expect
+      .poll(async () => shown.evaluate((img: HTMLImageElement) => img.naturalWidth))
+      .toBeGreaterThan(0);
   });
 });
 

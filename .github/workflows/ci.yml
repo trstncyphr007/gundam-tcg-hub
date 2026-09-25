@@ -82,16 +82,23 @@ jobs:
           # Docker Hub resets connections often enough to break a run; retry before failing.
           for attempt in 1 2 3; do
             if docker compose --env-file .env -f infra/compose/docker-compose.dev.yml \
-                 --profile mail pull --quiet; then
+                 --profile mail --profile photos pull --quiet; then
               break
             fi
             echo "image pull failed (attempt ${attempt}); retrying"
             sleep $((attempt * 10))
           done
+          # `photos` as well as `mail`: object storage and a scanner. The browser-to-bucket
+          # upload is the one leg no server-side test can reach, and it is where a missing
+          # CORS policy hid — a failure visible only in a browser console.
           docker compose --env-file .env -f infra/compose/docker-compose.dev.yml \
-            --profile mail up -d --wait
+            --profile mail --profile photos up -d --wait
           pnpm db:migrate
           pnpm db:seed
+          # The bucket, and the CORS policy that lets a browser use its presigned URLs. In
+          # production this is an operator's one-off against R2; here it is part of standing
+          # the stack up.
+          pnpm photos:bucket
           # The price-chart tests need an index to draw. 30 days rather than 90: enough for
           # a line, a gap and an empty condition, without spending the time on 4,000 rows.
           pnpm db:seed-prices --days 30
@@ -135,9 +142,13 @@ jobs:
           # PHOTO_STORAGE_ORIGIN as well: the CSP assertion in catalog.spec.ts skips itself
           # when it does not know what origin to look for, and a check that quietly skips is
           # worse than no check at all.
+          # E2E_EXPECT_PHOTOS: this job runs the storage profile, so an upload that cannot
+          # reach the bucket is a failure rather than a reason to step aside. Without it the
+          # photo test would skip on exactly the bug it exists to catch.
           DATABASE_URL_MIGRATOR="$(grep -m1 '^DATABASE_URL_MIGRATOR=' .env | cut -d= -f2-)" \
           TOKEN_PEPPER="$(grep -m1 '^TOKEN_PEPPER=' .env | cut -d= -f2-)" \
           PHOTO_STORAGE_ORIGIN="$(grep -m1 '^PHOTO_STORAGE_ORIGIN=' .env | cut -d= -f2-)" \
+          E2E_EXPECT_PHOTOS=1 \
             pnpm --filter @gth/web e2e
 
       - if: failure()

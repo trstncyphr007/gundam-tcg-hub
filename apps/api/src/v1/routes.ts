@@ -124,9 +124,20 @@ export const publicRoutes: readonly PublicRoute[] = [
     params: idParam,
     response: listingsForSaleSchema,
     cache: MARKET_CACHE,
-    handler: async ({ db, params }) => ({
-      items: await browseListingsForCard(db, params['id'] as string),
-    }),
+    handler: async ({ db, params, presignView }) => {
+      const items = await browseListingsForCard(db, params['id'] as string);
+      return {
+        // The key becomes a signed link here, where the credentials are, and never leaves the
+        // database package as anything else. No storage configured means no picture rather
+        // than no listings: photographs are optional at boot, and a shop window without them
+        // is still a shop window.
+        items: items.map(({ photoKey, ...listing }) => ({
+          ...listing,
+          photoUrl:
+            photoKey === null || presignView === undefined ? null : presignView(photoKey).url,
+        })),
+      };
+    },
   },
   {
     path: '/v1/cards/:id/prices',

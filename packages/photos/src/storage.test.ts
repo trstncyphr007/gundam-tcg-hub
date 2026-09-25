@@ -57,6 +57,86 @@ afterAll(async () => {
   await container.stop();
 });
 
+/**
+ * The CORS policy, checked the way a browser checks it: by sending a preflight.
+ *
+ * The presigned upload is made **by the browser, to another origin**, so before the PUT the
+ * browser sends an `OPTIONS` and obeys the answer. A bucket with no policy 404s that, the PUT
+ * is never sent, and `fetch` rejects with an opaque error in a console. Every other test in
+ * this file passes regardless, because none of them is a browser and a server never sends a
+ * preflight — which is exactly how the marketplace shipped an upload that could not work.
+ */
+describe('letting a browser use the presigned URL', () => {
+  const ORIGIN = 'http://127.0.0.1:3000';
+
+  async function preflight(
+    origin: string,
+    requestHeaders: string,
+  ): Promise<{ status: number; allowOrigin: string | null }> {
+    const response = await fetch(`${endpoint}/${BUCKET}/uploads/probe`, {
+      method: 'OPTIONS',
+      headers: {
+        origin,
+        'access-control-request-method': 'PUT',
+        'access-control-request-headers': requestHeaders,
+      },
+    });
+    return {
+      status: response.status,
+      allowOrigin: response.headers.get('access-control-allow-origin'),
+    };
+  }
+
+  it('refuses a preflight until a policy exists', async () => {
+    // A fresh bucket, so this is the state every deployment starts in.
+    const virgin = createStorage({
+      endpoint,
+      bucket: 'gth-photos-no-cors',
+      credentials: { accessKeyId: ACCESS_KEY, secretAccessKey: SECRET_KEY, region: 'us-east-1' },
+    });
+    await virgin.ensureBucket();
+
+    const response = await fetch(`${endpoint}/gth-photos-no-cors/uploads/probe`, {
+      method: 'OPTIONS',
+      headers: { origin: ORIGIN, 'access-control-request-method': 'PUT' },
+    });
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('allows the site to PUT once the policy is set', async () => {
+    await storage.putCorsPolicy([ORIGIN]);
+    expect(await preflight(ORIGIN, 'content-type')).toMatchObject({
+      status: 200,
+      allowOrigin: ORIGIN,
+    });
+  });
+
+  /**
+   * The failure that cost an afternoon.
+   *
+   * Chromium names `content-length` in the preflight even for a page that never set it, and a
+   * policy enumerating allowed headers refused the whole upload for it. The origin is the
+   * control; the header list is not, and this asserts we are not treating it as one.
+   */
+  it('does not care which headers the browser names', async () => {
+    await storage.putCorsPolicy([ORIGIN]);
+    expect(await preflight(ORIGIN, 'content-length,content-type')).toMatchObject({
+      status: 200,
+      allowOrigin: ORIGIN,
+    });
+  });
+
+  it('still refuses somebody else’s site', async () => {
+    await storage.putCorsPolicy([ORIGIN]);
+    const { allowOrigin } = await preflight('https://evil.test', 'content-type');
+    expect(allowOrigin).not.toBe('https://evil.test');
+  });
+
+  it('refuses to write a policy that would allow nobody', async () => {
+    await expect(storage.putCorsPolicy([])).rejects.toBeInstanceOf(StorageError);
+  });
+});
+
 describe('the signature a real server accepts', () => {
   it('writes an object and reads it back', async () => {
     // The round trip that proves SigV4 works. Nothing here is faked: a wrong signing key, a
