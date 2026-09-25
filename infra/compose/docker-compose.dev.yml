@@ -34,6 +34,52 @@ services:
   # nothing in the repository ever opened a connection to it (ADR-042). It comes back when
   # something needs it, which is a second API instance or a real job queue.
 
+  # Object storage for listing photos (Phase 5, SR-5.5, open item O4). S3-compatible, so the
+  # same code talks to Cloudflare R2 in production with nothing but different configuration.
+  #
+  # CloudServer rather than MinIO, which is not pullable from here any more: its `latest` tag
+  # has been withdrawn and the registry refuses anonymous access to the release tags. This is
+  # a real S3 implementation with real SigV4 authentication, which matters more than the name —
+  # a store that does not check signatures would make the tests prove nothing.
+  #
+  # The bucket is private and stays private. Uploads arrive by presigned PUT, processed copies
+  # leave by short-lived signed GET, and nothing is ever served from it directly.
+  s3:
+    <<: *dev-hardening
+    profiles: [photos]
+    image: zenko/cloudserver@sha256:b53e57829cf7df357323e60a19c9f98d2218f1b7ccb1d7cea5761a5a227a9ee3
+    environment:
+      S3BACKEND: file
+      REMOTE_MANAGEMENT_DISABLE: '1'
+      SCALITY_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?run pnpm env:init}
+      SCALITY_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?run pnpm env:init}
+    ports: ['127.0.0.1:8000:8000']
+    volumes:
+      - s3data:/usr/src/app/localData
+      - s3meta:/usr/src/app/localMetadata
+
+  # Signature-based malware scanning (SR-5.5). Defence in depth in the real sense: it covers a
+  # class of problem the byte inspection and the re-encode cannot — a well-formed image
+  # carrying a known exploit for somebody else's decoder.
+  #
+  # The signature database ships inside this tag, so `CLAMAV_NO_FRESHCLAMD` skips the download
+  # that would otherwise be several minutes of nothing on every start. It updates on its own
+  # schedule in production, where the database being current is the entire point.
+  clamav:
+    <<: *dev-hardening
+    profiles: [photos]
+    image: clamav/clamav@sha256:a5f03c12a79dbe9f6d8a527b6bb1ea053fa8dd061d3738a26897f055ee2d9303
+    environment:
+      CLAMAV_NO_FRESHCLAMD: 'true'
+    ports: ['127.0.0.1:3310:3310']
+    volumes: ['clamavdb:/var/lib/clamav']
+    healthcheck:
+      test: ['CMD-SHELL', 'clamdcheck.sh || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
   mailpit:
     <<: *dev-hardening
     profiles: [mail]
@@ -48,3 +94,6 @@ services:
 
 volumes:
   pgdata: {}
+  s3data: {}
+  s3meta: {}
+  clamavdb: {}

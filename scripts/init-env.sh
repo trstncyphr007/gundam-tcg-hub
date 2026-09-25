@@ -21,6 +21,9 @@ BETTER_AUTH_SECRET="$(openssl rand -base64 32)"
 # Encrypts database fields that must stay secret even in a backup -- today, a break's server
 # seed. Keyed by id so keys can rotate without re-encrypting anything in a hurry.
 DATA_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+# Object storage for listing photos. Local only: the bucket lives in a container on loopback.
+S3_ACCESS_KEY_ID="gth$(openssl rand -hex 8)"
+S3_SECRET_ACCESS_KEY="$(rand_hex)"
 
 umask 077
 cat > .env <<EOF
@@ -75,6 +78,19 @@ WEBAUTHN_ORIGIN=http://localhost:3000
 # add redirect URI http://127.0.0.1:4000/api/auth/callback/discord, then fill these in.
 # DISCORD_CLIENT_ID=
 # DISCORD_CLIENT_SECRET=
+
+# Listing photos (Phase 5, SR-5.5). Start the containers with
+#   docker compose --env-file .env -f infra/compose/docker-compose.dev.yml --profile photos up -d
+# The bucket is private: uploads arrive by presigned PUT and leave by short-lived signed GET,
+# and nothing is ever served from it directly.
+S3_ENDPOINT=http://127.0.0.1:8000
+S3_BUCKET=gth-photos
+S3_REGION=us-east-1
+S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
+S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
+# Malware scanning. Without it, uploads stay pending rather than being approved unscanned.
+CLAMAV_HOST=127.0.0.1
+CLAMAV_PORT=3310
 
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
 EOF
