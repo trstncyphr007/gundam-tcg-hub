@@ -11,6 +11,7 @@ export default defineConfig({
     'src/job-rollup.ts',
     'src/job-watchdog.ts',
     'src/job-alert-retry.ts',
+    'src/job-complete-orders.ts',
   ],
   format: ['esm'],
   platform: 'node',

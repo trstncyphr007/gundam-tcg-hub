@@ -33,6 +33,7 @@ import { type LiveSaleDeps, registerLiveSaleRoutes } from './routes/live-sales.j
 import { registerMarketRoutes } from './routes/market.js';
 import { type CheckoutDeps, registerCheckoutRoutes } from './routes/checkout.js';
 import { type PhotoDeps, registerPhotoRoutes } from './routes/photos.js';
+import { registerFulfilmentRoutes } from './routes/fulfilment.js';
 import { type SellerDeps, registerSellerRoutes } from './routes/seller.js';
 import { type StripeWebhookDeps, registerStripeWebhookRoutes } from './routes/stripe-webhook.js';
 import { registerProfileRoutes } from './routes/profile.js';
@@ -517,6 +518,15 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
     registerCollectionRoutes(app, deps.writeDb);
     registerProfileRoutes(app, deps.writeDb);
     registerMarketRoutes(app, deps.writeDb);
+    /**
+     * Shipping, cancelling and disputing (FR-5.4).
+     *
+     * Mounted whenever there is a session and a write pool, unlike checkout: an order that
+     * already exists has to remain movable even on a deployment where Stripe has since been
+     * unconfigured. A seller who cannot mark a paid order shipped because a key was rotated
+     * is a seller whose buyer is waiting for nothing.
+     */
+    registerFulfilmentRoutes(app, { db: deps.writeDb });
     if (deps.seller) registerSellerRoutes(app, deps.seller);
     if (deps.checkout) {
       registerCheckoutRoutes(app, { ...deps.checkout, ...(flags ? { flags } : {}) });

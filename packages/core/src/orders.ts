@@ -55,6 +55,23 @@ export type OrderStatus =
  */
 export type OrderActor = 'buyer' | 'seller' | 'admin' | 'stripe' | 'system';
 
+/**
+ * Longest reason a transition may carry, matching the `order_events` CHECK.
+ *
+ * Long enough to say what happened, short enough that nobody writes an essay into a field two
+ * people will read during an argument.
+ */
+export const ORDER_REASON_MAX_LENGTH = 280;
+
+/**
+ * How long a delivered order waits before the clock completes it (FR-5.6).
+ *
+ * The window in which a buyer can say the card never arrived, or arrived wrong. Seven days is
+ * the plan's payout hold, and completing earlier than the hold would release a payout while the
+ * buyer still has a claim — which is the one thing the hold exists to prevent.
+ */
+export const AUTO_COMPLETE_AFTER_DAYS = 7;
+
 export const ORDER_STATUSES: readonly OrderStatus[] = [
   'created',
   'paid',

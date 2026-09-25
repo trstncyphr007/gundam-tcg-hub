@@ -9,6 +9,7 @@ import {
   decideAlerts,
 } from './queries/ops-alerts.js';
 import { getOperationsSummary } from './queries/operations.js';
+import { completeOrder, ordersReadyToComplete } from './queries/orders.js';
 import { ingestBreakPulls, rollUpDay } from './queries/pricing.js';
 import { runRetention } from './queries/retention.js';
 import { getSecuritySummary } from './queries/security-events.js';
@@ -131,5 +132,47 @@ export async function rollupJob(db: Database, options: RollupOptions = {}): Prom
   lines.push(
     `${String(written)} index row(s) published, ${String(skipped)} left as "insufficient data"`,
   );
+  return lines;
+}
+
+/**
+ * Finish delivered orders whose hold window has passed (FR-5.4, FR-5.6).
+ *
+ * This is the `system` actor the order state machine talks about — the clock, and nothing else.
+ * It is the only path from `delivered` to `completed` that does not involve an admin, and it
+ * exists because neither party may finish their own sale: a seller marking it complete would be
+ * marking their own homework, and a buyer doing it is AC-5.4's explicit "cannot".
+ *
+ * Runs on the worker role, which is the only one that can write `completed` at all.
+ *
+ * **One order failing does not stop the rest.** An order that has moved since it was listed —
+ * disputed a minute ago, say — throws on the state machine, and the right response is to leave
+ * that one alone and carry on. A job that abandons ninety-nine orders because the hundredth was
+ * disputed is a job that quietly stops paying sellers.
+ */
+export async function completeDeliveredJob(
+  db: Database,
+  now: Date = new Date(),
+): Promise<string[]> {
+  const ready = await ordersReadyToComplete(db, now);
+  if (ready.length === 0) return ['no delivered orders are past their hold window'];
+
+  const lines: string[] = [];
+  let completed = 0;
+  const skipped: string[] = [];
+
+  for (const order of ready) {
+    try {
+      await completeOrder(db, order.id, { actor: 'system' });
+      completed += 1;
+    } catch (error) {
+      // Recorded by id rather than swallowed: "three orders would not complete" is a sentence
+      // somebody needs to be able to read the next morning.
+      skipped.push(`${order.id} (${error instanceof Error ? error.name : 'unknown'})`);
+    }
+  }
+
+  lines.push(`completed ${String(completed)} of ${String(ready.length)} delivered order(s)`);
+  if (skipped.length > 0) lines.push(`could not complete: ${skipped.join(', ')}`);
   return lines;
 }
