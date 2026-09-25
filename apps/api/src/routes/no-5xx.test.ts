@@ -140,6 +140,15 @@ const WRITES: Call[] = [
   // because it needs a second user to own the listing.
   { method: 'POST', url: `/v1/listings/${GHOST}/buy` },
 
+  {
+    method: 'POST',
+    url: `/v1/listings/${GHOST}/photos`,
+    payload: { contentType: 'image/jpeg', contentLength: 1000 },
+  },
+  { method: 'POST', url: `/v1/listings/${GHOST}/photos/${GHOST}/complete` },
+  { method: 'PATCH', url: `/v1/listings/${GHOST}/photos`, payload: { photoIds: [GHOST] } },
+  { method: 'DELETE', url: `/v1/listings/${GHOST}/photos/${GHOST}` },
+
   // Unsigned, which is what every caller who is not Stripe looks like.
   { method: 'POST', url: '/v1/webhooks/stripe', payload: { id: 'evt_x', type: 'account.updated' } },
 
@@ -244,6 +253,26 @@ beforeAll(async () => {
       stripe: fakeStripe(),
       appBaseUrl: 'http://127.0.0.1:3000',
       feeBps: 500,
+    },
+    /**
+     * A storage that answers without a bucket.
+     *
+     * Every id in this sweep is a ghost, so each photo route refuses at the database long
+     * before it reaches storage — which is the point: what is being swept is the refusal path,
+     * and that path must not be a 5xx. A real bucket here would add two containers to prove
+     * nothing extra.
+     */
+    photos: {
+      db: webPool.db,
+      workerDb: workerPool.db,
+      storage: {
+        ensureBucket: () => Promise.resolve(),
+        presignUpload: () => ({ url: 'https://bucket.test/upload', expiresInSeconds: 900 }),
+        presignView: () => ({ url: 'https://bucket.test/view', expiresInSeconds: 300 }),
+        getObject: () => Promise.reject(new Error('not reached in this sweep')),
+        putObject: () => Promise.resolve(),
+        deleteObject: () => Promise.resolve(),
+      },
     },
     notify: () => Promise.resolve(),
   });

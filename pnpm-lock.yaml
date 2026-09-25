@@ -72,6 +72,9 @@ importers:
       '@fastify/rate-limit':
         specifier: 11.2.0
         version: 11.2.0
+      '@gth/photos':
+        specifier: workspace:*
+        version: link:../../packages/photos
       fastify:
         specifier: 5.12.4
         version: 5.12.4
@@ -112,9 +115,18 @@ importers:
       '@types/nodemailer':
         specifier: 8.0.1
         version: 8.0.1
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
       '@vitest/coverage-v8':
         specifier: 5.0.0
         version: 5.0.0(vitest@5.0.0)
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
+      testcontainers:
+        specifier: 12.1.0
+        version: 12.1.0
       tsup:
         specifier: 8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.23.13)(typescript@6.0.3)(yaml@2.9.1)

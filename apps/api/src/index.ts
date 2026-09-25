@@ -5,6 +5,7 @@ import {
 } from '@gth/alerts';
 import { createAuth } from '@gth/auth';
 import { createDb, getRestockContext } from '@gth/db';
+import { createScanner, createStorage } from '@gth/photos';
 import { buildKeyRing } from '@gth/security';
 import { createTransport } from 'nodemailer';
 import { buildApp } from './app.js';
@@ -128,6 +129,37 @@ const app = await buildApp(config, {
                 feeBps: config.MARKETPLACE_FEE_BPS,
               },
             }),
+      }),
+  /**
+   * Listing photos, only when there is somewhere to put them (Phase 5, slice 4).
+   *
+   * The scanner is separate and optional *within* this: storage configured without ClamAV
+   * still mounts the routes, and the pipeline then refuses to finish an upload rather than
+   * approving it unscanned. "No scanner" is a reason to leave a photo pending, never a reason
+   * to skip the step.
+   */
+  ...(config.S3_ENDPOINT === undefined ||
+  config.S3_BUCKET === undefined ||
+  config.S3_ACCESS_KEY_ID === undefined ||
+  config.S3_SECRET_ACCESS_KEY === undefined
+    ? {}
+    : {
+        photos: {
+          db: write.db,
+          workerDb: worker.db,
+          storage: createStorage({
+            endpoint: config.S3_ENDPOINT,
+            bucket: config.S3_BUCKET,
+            credentials: {
+              accessKeyId: config.S3_ACCESS_KEY_ID,
+              secretAccessKey: config.S3_SECRET_ACCESS_KEY,
+              region: config.S3_REGION,
+            },
+          }),
+          ...(config.CLAMAV_HOST === undefined
+            ? {}
+            : { scanner: createScanner({ host: config.CLAMAV_HOST, port: config.CLAMAV_PORT }) }),
+        },
       }),
   ingest: {
     workerDb: worker.db,

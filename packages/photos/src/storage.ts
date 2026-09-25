@@ -83,8 +83,8 @@ export interface Storage {
  * key does not escape a bucket the way it escapes a filesystem, but it does let one listing's
  * upload land on another's object. The photo id is a UUID from the database.
  */
-export function uploadKeyFor(photoId: string): string {
-  return `uploads/${photoId}`;
+export function uploadKeyFor(token: string): string {
+  return `uploads/${token}`;
 }
 
 export function displayKeyFor(photoId: string): string {
