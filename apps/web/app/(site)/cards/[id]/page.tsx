@@ -199,7 +199,24 @@ export default async function CardPage({
                   className="flex flex-wrap items-center justify-between gap-3 rounded border px-3 py-2 bg-surface border-line"
                   data-testid={`listing-${listing.id}`}
                 >
-                  <span className="text-sm">
+                  <span className="flex items-center gap-3 text-sm">
+                    {listing.photoUrl !== null && (
+                      /*
+                        A plain <img>, and a signed link that expires. Next's optimiser would
+                        have to fetch and cache a URL designed not to last, on a server with no
+                        business reading private photographs; `images.unoptimized` is on for
+                        the same reason.
+
+                        The bucket's origin is named in the CSP's `img-src` from configuration
+                        (lib/csp.ts). Without that the browser refuses this silently.
+                      */
+                      <img
+                        src={listing.photoUrl}
+                        alt="The seller's photograph of this card"
+                        className="h-12 w-auto rounded border border-line"
+                        data-testid={`photo-${listing.id}`}
+                      />
+                    )}
                     <span className="font-medium">
                       {dollars(listing.priceCents, listing.currency)}
                     </span>{' '}

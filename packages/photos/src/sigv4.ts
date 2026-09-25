@@ -216,6 +216,13 @@ export interface SignedRequestInput {
   method: string;
   endpoint: string;
   path: string;
+  /**
+   * Sub-resource parameters, such as `cors` on a bucket.
+   *
+   * Part of the canonical request, so a signature made for `?cors` is not valid for anything
+   * else — which is the property that makes signing a URL worth doing at all.
+   */
+  query?: Map<string, string> | undefined;
   body?: Uint8Array | undefined;
   extraHeaders?: Map<string, string> | undefined;
   now?: Date | undefined;
@@ -242,10 +249,11 @@ export function signRequest(input: SignedRequestInput): {
     .split('/')
     .map((segment) => uriEncode(segment))
     .join('/')}`;
+  const query = input.query ?? new Map<string, string>();
   const { canonical, signedHeaders } = canonicalRequest({
     method: input.method,
     path: encodedPath,
-    query: new Map(),
+    query,
     headers,
     payloadHash,
   });
@@ -253,8 +261,9 @@ export function signRequest(input: SignedRequestInput): {
   const signature = sign(input.credentials, amzDate, dateStamp, canonical);
   const credential = `${input.credentials.accessKeyId}/${credentialScope(dateStamp, input.credentials.region)}`;
 
+  const search = query.size === 0 ? '' : `?${canonicalQuery(query)}`;
   return {
-    url: `${url.origin}${encodedPath}`,
+    url: `${url.origin}${encodedPath}${search}`,
     headers: {
       ...Object.fromEntries([...headers.entries()].filter(([key]) => key !== 'host')),
       authorization: `${ALGORITHM} Credential=${credential}, SignedHeaders=${signedHeaders}, Signature=${signature}`,

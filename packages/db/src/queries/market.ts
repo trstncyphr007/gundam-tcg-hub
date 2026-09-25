@@ -1,8 +1,8 @@
 import { type ListingDraft, photosRequiredFor, validateListing } from '@gth/core';
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { cardVariants, cards, sets } from '../schema/catalog.js';
-import { listings } from '../schema/market.js';
+import { listingPhotos, listings } from '../schema/market.js';
 import { MissingReferenceError, isForeignKeyViolation } from './pg-errors.js';
 import { reputationOf } from './ratings.js';
 import { asUser } from './watches.js';
@@ -146,6 +146,14 @@ export interface ListingForSale {
   quantity: number;
   /** Null average, never zero, when nobody has rated them. See `getReputation`. */
   seller: { average: number | null; count: number };
+  /**
+   * The object key of the picture to show, or null.
+   *
+   * A key, not a URL: signing one needs credentials this package does not have and produces a
+   * link that expires, which is the route's business rather than the query's. Null means there
+   * is no approved photograph — the seller has not added one, or the pipeline refused it.
+   */
+  photoKey: string | null;
 }
 
 /**
@@ -189,17 +197,68 @@ export async function browseListingsForCard(
     .orderBy(listings.priceCents)
     .limit(limit);
 
-  // One query for every seller on the page rather than one per listing. Twenty listings from
-  // twenty sellers would otherwise be twenty round trips to compute a number each.
-  const standing = await reputationOf(
-    db,
-    rows.map((row) => row.sellerId),
-  );
+  // One query for every seller on the page rather than one per listing, and one for every
+  // photograph. Twenty listings would otherwise be forty round trips to decorate them.
+  const [standing, covers] = await Promise.all([
+    reputationOf(
+      db,
+      rows.map((row) => row.sellerId),
+    ),
+    coverPhotoKeys(
+      db,
+      rows.map((row) => row.id),
+    ),
+  ]);
 
   return rows.map(({ sellerId, ...listing }) => ({
     ...listing,
     seller: standing.get(sellerId) ?? { average: null, count: 0 },
+    photoKey: covers.get(listing.id) ?? null,
   }));
+}
+
+/**
+ * The first approved photograph of each listing, by display position.
+ *
+ * The one a browse page shows. Only approved ones are selected, and on the read-only role only
+ * approved ones are *visible* — migration 0044's policy for `app_readonly` is
+ * `status = 'approved' AND the listing is active`, so a pending upload nobody has inspected
+ * cannot reach a shop window even if this query asked for it.
+ *
+ * A listing with no approved photograph is absent from the map rather than present with a
+ * null, so the caller decides what "no picture" looks like.
+ */
+export async function coverPhotoKeys(
+  db: Database,
+  listingIds: readonly string[],
+): Promise<Map<string, string>> {
+  const wanted = [...new Set(listingIds)];
+  if (wanted.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      listingId: listingPhotos.listingId,
+      objectKey: listingPhotos.objectKey,
+    })
+    .from(listingPhotos)
+    .where(
+      and(
+        inArray(listingPhotos.listingId, wanted),
+        eq(listingPhotos.status, 'approved'),
+        isNotNull(listingPhotos.objectKey),
+      ),
+    )
+    // Lowest position first, so the first row seen for a listing is the one to keep. The CHECK
+    // `listing_photos_approved_is_complete` guarantees an approved row has an object key.
+    .orderBy(listingPhotos.position);
+
+  const covers = new Map<string, string>();
+  for (const row of rows) {
+    if (row.objectKey !== null && !covers.has(row.listingId)) {
+      covers.set(row.listingId, row.objectKey);
+    }
+  }
+  return covers;
 }
 
 /** One listing, if this viewer may see it. A draft is visible only to its seller. */

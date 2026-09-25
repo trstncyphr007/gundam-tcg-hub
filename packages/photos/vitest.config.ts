@@ -21,7 +21,12 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**'],
-      exclude: ['src/**/*.test.ts'],
+      // `src/cli/**`, for the same reason `@gth/db` excludes its own: a command is an entry
+      // point, exercised by running it — CI runs `pnpm photos:bucket` before the e2e suite —
+      // and a unit test of `main()` would assert that argument parsing calls the functions it
+      // calls. What is worth covering is `putCorsPolicy`, and that is tested against a real S3
+      // server by sending it the preflight a browser would.
+      exclude: ['src/**/*.test.ts', 'src/cli/**'],
       thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },
     },
   },

@@ -463,7 +463,15 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
   if (deps.db) {
     // One definition of the public surface, used to register the routes and to generate the
     // document that describes them (FR-3.6).
-    registerPublicRoutes(app, deps.db, publicRoutes);
+    // The storage client is handed over for one purpose: signing a short-lived view of a
+    // photograph that is already public — an approved picture on an active listing, which the
+    // read-only role's policy is what actually decides. Without it the browse route answers
+    // with no picture rather than not answering.
+    // Bound outside the object: narrowing `deps.photos` does not survive into a closure.
+    const photoStorage = deps.photos?.storage;
+    registerPublicRoutes(app, deps.db, publicRoutes, {
+      ...(photoStorage ? { presignView: (key: string) => photoStorage.presignView(key) } : {}),
+    });
 
     const spec = buildOpenApiDocument(publicRoutes, {
       title: 'Gundam TCG Hub API',

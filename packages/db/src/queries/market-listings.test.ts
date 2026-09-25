@@ -7,6 +7,7 @@ import { type TestDatabase, startTestDatabase } from '../test/harness.js';
 import {
   ListingNotFoundError,
   browseListingsForCard,
+  coverPhotoKeys,
   createListing,
   deleteDraftListing,
   getListing,
@@ -238,6 +239,34 @@ describe('who can see what', () => {
     expect(await browseListingsForCard(anonymous, '00000000-0000-7000-8000-000000000000')).toEqual(
       [],
     );
+  });
+
+  it('has no picture for a listing whose photographs are not approved', async () => {
+    /**
+     * The read-only role cannot see a pending photograph at all — migration 0044's policy for
+     * it is `status = 'approved' AND the listing is active`. So a file nobody has inspected
+     * cannot reach a shop window, and this asserts the absence rather than assuming it.
+     *
+     * The approved case is covered end to end, where a real image goes through the real
+     * pipeline; fabricating an "approved" row here would prove only that the query can read
+     * one, and the CHECK `listing_photos_approved_is_complete` refuses a fabricated one anyway.
+     */
+    const listing = await createListing(web, SELLER, { ...draft, cardVariantId: variantId });
+    await setListingStatus(web, SELLER, listing.id, 'active');
+    await workerDb.execute(
+      `insert into app.listing_photos (listing_id, upload_key, content_type)
+       values ('${listing.id}', 'uploads/pending-${listing.id}', 'image/jpeg')`,
+    );
+
+    const [forSale] = await browseListingsForCard(anonymous, cardId);
+    expect(forSale?.photoKey).toBeNull();
+  });
+
+  it('asks for nothing when there are no listings to decorate', async () => {
+    // The empty-list guard on both helper queries: `inArray` with no values is not a query
+    // worth sending, and some drivers make it an error rather than an empty result.
+    expect(await coverPhotoKeys(anonymous, [])).toEqual(new Map());
+    expect(await browseListingsForCard(anonymous, cardId)).toEqual([]);
   });
 
   it('shows an unrated seller as unrated rather than as bad', async () => {

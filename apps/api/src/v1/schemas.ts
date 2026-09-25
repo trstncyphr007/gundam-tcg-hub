@@ -139,6 +139,17 @@ export const listingForSaleSchema = z.object({
     average: z.number().nullable(),
     count: z.int(),
   }),
+  /**
+   * A short-lived signed link to the seller's own photograph of the card, or null.
+   *
+   * Null covers three different situations on purpose — no photograph, one still being
+   * checked, one refused — because the difference is the seller's business and not a buyer's.
+   * Null is also what a deployment with no object storage always answers.
+   *
+   * The link expires. Anything caching this response must not outlive it, which is what the
+   * short `Cache-Control` on this route is for.
+   */
+  photoUrl: z.string().nullable(),
 });
 
 export const listingsForSaleSchema = z.object({ items: z.array(listingForSaleSchema) });

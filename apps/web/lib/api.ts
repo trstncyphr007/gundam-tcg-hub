@@ -556,6 +556,11 @@ export interface ListingForSale {
   currency: string;
   quantity: number;
   seller: { average: number | null; count: number };
+  /**
+   * The seller's own photograph of the card, signed and short-lived. Null when there is no
+   * approved one — which is also what a deployment without object storage always answers.
+   */
+  photoUrl: string | null;
 }
 
 export interface Reputation {

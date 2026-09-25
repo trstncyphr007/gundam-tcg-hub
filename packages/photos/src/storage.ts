@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { type Credentials, presignUrl, signRequest } from './sigv4.js';
 
 /**
@@ -53,6 +54,19 @@ export const UPLOAD_URL_TTL_SECONDS = 15 * 60;
 /** Long enough to render a gallery, short enough that a copied link stops working. */
 export const VIEW_URL_TTL_SECONDS = 5 * 60;
 
+/** How long a browser may cache the preflight. An hour of not asking again. */
+export const CORS_MAX_AGE_SECONDS = 3600;
+
+/** Five characters, because a policy document is not a place to discover a sixth. */
+function escapeXml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+}
+
 export interface Storage {
   /**
    * Create the bucket if it is not there.
@@ -64,6 +78,21 @@ export interface Storage {
    * one call rather than a page of instructions.
    */
   ensureBucket: () => Promise<void>;
+
+  /**
+   * Allow a browser to use the presigned URLs at all (SR-5.5).
+   *
+   * **Without this the whole upload design does not work, and nothing on a server can tell.**
+   * A presigned PUT is made by the browser to another origin with a `content-type` header, so
+   * the browser first sends a preflight `OPTIONS`; a bucket with no CORS configuration answers
+   * that with 404, the browser refuses to send the PUT, and `fetch` rejects in a console
+   * nobody is reading. Every server-side test passes, because none of them is a browser.
+   *
+   * The origins are ours, from configuration — the site the upload page is served from. Not a
+   * wildcard: `*` would let any page on the internet spend a signed URL it had somehow
+   * obtained, and the signature is the only thing standing between a link and the bucket.
+   */
+  putCorsPolicy: (allowedOrigins: readonly string[]) => Promise<void>;
   /** A URL the browser may PUT one file to, under stated conditions. */
   presignUpload: (input: { key: string; contentType: string; contentLength: number }) => {
     url: string;
@@ -128,16 +157,32 @@ export function createStorage(config: StorageConfig): Storage {
   };
 
   /** The bucket itself is a path with no key, so it does not go through `pathFor`. */
-  const bucketRequest = async (method: string): Promise<Response> => {
+  const bucketRequest = async (
+    method: string,
+    options: { query?: Map<string, string>; body?: Uint8Array; contentType?: string } = {},
+  ): Promise<Response> => {
+    const extraHeaders = new Map<string, string>();
+    if (options.contentType !== undefined) extraHeaders.set('content-type', options.contentType);
+    if (options.body !== undefined) {
+      // S3 requires Content-MD5 on the bucket sub-resource writes, and it is signed along with
+      // everything else, so a body that changed in flight fails the signature rather than the
+      // checksum. Belt and braces, and the API refuses the request without it.
+      extraHeaders.set('content-md5', createHash('md5').update(options.body).digest('base64'));
+    }
+
     const signed = signRequest({
       credentials: config.credentials,
       method,
       endpoint: config.endpoint,
       path: config.bucket,
+      ...(options.query ? { query: options.query } : {}),
+      ...(options.body === undefined ? {} : { body: options.body }),
+      extraHeaders,
     });
     return fetch(signed.url, {
       method,
       headers: signed.headers,
+      ...(options.body === undefined ? {} : { body: options.body }),
       redirect: 'error',
       signal: AbortSignal.timeout(20_000),
     });
@@ -150,6 +195,62 @@ export function createStorage(config: StorageConfig): Storage {
       // bucket is there, which is the state that was asked for.
       if (!response.ok && response.status !== 409) {
         throw new StorageError(response.status, `could not create the bucket ${config.bucket}`);
+      }
+    },
+
+    putCorsPolicy: async (allowedOrigins) => {
+      if (allowedOrigins.length === 0) {
+        throw new StorageError(400, 'a CORS policy with no origins would block every upload');
+      }
+      /**
+       * Built by hand rather than with an XML library, because it is six tags and the values
+       * are ours. `escapeXml` is still applied: an origin comes from configuration, and
+       * configuration that can inject markup into a policy document is a policy somebody else
+       * can write.
+       *
+       * `PUT` for the upload and `GET` for the processed copy the gallery shows. No `POST`,
+       * no `DELETE`: a browser has no business doing either to this bucket.
+       *
+       * `content-type` is the only allowed request header because it is the only one the
+       * presigned PUT signs. `ExposeHeader` is absent deliberately — the page needs the
+       * status, not the object's metadata.
+       */
+      const rules = allowedOrigins
+        .map((origin) => `<AllowedOrigin>${escapeXml(origin)}</AllowedOrigin>`)
+        .join('');
+      const body = new TextEncoder().encode(
+        '<?xml version="1.0" encoding="UTF-8"?>' +
+          '<CORSConfiguration>' +
+          '<CORSRule>' +
+          rules +
+          '<AllowedMethod>PUT</AllowedMethod>' +
+          '<AllowedMethod>GET</AllowedMethod>' +
+          /*
+           * Any request header, from those origins only.
+           *
+           * The origin list is the control here; the header list is not, and treating it as
+           * one costs an afternoon. A browser decides for itself which headers it names in the
+           * preflight — Chromium lists `content-length` even when a page never sets it — and a
+           * policy that enumerates them refuses the upload for a reason that appears nowhere
+           * except a browser console. What a header name cannot do is authorise anything: the
+           * signature does that, and it is computed over the headers that are actually sent.
+           */
+          '<AllowedHeader>*</AllowedHeader>' +
+          `<MaxAgeSeconds>${String(CORS_MAX_AGE_SECONDS)}</MaxAgeSeconds>` +
+          '</CORSRule>' +
+          '</CORSConfiguration>',
+      );
+
+      const response = await bucketRequest('PUT', {
+        query: new Map([['cors', '']]),
+        body,
+        contentType: 'application/xml',
+      });
+      if (!response.ok) {
+        throw new StorageError(
+          response.status,
+          `could not set the CORS policy on ${config.bucket}`,
+        );
       }
     },
 

@@ -45,6 +45,7 @@ function fakeStorage(object: Uint8Array | Error): Recorder {
     deleted,
     storage: {
       ensureBucket: () => Promise.resolve(),
+      putCorsPolicy: () => Promise.resolve(),
       presignUpload: () => ({ url: 'https://bucket.test/put', expiresInSeconds: 900 }),
       presignView: () => ({ url: 'https://bucket.test/get', expiresInSeconds: 300 }),
       getObject: (key) => {
