@@ -229,10 +229,17 @@ export default async function CardPage({
                   <span className="flex items-center gap-3">
                     <span className="text-xs text-muted" data-testid={`seller-${listing.id}`}>
                       {/*
+                        The name the seller chose, when they have chosen one — never anything
+                        derived from their account. Most sellers have not, so the rating is
+                        still the part that carries the weight.
+
                         "No ratings yet" rather than a zero. Zero is a score, and it is the
                         worst one — printing it under a new seller's first listing would be a
                         lie that costs them the sale.
                       */}
+                      {listing.seller.name !== null && (
+                        <span className="text-fg">{listing.seller.name} · </span>
+                      )}
                       {listing.seller.average === null
                         ? 'No ratings yet'
                         : `${listing.seller.average.toFixed(1)} from ${String(listing.seller.count)}`}

@@ -323,6 +323,13 @@
       "when": 1790303599172,
       "tag": "0045_a_rating_is_a_receipt",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1790303600172,
+      "tag": "0046_a_seller_may_have_a_name",
+      "breakpoints": true
     }
   ]
 }

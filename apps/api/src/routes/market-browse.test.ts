@@ -115,6 +115,9 @@ describe('what is for sale for a card', () => {
 
     const res = await app.inject({ method: 'GET', url: `/v1/cards/${cardId}/listings` });
     expect(res.json<{ items: { seller: unknown }[] }>().items[0]?.seller).toEqual({
+      // No name either: this seller has no connected account, so there is nowhere for one to
+      // live. A public seller identity costs a completed identity check (migration 0046).
+      name: null,
       average: null,
       count: 0,
     });

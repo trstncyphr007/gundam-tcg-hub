@@ -134,6 +134,10 @@ const WRITES: Call[] = [
   { method: 'DELETE', url: `/v1/listings/${GHOST}` },
 
   { method: 'POST', url: '/v1/seller/onboard' },
+  // A seller with no connected account: the name has nowhere to live, and the answer is a 409
+  // rather than a 500. Clearing one is the same shape.
+  { method: 'PATCH', url: '/v1/seller', payload: { displayName: 'Sweep Test Name' } },
+  { method: 'PATCH', url: '/v1/seller', payload: { displayName: null } },
 
   // Buying something that is not there. The interesting sweep is the one *after* this — a
   // real listing whose seller Stripe has never heard of — which `checkout.test.ts` covers
@@ -212,6 +216,13 @@ const WRITES: Call[] = [
     method: 'POST',
     url: `/v1/admin/reports/${GHOST}/decision`,
     payload: { decision: 'approve' },
+    as: 'admin',
+  },
+  // Clearing the name of a seller who does not exist: a 404 on the merits, not a 500.
+  {
+    method: 'POST',
+    url: `/v1/admin/sellers/${GHOST}/clear-name`,
+    payload: { reason: 'impersonation report, swept by the no-5xx suite' },
     as: 'admin',
   },
 ];

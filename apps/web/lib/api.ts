@@ -468,6 +468,8 @@ export interface SellerStatus {
   onboarded: boolean;
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
+  /** The name this seller chose for buyers to see, or null until they choose one. */
+  displayName: string | null;
 }
 
 export interface Listing {
@@ -555,7 +557,8 @@ export interface ListingForSale {
   priceCents: number;
   currency: string;
   quantity: number;
-  seller: { average: number | null; count: number };
+  /** `name` is null until the seller chooses one; `average` is null, never zero, when unrated. */
+  seller: { name: string | null; average: number | null; count: number };
   /**
    * The seller's own photograph of the card, signed and short-lived. Null when there is no
    * approved one — which is also what a deployment without object storage always answers.

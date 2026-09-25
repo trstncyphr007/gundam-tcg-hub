@@ -135,6 +135,14 @@ export const listingForSaleSchema = z.object({
   currency: z.string(),
   quantity: z.int(),
   seller: z.object({
+    /**
+     * The name this seller chose, or null.
+     *
+     * Still no id: a user id on a route with CORS `*` and no session is a directory of
+     * everyone selling anything. A name somebody typed for display is a different thing from
+     * an identifier that joins to the rest of their account, and only the first is published.
+     */
+    name: z.string().nullable(),
     /** Null, never zero, when nobody has rated them. Zero is a score, and it is not one. */
     average: z.number().nullable(),
     count: z.int(),

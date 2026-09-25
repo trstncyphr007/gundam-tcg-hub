@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { sellerAccounts } from '../schema/market.js';
+import { isUniqueViolation } from './pg-errors.js';
 import { asUser } from './watches.js';
 
 /**
@@ -22,8 +23,18 @@ export interface SellerAccount {
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
   holdUntil: Date | null;
+  /** What buyers call them, or null until they choose. Never derived from the account. */
+  displayName: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** Raised when the name somebody chose is already somebody else's. */
+export class DisplayNameTakenError extends Error {
+  constructor() {
+    super('that name is already taken');
+    this.name = 'DisplayNameTakenError';
+  }
 }
 
 /** Whoever this connected account belongs to, for a webhook that knows only the Stripe id. */
@@ -146,12 +157,16 @@ function hydrate(row: {
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
   holdUntil: string | null;
+  // Absent from the INSERT that this hydrates — a new seller has not chosen a name — so it is
+  // optional here and normalised to null below rather than left undefined.
+  displayName?: string | null;
   createdAt: string;
   updatedAt: string;
 }): SellerAccount {
   return {
     ...row,
     holdUntil: row.holdUntil === null ? null : new Date(row.holdUntil),
+    displayName: row.displayName ?? null,
     createdAt: new Date(row.createdAt),
     updatedAt: new Date(row.updatedAt),
   };
@@ -265,6 +280,56 @@ export async function releaseSellerPayouts(
     .update(sellerAccounts)
     .set({ holdUntil: null, updatedAt: new Date() })
     .where(eq(sellerAccounts.stripeAccountId, stripeAccountId))
+    .returning();
+  return rows.length > 0;
+}
+
+/**
+ * Choose the name buyers see, or remove it by passing null (FR-5.7).
+ *
+ * Written on the session's own row and nowhere else — the UPDATE policy checks `user_id`, so a
+ * request naming another account changes nothing. The grant covers `display_name` and
+ * `updated_at` only: this is the one writable column on a table that also holds whether
+ * somebody may take money, and a body asking to set `payouts_enabled` alongside it is refused
+ * by Postgres rather than by a field allowlist here.
+ *
+ * Shape — length, trimming, permitted characters — is the CHECK's business. This function does
+ * not restate it, because two copies of a rule is one rule and one future disagreement.
+ */
+export async function setSellerDisplayName(
+  db: Database,
+  userId: string,
+  displayName: string | null,
+): Promise<SellerAccount | null> {
+  return asUser(db, userId, async (tx) => {
+    try {
+      const rows = await tx
+        .update(sellerAccounts)
+        .set({ displayName, updatedAt: new Date() })
+        .where(eq(sellerAccounts.userId, userId))
+        .returning();
+      return (rows[0] as SellerAccount | undefined) ?? null;
+    } catch (error) {
+      // The case-insensitive unique index. Worth its own error because it is the one failure a
+      // seller can fix themselves, by picking something else.
+      if (isUniqueViolation(error)) throw new DisplayNameTakenError();
+      throw error;
+    }
+  });
+}
+
+/**
+ * Take a name away. Worker role, for an admin acting on a report (SR-5.9).
+ *
+ * A name shown next to a price is the most abusable public string in this system — impersonating
+ * a shop is a better fraud than any listing text — so there has to be a way to remove one. The
+ * seller keeps their account and their listings; they lose the name and may choose another.
+ */
+export async function clearSellerDisplayName(db: Database, userId: string): Promise<boolean> {
+  const rows = await db
+    .update(sellerAccounts)
+    .set({ displayName: null, updatedAt: new Date() })
+    .where(eq(sellerAccounts.userId, userId))
     .returning();
   return rows.length > 0;
 }

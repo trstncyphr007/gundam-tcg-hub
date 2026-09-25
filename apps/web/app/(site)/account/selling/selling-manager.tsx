@@ -60,6 +60,12 @@ function messageFor(error: string | undefined, status: number): string {
     case 'dimensions_too_large':
     case 'too_many_pixels':
       return 'That image is too large. An ordinary camera photo is the right size.';
+    case 'name_taken':
+      return 'Another seller is already using that name. Try a different one.';
+    case 'invalid_display_name':
+      return 'A name is 2 to 40 characters, and starts and ends with a letter or number.';
+    case 'not_a_seller':
+      return 'Set up payments first — a seller name goes with a verified account.';
     case 'unauthenticated':
       return 'You have been signed out. Sign in again to carry on.';
     case 'invalid_request':
@@ -113,6 +119,8 @@ export function SellingManager({
   initialListings: Listing[];
 }): React.JSX.Element {
   const [listings, setListings] = useState(initialListings);
+  const [sellerName, setSellerName] = useState(status?.displayName ?? null);
+  const [nameSaved, setNameSaved] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [photos, setPhotos] = useState<Record<string, ListingPhoto[]>>({});
@@ -144,6 +152,36 @@ export function SellingManager({
       // Stripe's own hosted onboarding. The URL comes from them, through our API, and is
       // short-lived — following it is the whole point of the button.
       window.location.href = body.url;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Choose the name buyers see, or clear it.
+   *
+   * An empty box means "no name", which is a removal rather than a name of zero characters —
+   * the API takes `null` for that and refuses `""`, so the two cannot be confused.
+   */
+  async function saveName(event: SyntheticEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const typed = field(new FormData(event.currentTarget), 'displayName').trim();
+    setBusy(true);
+    setProblem(null);
+    setNameSaved(false);
+    try {
+      const response = await fetch('/v1/seller', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ displayName: typed === '' ? null : typed }),
+      });
+      if (!response.ok) {
+        setProblem(await problemOf(response));
+        return;
+      }
+      const body = (await response.json()) as { displayName: string | null };
+      setSellerName(body.displayName);
+      setNameSaved(true);
     } finally {
       setBusy(false);
     }
@@ -347,6 +385,48 @@ export function SellingManager({
           </>
         )}
       </section>
+
+      {/*
+        Only where there is an account to hang it on. The name lives on the connected-account
+        row, which exists once Stripe has been asked to onboard somebody — so a public seller
+        identity costs a completed identity check, and an unverified account cannot call itself
+        a shop. That is the control, not a denylist of reserved words.
+      */}
+      {status !== null && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium">Your seller name</h2>
+          <form onSubmit={(event) => void saveName(event)} className="flex flex-wrap gap-2">
+            <input
+              name="displayName"
+              defaultValue={sellerName ?? ''}
+              maxLength={40}
+              placeholder="What buyers see"
+              className="min-w-56 flex-1 rounded border px-2 py-1 text-sm border-line bg-transparent"
+              data-testid="seller-name"
+            />
+            <button
+              type="submit"
+              disabled={busy}
+              className="rounded px-3 py-1 text-sm font-medium disabled:opacity-50 bg-accent"
+              data-testid="seller-name-save"
+            >
+              Save
+            </button>
+          </form>
+          <p className="text-xs text-muted">
+            {sellerName === null
+              ? 'Your listings show your rating and no name. Choose one and buyers will see it.'
+              : `Buyers see “${sellerName}” on your listings.`}{' '}
+            Leave it empty to go back to showing no name. It is the only thing about you that
+            appears publicly — never your email or the name on your account.
+          </p>
+          {nameSaved && (
+            <p role="status" className="text-xs text-muted" data-testid="seller-name-saved">
+              Saved.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">List a card</h2>

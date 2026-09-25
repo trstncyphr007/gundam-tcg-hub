@@ -2,7 +2,7 @@ import { type ListingDraft, photosRequiredFor, validateListing } from '@gth/core
 import { and, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { cardVariants, cards, sets } from '../schema/catalog.js';
-import { listingPhotos, listings } from '../schema/market.js';
+import { listingPhotos, listings, sellerAccounts } from '../schema/market.js';
 import { MissingReferenceError, isForeignKeyViolation } from './pg-errors.js';
 import { reputationOf } from './ratings.js';
 import { asUser } from './watches.js';
@@ -144,8 +144,16 @@ export interface ListingForSale {
   priceCents: number;
   currency: string;
   quantity: number;
-  /** Null average, never zero, when nobody has rated them. See `getReputation`. */
-  seller: { average: number | null; count: number };
+  /**
+   * What this seller is called, and how they are thought of.
+   *
+   * `name` is null when they have not chosen one — which is every seller until they do, and
+   * every seller on a deployment with no payment provider, because the name lives on the
+   * connected-account row. Never derived from the account: no `users.name`, no email.
+   *
+   * `average` is null, never zero, when nobody has rated them. See `getReputation`.
+   */
+  seller: { name: string | null; average: number | null; count: number };
   /**
    * The object key of the picture to show, or null.
    *
@@ -190,9 +198,21 @@ export async function browseListingsForCard(
       priceCents: listings.priceCents,
       currency: listings.currency,
       quantity: listings.quantity,
+      /**
+       * A left join, and **only this column**.
+       *
+       * `seller_accounts` also holds the Stripe account id and the two booleans that decide
+       * whether somebody may take money. On the read-only role this query runs as, migration
+       * 0046 grants SELECT on `(user_id, display_name)` and nothing else, so asking for any of
+       * the rest is refused by Postgres rather than by this select list. Left, because a seller
+       * who has chosen no name is invisible to that role's policy and must still have their
+       * listing shown.
+       */
+      sellerName: sellerAccounts.displayName,
     })
     .from(listings)
     .innerJoin(cardVariants, eq(cardVariants.id, listings.cardVariantId))
+    .leftJoin(sellerAccounts, eq(sellerAccounts.userId, listings.sellerId))
     .where(and(eq(cardVariants.cardId, cardId), eq(listings.status, 'active')))
     .orderBy(listings.priceCents)
     .limit(limit);
@@ -210,9 +230,9 @@ export async function browseListingsForCard(
     ),
   ]);
 
-  return rows.map(({ sellerId, ...listing }) => ({
+  return rows.map(({ sellerId, sellerName, ...listing }) => ({
     ...listing,
-    seller: standing.get(sellerId) ?? { average: null, count: 0 },
+    seller: { name: sellerName, ...(standing.get(sellerId) ?? { average: null, count: 0 }) },
     photoKey: covers.get(listing.id) ?? null,
   }));
 }
