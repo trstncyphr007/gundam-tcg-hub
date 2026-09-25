@@ -35,6 +35,23 @@ function realJpeg(width: number, height: number): Uint8Array {
   return new Uint8Array(encodeJpeg({ data: pixels(width, height), width, height }, 90).data);
 }
 
+/**
+ * The one genuinely expensive fixture, encoded once and reused.
+ *
+ * Two tests need an image over the display cap, and building one costs a full JPEG encode on
+ * top of the decode-resample-encode they are actually measuring. Sharing it halves the work.
+ * 1600 is the cap, so 1800 × 1350 is over it by enough to prove a resize happened and no
+ * further — and `reencodePhoto` does not mutate its input, so one buffer is safe for both.
+ *
+ * This started at 2400 × 1800, which timed out on CI under coverage; then 2000 × 1500, which
+ * timed out again when the package grew two container-based test files to compete with.
+ */
+let oversizedFixture: Uint8Array | null = null;
+function oversized(): Uint8Array {
+  oversizedFixture ??= realJpeg(1800, 1350);
+  return oversizedFixture;
+}
+
 function realPng(width: number, height: number, alpha = 255): Uint8Array {
   const png = new PNG({ width, height });
   pixels(width, height, alpha).copy(png.data);
@@ -201,16 +218,13 @@ describe('the size it is stored at', () => {
   });
 
   it('actually resizes the picture, not just the number', () => {
-    // 2000 rather than something larger: it is over the cap, which is all this needs, and
-    // every extra megapixel is a second of pure-JS resampling in a suite that runs on every
-    // push. The first version used 2400 × 1800 and timed out on CI under coverage.
-    const out = reencodePhoto(realJpeg(2000, 1500));
+    const out = reencodePhoto(oversized());
     expect(Math.max(out.width, out.height)).toBe(DISPLAY_MAX_DIMENSION);
     expect(out.height).toBe(1200);
   });
 
   it('is smaller than the original it came from', () => {
-    const original = realJpeg(2000, 1500);
+    const original = oversized();
     expect(reencodePhoto(original).bytes.length).toBeLessThan(original.length);
   });
 });

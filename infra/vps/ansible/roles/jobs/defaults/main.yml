@@ -20,3 +20,10 @@ jobs_schedule:
     description: Gundam TCG Hub alert retry
     hour: '*:0/5:00'
     delay: 15
+  # Finishing delivered orders (FR-5.4, FR-5.6). Nightly, after retention, well clear of the
+  # backup window. Nothing here is urgent to the minute — an order completing at 05:30 rather
+  # than 05:29 costs a seller nothing — but it must happen at all: if this never runs, no
+  # seller is ever paid out and nothing anywhere reports an error.
+  - name: complete-orders
+    description: Gundam TCG Hub order completion
+    hour: '05:30:00'
