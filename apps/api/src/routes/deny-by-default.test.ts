@@ -56,6 +56,16 @@ const PUBLIC: { route: string; why: string }[] = [
   { route: 'GET /v1/cards', why: 'public catalogue' },
   { route: 'GET /v1/cards/:id', why: 'public catalogue' },
   { route: 'GET /v1/cards/:id/prices', why: 'public price index' },
+  /**
+   * What is for sale, to anybody (FR-5.2).
+   *
+   * A shop window has to be readable without signing in, or nobody arrives. Public here means
+   * genuinely public: the route runs on the read-only role, whose only policy on `listings` is
+   * `status = 'active'`, so a draft is not filtered out — it is invisible to the connection.
+   * And the response schema publishes no seller id, so an open browse is not also a directory
+   * of everyone selling anything. Buying still needs a session; looking does not.
+   */
+  { route: 'GET /v1/cards/:id/listings', why: 'public shop window (FR-5.2)' },
   { route: 'GET /v1/products', why: 'public catalogue' },
   { route: 'GET /v1/breakers', why: 'public breaker profiles (FR-4.3)' },
   { route: 'GET /v1/breakers/:handle', why: 'public breaker profile' },

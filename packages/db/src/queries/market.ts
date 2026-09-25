@@ -4,6 +4,7 @@ import type { Database } from '../client.js';
 import { cardVariants, cards, sets } from '../schema/catalog.js';
 import { listings } from '../schema/market.js';
 import { MissingReferenceError, isForeignKeyViolation } from './pg-errors.js';
+import { reputationOf } from './ratings.js';
 import { asUser } from './watches.js';
 
 /**
@@ -120,6 +121,85 @@ export async function listActiveForVariant(
     .orderBy(listings.priceCents)
     .limit(limit);
   return rows;
+}
+
+/**
+ * One listing on a browse page: enough to choose it, and nothing that names its seller.
+ *
+ * `sellerId` is deliberately absent. It is a user id, and this route is public — CORS `*`, no
+ * session — so publishing it would hand every scraper a list of everyone selling anything,
+ * keyed by an identifier that also appears in URLs elsewhere. A buyer choosing between two
+ * listings needs the price, the condition and whether the seller can be trusted; none of that
+ * requires knowing *which* seller it is.
+ *
+ * What replaces it is the standing, inline. When sellers eventually have a public display name
+ * they have chosen (SR-3.8), that is what goes here — not the id.
+ */
+export interface ListingForSale {
+  id: string;
+  cardVariantId: string;
+  finish: string;
+  language: string;
+  condition: string;
+  priceCents: number;
+  currency: string;
+  quantity: number;
+  /** Null average, never zero, when nobody has rated them. See `getReputation`. */
+  seller: { average: number | null; count: number };
+}
+
+/**
+ * Everything for sale for one card, cheapest first (FR-5.2, FR-5.7).
+ *
+ * The entry point to buying anything. Until this existed the marketplace had a checkout with
+ * no way to reach it: `POST /v1/listings/:id/buy` works only if you already know a listing id,
+ * and nobody did.
+ *
+ * Per **card**, not per variant, because that is the question a buyer asks. A card has several
+ * printings and they are all the same card to somebody who wants one; the printing is a column
+ * in the answer rather than a thing to pick first. `listActiveForVariant` remains for the
+ * narrower question.
+ *
+ * No `asUser`, and none is possible: this runs on the read-only role, where the only policy on
+ * `listings` is `status = 'active'`. A draft cannot be returned by this function however it is
+ * called, because the role it runs as cannot see one. The partial index
+ * `listings_variant_active_idx (card_variant_id, price_cents) WHERE status = 'active'` covers
+ * the ordering.
+ */
+export async function browseListingsForCard(
+  db: Database,
+  cardId: string,
+  limit = 50,
+): Promise<ListingForSale[]> {
+  const rows = await db
+    .select({
+      id: listings.id,
+      sellerId: listings.sellerId,
+      cardVariantId: listings.cardVariantId,
+      finish: cardVariants.finish,
+      language: cardVariants.language,
+      condition: listings.condition,
+      priceCents: listings.priceCents,
+      currency: listings.currency,
+      quantity: listings.quantity,
+    })
+    .from(listings)
+    .innerJoin(cardVariants, eq(cardVariants.id, listings.cardVariantId))
+    .where(and(eq(cardVariants.cardId, cardId), eq(listings.status, 'active')))
+    .orderBy(listings.priceCents)
+    .limit(limit);
+
+  // One query for every seller on the page rather than one per listing. Twenty listings from
+  // twenty sellers would otherwise be twenty round trips to compute a number each.
+  const standing = await reputationOf(
+    db,
+    rows.map((row) => row.sellerId),
+  );
+
+  return rows.map(({ sellerId, ...listing }) => ({
+    ...listing,
+    seller: standing.get(sellerId) ?? { average: null, count: 0 },
+  }));
 }
 
 /** One listing, if this viewer may see it. A draft is visible only to its seller. */

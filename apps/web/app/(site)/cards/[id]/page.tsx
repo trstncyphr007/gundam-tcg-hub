@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { PriceChart } from '@/components/price-chart';
 import { api } from '@/lib/api';
 import { dollars } from '@/lib/money';
+import { BuyButton } from './buy-button';
 
 /**
  * Ranges the chart offers (FR-3.3).
@@ -63,7 +64,14 @@ export default async function CardPage({
   const condition = pickCondition(
     typeof query['condition'] === 'string' ? query['condition'] : undefined,
   );
-  const prices = await api.cardPrices(id, { days, condition });
+  // Both public, both independent of each other, so one round trip's worth of latency.
+  // `me` decides whether the buy button asks for a sign-in first, and nothing more.
+  const [prices, forSale, me] = await Promise.all([
+    api.cardPrices(id, { days, condition }),
+    api.cardListings(id),
+    api.me(),
+  ]);
+  const signedIn = me !== null;
 
   const points = prices?.points ?? [];
   const latest = points.at(-1);
@@ -169,6 +177,57 @@ export default async function CardPage({
           </p>
         )}
       </section>
+
+      {/*
+        What is actually for sale (FR-5.2). Above the printings, because somebody who came here
+        to buy a card should not have to scroll past a taxonomy to find out they can.
+
+        `forSale` is null when the marketplace is not configured, which is a different thing
+        from an empty list and is not said at all — a site without a marketplace should look
+        like a site without a marketplace, not like one where nothing is for sale.
+      */}
+      {forSale !== null && (
+        <section data-testid="for-sale">
+          <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-muted">For sale</h2>
+          {forSale.items.length === 0 ? (
+            <p className="text-sm text-muted">Nobody is selling this one at the moment.</p>
+          ) : (
+            <ul className="space-y-2">
+              {forSale.items.map((listing) => (
+                <li
+                  key={listing.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded border px-3 py-2 bg-surface border-line"
+                  data-testid={`listing-${listing.id}`}
+                >
+                  <span className="text-sm">
+                    <span className="font-medium">
+                      {dollars(listing.priceCents, listing.currency)}
+                    </span>{' '}
+                    <span className="text-muted">
+                      · {listing.condition.toUpperCase()} · {listing.finish.replace('_', ' ')} ·{' '}
+                      {listing.language.toUpperCase()}
+                      {listing.quantity > 1 ? ` · ${String(listing.quantity)} available` : ''}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-3">
+                    <span className="text-xs text-muted" data-testid={`seller-${listing.id}`}>
+                      {/*
+                        "No ratings yet" rather than a zero. Zero is a score, and it is the
+                        worst one — printing it under a new seller's first listing would be a
+                        lie that costs them the sale.
+                      */}
+                      {listing.seller.average === null
+                        ? 'No ratings yet'
+                        : `${listing.seller.average.toFixed(1)} from ${String(listing.seller.count)}`}
+                    </span>
+                    <BuyButton listingId={listing.id} signedIn={signedIn} next={`/cards/${id}`} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section>
         <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-muted">Printings</h2>

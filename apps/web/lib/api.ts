@@ -45,12 +45,18 @@ async function forwardedFor(): Promise<Record<string, string>> {
   return value === null ? {} : { 'x-forwarded-for': value };
 }
 
-/** Fetch public catalog data during server rendering. Never forwards the user's cookies. */
-async function getPublic<T>(path: string): Promise<T | null> {
+/**
+ * Fetch public catalog data during server rendering. Never forwards the user's cookies.
+ *
+ * `revalidate` is a parameter because not everything public ages at the same rate. A card's
+ * name is the same tomorrow; what is for sale changes the moment a seller edits a price, and a
+ * stale listing is a buyer clicking through to a checkout that answers 409.
+ */
+async function getPublic<T>(path: string, revalidate = 60): Promise<T | null> {
   try {
     const response = await fetch(`${INTERNAL_API}${path}`, {
       headers: { accept: 'application/json', ...(await forwardedFor()) },
-      next: { revalidate: 60 },
+      next: { revalidate },
     });
     if (!response.ok) return null;
     return (await response.json()) as T;
@@ -531,6 +537,24 @@ export interface Rating {
   createdAt: string;
 }
 
+/**
+ * One listing on the public browse page.
+ *
+ * No seller id, because the route does not publish one — see `listingForSaleSchema` in the
+ * API. What a buyer gets instead is the standing, which is what they were going to use it for.
+ */
+export interface ListingForSale {
+  id: string;
+  cardVariantId: string;
+  finish: string;
+  language: string;
+  condition: string;
+  priceCents: number;
+  currency: string;
+  quantity: number;
+  seller: { average: number | null; count: number };
+}
+
 export interface Reputation {
   sellerId: string;
   /** Null, never zero, when nobody has rated them — see `getReputation`. */
@@ -543,6 +567,15 @@ export const api = {
   sellerStatus: () => getAuthed<SellerStatus>('/v1/seller'),
 
   myListings: () => getAuthed<{ items: Listing[] }>('/v1/listings'),
+
+  /**
+   * What is for sale for a card. Public, so no session is needed to look.
+   *
+   * Thirty seconds, matching the API's own `cache-control`, because a listing is the most
+   * perishable thing the API serves.
+   */
+  cardListings: (cardId: string) =>
+    getPublic<{ items: ListingForSale[] }>(`/v1/cards/${cardId}/listings`, 30),
 
   listingPhotos: (listingId: string) =>
     getAuthed<{ items: ListingPhoto[] }>(`/v1/listings/${listingId}/photos`),
