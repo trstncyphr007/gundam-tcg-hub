@@ -20,7 +20,7 @@
     "@gth/config": "workspace:*",
     "@gth/core": "workspace:*",
     "@gth/db": "workspace:*",
-    "@types/node": "24.13.4",
+    "@types/node": "24.13.6",
     "@vitest/coverage-v8": "5.0.0",
     "typescript": "6.0.3",
     "vitest": "5.0.0"

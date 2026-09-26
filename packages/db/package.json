@@ -32,12 +32,12 @@
     "@gth/security": "workspace:*",
     "drizzle-orm": "0.45.2",
     "postgres": "3.4.9",
-    "zod": "4.6.2"
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@gth/config": "workspace:*",
     "@testcontainers/postgresql": "12.1.0",
-    "@types/node": "24.13.4",
+    "@types/node": "24.13.6",
     "@vitest/coverage-v8": "5.0.0",
     "drizzle-kit": "0.31.10",
     "testcontainers": "12.1.0",
