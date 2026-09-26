@@ -261,6 +261,32 @@ The four things recorded as residual risk, in order of how much they matter:
 | 2   | Every fraud threshold is a guess; no real order has been placed                  | Open, unavoidable until launch        |
 | 3   | Geo mismatch is not flagged; the address arrives after the decision              | Open, by design, needs a review queue |
 | 4   | One Stripe key for both roles, where SR-5.3 asks for restricted keys per service | Open                                  |
+| 5   | A failed `createConnectedAccount` locks that seller out of onboarding for 24h    | Open — see below                      |
+
+### 5. A failed account creation is cached for a day
+
+Found while running AC-5.1, and worth more than a line in a table.
+
+`createConnectedAccount` keys its idempotency on the user: `account:<userId>`. That is the right
+instinct — a double-click during onboarding must not leave one person holding two connected
+accounts and an ambiguous answer to "who gets paid".
+
+But **Stripe saves the response to an idempotency key for 24 hours whether it succeeded or
+failed.** So an attempt that failed for a reason having nothing to do with the seller — Connect
+misconfigured, a transient 500, a rate limit — is replayed to that seller for the next day. They
+see the same error every time they press the button, and nothing they or an operator does from
+the application side changes it.
+
+This happened during the acceptance run: a seller whose first attempt hit "Connect is not
+enabled" could not create an account afterwards, even once Connect was enabled. The fix at the
+time was a different user, which is not a fix available to a real customer.
+
+**Not changed here, deliberately.** The obvious repair — putting a time bucket in the key —
+narrows the lockout but reopens the double-click race at bucket boundaries, and the failure it
+would reintroduce (an orphaned Stripe account nobody is recorded against) is worse than the one
+it fixes. Doing it properly means reconciling against `seller_accounts` before creating, and that
+is a change to money-handling code that deserves its own PR and tests rather than a hurried edit
+at the end of a long session.
 
 ---
 
