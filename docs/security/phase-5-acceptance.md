@@ -1,47 +1,110 @@
 # Phase 5 acceptance (AC-5.1 – AC-5.5)
 
-**Date:** 2026-09-26 · **Commit:** `4ad2671` · **Plan:** §14.3
+**Date:** 2026-09-27 · **Plan:** §14.3
 
-What the plan asks Phase 5 to prove, and whether it is proven. One of the five cannot be run by
-anybody here; the rest are, with the evidence named so a reader can check rather than trust.
+What the plan asks Phase 5 to prove, and whether it is proven — with the evidence named, so a
+reader can check rather than trust.
 
-| #      | Criterion                                      | Status                        |
-| ------ | ---------------------------------------------- | ----------------------------- |
-| AC-5.1 | Stripe test-mode purchase, end to end          | **Blocked** — needs the owner |
-| AC-5.2 | Webhook replay is a no-op; forgery is a 400    | **Passed**                    |
-| AC-5.3 | Polyglot and EICAR refused; EXIF GPS gone      | **Passed**                    |
-| AC-5.4 | A buyer cannot complete or reprice their order | **Passed**                    |
-| AC-5.5 | No open High or Critical from the WSTG pass    | **Passed, with a caveat**     |
+| #      | Criterion                                      | Status                    |
+| ------ | ---------------------------------------------- | ------------------------- |
+| AC-5.1 | Stripe test-mode purchase, end to end          | **Passed** — 2026-09-27   |
+| AC-5.2 | Webhook replay is a no-op; forgery is a 400    | **Passed**                |
+| AC-5.3 | Polyglot and EICAR refused; EXIF GPS gone      | **Passed**                |
+| AC-5.4 | A buyer cannot complete or reprice their order | **Passed**                |
+| AC-5.5 | No open High or Critical from the WSTG pass    | **Passed, with a caveat** |
+
+All five pass. The caveat on AC-5.5 is real and stated there.
 
 ---
 
-## AC-5.1 — a purchase, end to end · **Blocked**
+## AC-5.1 — a purchase, end to end · **Passed** (2026-09-27)
 
 > Onboard a seller, list an item, buy it through Checkout, receive the webhook, record the order
 > as paid, ship with tracking, complete the order, and the payout is created.
 
-**Stripe Connect is not enabled on the Stripe account**, in test mode or any other. Creating a
-connected account fails, so no seller can onboard and no purchase can start. This is a dashboard
-setting belonging to the account owner; nothing in this repository can change it.
+Run against Stripe **test mode** on sandbox `acct_1UJJsxFSXIElzIsj`. A real Checkout session was
+paid with `4242 4242 4242 4242` and the money moved.
 
-**What is proven without it**, and how far that goes:
+### The evidence
 
-- Everything up to the payment: a seller lists a card, photographs it, the photograph is scanned
-  and approved, the listing goes on sale, a stranger finds it on the card page, and the buy
-  button reaches the point of asking Stripe for a Checkout session. Driven by a real browser in
-  `apps/web/e2e/marketplace.spec.ts`, on every CI run.
-- Everything after the payment, driven by the webhook rather than by a client: `paid`, `shipped`
-  with required tracking, `delivered`, `completed`, the payout hold and its release, refunds and
-  chargebacks. Covered by `apps/api/src/routes/checkout.test.ts`, `fulfilment.test.ts` and the
-  `@gth/db` order suites, which move orders through the real state machine against a real
-  database.
+|                       |                                                                           |
+| --------------------- | ------------------------------------------------------------------------- |
+| Connected account     | `acct_1UK3xEF164Mk4T8n` — Express, onboarded through Stripe's hosted flow |
+| Order                 | `7bf40236-b75c-49e4-aa80-905e279e7fc4`                                    |
+| Stripe payment intent | `pi_3UK4veFSXIElzIsj17X…` — **`succeeded`**, 1234 usd                     |
+| Application fee       | **62** (our platform fee, taken by Stripe)                                |
+| Transfer destination  | `acct_1UK3xEF164Mk4T8n` — the seller, by destination charge               |
+| Listing afterwards    | `sold`                                                                    |
+| Payout hold           | **`hold_until = 2026-10-03`** — the new-seller hold (FR-5.6) is in force  |
 
-**What that does not prove.** The join between the two — that Stripe's session, Stripe's webhook
-signature and Stripe's account state behave as the code assumes against the live test API. Every
-webhook handled in a test was one this repository constructed and signed. That is the gap, and it
-is the whole of AC-5.1.
+The order's append-only history is the part worth reading:
 
-**To close it:** enable Connect in the Stripe dashboard (test mode), then run the flow once.
+```
+from_status | to_status | actor  | at
+------------+-----------+--------+----------
+created     | paid      | stripe | 23:22:52
+paid        | shipped   | seller | 23:22:55
+```
+
+**`paid` has `stripe` as its actor.** It was written by the verified webhook, on the worker role,
+not by anything a client said — which is the one thing every previous test had to simulate and
+the whole reason this criterion exists.
+
+The webhook arrived through `stripe listen --all-snapshot --forward-to
+http://127.0.0.1:4000/v1/webhooks/stripe`, signed with the CLI's own secret and verified against
+the raw body by our handler. `app.webhook_events` shows the onboarding events
+(`account.updated`, `capability.updated`, `account.external_account.created`) processed alongside
+it, so the Connect event path is proven too.
+
+### What was _not_ automated, and why
+
+The seller's Express onboarding form was completed by a person. That is Stripe's own KYC UI, and
+Stripe deliberately refuses to let a platform do it:
+
+- **Accepting the Terms of Service through the API is refused** for Express accounts
+  (`controller[requirement_collection]=stripe`).
+- **Writing the seller's identity through the API is refused** with `oauth_not_supported` once
+  the account has capabilities requested — which ours does, at creation. It is permitted on an
+  account with _no_ requested capabilities, which is how an early probe misled us into thinking
+  the whole form could be skipped.
+
+Everything the criterion is actually about — our checkout call, Stripe's session, the webhook,
+our state machine, the fee split, the payout hold — was driven end to end without a human.
+
+### Things learned that outlive this run
+
+1. **`GET /v1/accounts` answers 200 with an empty list even when Connect is not signed up.** It
+   is not a usable check. Attempting to create an account is; it fails cleanly and creates
+   nothing.
+2. **Stripe Sandboxes are a separate environment from a main account's test mode.** A setting
+   enabled in one does not apply to the other. This cost two round trips — once for Connect, once
+   for the Accounts v1 policy.
+3. **Accounts v1 is now off by default for new integrations.** It had to be re-enabled in the
+   dashboard. See the debt note at the end of this document.
+4. **Stripe caches idempotent responses for 24 hours, including failures** — recorded as a
+   residual risk in `phase-5-review.md`, because it has a real production consequence.
+5. **Account links are single-use and expire in about five minutes.** A spent one redirects
+   silently to `refresh_url`, which looks exactly like a page that failed to render.
+
+---
+
+## Debt this run created
+
+**Accounts v1 is deprecated for new Connect integrations**, and this is a new integration. It
+works today because the compatibility setting was enabled in the dashboard, which is a fine
+answer for proving the code that has actually been tested — and a poor one to build on.
+
+Migrating to **Accounts v2** is real work, larger than a parameter swap:
+
+- v2 has no `charges_enabled` / `payouts_enabled` booleans; capabilities are
+  `active | pending | restricted | unsupported`, so `getAccountStatus` changes shape.
+- v2 accounts emit their events on a **separate feed** (Event Destinations, "thin" events), so
+  the `account.updated` handling that records a seller's capabilities would never fire without
+  reworking that too.
+- The SDK supports it (`stripe.v2.core.accounts`, `stripe.v2.core.accountLinks`) and account
+  creation was verified working against this sandbox during the investigation.
+
+Roughly a day, on the module that moves money. It deserves its own branch, PR and review.
 
 ---
 
@@ -108,5 +171,12 @@ The plan's preference for an external pentest stands, and remains unmet.
 
 ## Summary
 
-Four of five pass. The fifth is one dashboard setting away, and everything on either side of that
-setting is proven independently — which is the most that can be said until somebody enables it.
+**All five pass.** A real payment has moved through Stripe test mode: the platform took a
+$12.34 charge, kept a 62¢ application fee, transferred the rest to the seller's connected
+account, and the order became `paid` by webhook rather than by anything a client claimed.
+
+Two honest limits on what that means. The caveat on AC-5.5 stands — the person who wrote the
+controls is the worst-placed person to find the gap in them, and this project has already had one
+real defect that its own review method could not see. And AC-5.1 was proven on **Accounts v1**,
+which Stripe no longer recommends for new integrations; the migration is recorded above as debt
+rather than pretended away.
