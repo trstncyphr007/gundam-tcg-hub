@@ -289,19 +289,26 @@ end-to-end suite is the compensating control and is now part of CI.
 
 ### T11 — marketplace fraud
 
-| Attack                                  | Mitigation                                                                        | Proof                                                       |
-| --------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Buying your own card to inflate a score | `orders_not_self_dealing` CHECK                                                   | Refused at the database                                     |
-| Two buyers, one card                    | `orders_one_open_per_listing` partial unique index, enforced **below** RLS        | A rival's purchase refused with 409                         |
-| Buyer editing the price after the fact  | Migration 0043's column-level UPDATE grant                                        | Raw SQL, refused                                            |
-| Seller confirming their own delivery    | `delivered` and `completed` are not writable by `app_web` at all                  | Raw SQL for both status and `delivered_at`                  |
-| Seller finishing their own sale         | `completed` is reachable by `system` or `admin` only                              | State machine, tested exhaustively                          |
-| Shipping with no evidence               | `orders_shipped_has_tracking` CHECK — stricter than the plan, deliberately        | Raw SQL, refused                                            |
-| Stolen-card rush on a new account       | New-account caps: $150 an order, three orders a day                               | Pure rules, sixteen tests, plus route tests                 |
-| Scripted buying                         | Ten orders an hour, above the per-minute limiter                                  | Tested                                                      |
-| Stolen listing photos                   | sha256 of the **processed** copy; duplicates audited, not refused                 | Reported, with the reasoning for not refusing               |
-| Reviews from people who did not buy     | The insert policy requires the order to be yours, completed, and yours as _buyer_ | Four refusals, each tested as raw SQL or through the policy |
-| A seller deleting a bad review          | No role has DELETE on `order_ratings`                                             | Refused for the rater themselves                            |
+_Impersonation added 2026-09-26, with seller display names. A name shown beside a price is the
+most abusable public string here: "Bandai Official Store" sells better than any listing text.
+The mitigation is where the name can live at all — the row belongs to a connected Stripe
+account, so claiming one costs a completed identity check. A denylist of reserved words was
+considered and rejected: it is always one spelling behind._
+
+| Attack                                  | Mitigation                                                                                                                                                                                              | Proof                                                       |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Buying your own card to inflate a score | `orders_not_self_dealing` CHECK                                                                                                                                                                         | Refused at the database                                     |
+| Two buyers, one card                    | `orders_one_open_per_listing` partial unique index, enforced **below** RLS                                                                                                                              | A rival's purchase refused with 409                         |
+| Buyer editing the price after the fact  | Migration 0043's column-level UPDATE grant                                                                                                                                                              | Raw SQL, refused                                            |
+| Seller confirming their own delivery    | `delivered` and `completed` are not writable by `app_web` at all                                                                                                                                        | Raw SQL for both status and `delivered_at`                  |
+| Seller finishing their own sale         | `completed` is reachable by `system` or `admin` only                                                                                                                                                    | State machine, tested exhaustively                          |
+| Shipping with no evidence               | `orders_shipped_has_tracking` CHECK — stricter than the plan, deliberately                                                                                                                              | Raw SQL, refused                                            |
+| Stolen-card rush on a new account       | New-account caps: $150 an order, three orders a day                                                                                                                                                     | Pure rules, sixteen tests, plus route tests                 |
+| Scripted buying                         | Ten orders an hour, above the per-minute limiter                                                                                                                                                        | Tested                                                      |
+| Stolen listing photos                   | sha256 of the **processed** copy; duplicates audited, not refused                                                                                                                                       | Reported, with the reasoning for not refusing               |
+| Passing yourself off as a shop          | A seller name exists only on a connected-account row, so it costs a completed Stripe identity check; shape and case-insensitive uniqueness are CHECK and index; an admin can clear one without a deploy | Raw SQL for the grants; the CHECK refused four bad names    |
+| Reviews from people who did not buy     | The insert policy requires the order to be yours, completed, and yours as _buyer_                                                                                                                       | Four refusals, each tested as raw SQL or through the policy |
+| A seller deleting a bad review          | No role has DELETE on `order_ratings`                                                                                                                                                                   | Refused for the rater themselves                            |
 
 **Residual, and these are real.**
 
