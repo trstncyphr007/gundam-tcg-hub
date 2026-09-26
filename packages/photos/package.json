@@ -19,7 +19,7 @@
   "devDependencies": {
     "@gth/config": "workspace:*",
     "@gth/security": "workspace:*",
-    "@types/node": "24.13.4",
+    "@types/node": "24.13.6",
     "@types/pngjs": "6.0.5",
     "@vitest/coverage-v8": "5.0.0",
     "testcontainers": "12.1.0",
