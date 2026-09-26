@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@better-auth/passkey": "1.7.4",
-    "@simplewebauthn/server": "13.3.3",
+    "@simplewebauthn/server": "14.0.2",
     "better-auth": "1.7.4"
   },
   "devDependencies": {
