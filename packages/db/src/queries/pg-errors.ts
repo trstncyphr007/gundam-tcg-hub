@@ -51,6 +51,18 @@ export function isForeignKeyViolation(error: unknown): boolean {
 }
 
 /**
+ * `23514`: a CHECK refused the value.
+ *
+ * Useful where the constraint is the single statement of a rule and the route's job is to turn
+ * its refusal into a sentence — a seller's display name, for instance, whose permitted shape is
+ * written once in migration 0046 rather than twice. Without this the answer is a 500 for what
+ * is really a 400.
+ */
+export function isCheckViolation(error: unknown): boolean {
+  return hasSqlState(error, '23514');
+}
+
+/**
  * `42501`: the database said no.
  *
  * Covers both "permission denied for table" (a missing grant) and "new row violates row-level

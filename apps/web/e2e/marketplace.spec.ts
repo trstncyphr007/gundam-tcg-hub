@@ -100,6 +100,65 @@ test.describe('selling', () => {
     await expect(unavailable.or(onboard).or(ready)).toBeVisible();
   });
 
+  /**
+   * The seller's public name (FR-5.7, SR-3.8).
+   *
+   * Offered only where there is a connected account to hang it on, which is the control: a
+   * public seller identity costs a completed identity check, so an unverified account cannot
+   * call itself a shop. Where payments are not configured — CI — the field is absent, and that
+   * absence is the assertion.
+   */
+  test('offers a seller name only where there is an account for it', async ({ page }) => {
+    await signInOnce(page, SELLER_EMAIL);
+    await page.goto('/account/selling');
+
+    /**
+     * Three states, because a deployment can be in any of them and the page has to be right in
+     * all three:
+     *
+     * 1. **No payment provider.** The field is not offered at all — this is CI.
+     * 2. **A provider, but no connected account.** The field is offered and saving is refused,
+     *    because the name lives on the account row and there is not one yet. This is the
+     *    developer machine, where Stripe is configured but Connect is not enabled.
+     * 3. **A connected account.** It saves, and a stranger sees it.
+     */
+    const field = page.getByTestId('seller-name');
+    if ((await page.getByTestId('payments-unavailable').count()) > 0) {
+      await expect(field).toHaveCount(0);
+      return;
+    }
+
+    await expect(field).toBeVisible();
+    const chosen = `E2E Seller ${String(Date.now()).slice(-6)}`;
+    await field.fill(chosen);
+    await page.getByTestId('seller-name-save').click();
+
+    const saved = page.getByTestId('seller-name-saved');
+    const problem = page.getByTestId('selling-problem');
+    await expect
+      .poll(async () => (await saved.count()) > 0 || (await problem.count()) > 0, {
+        message: 'saving a seller name neither succeeded nor said why not',
+      })
+      .toBe(true);
+
+    if ((await saved.count()) === 0) {
+      // State 2. The refusal has to name the actual obstacle — "set up payments first" — and
+      // must not be the generic shrug, because the seller can act on the first and not the
+      // second.
+      await expect(problem).toContainText(/set up payments/i);
+      return;
+    }
+
+    // State 3: it reaches a stranger, on the public card page, next to the price.
+    const { cardId, variantId } = await firstVariant(page.request);
+    const id = await createListing(page, variantId, '6.75');
+    await page.getByTestId(`publish-${id}`).click();
+    await expect(page.getByTestId(`status-${id}`)).toHaveText('active');
+
+    await page.goto(`/cards/${cardId}`);
+    await expect(page.getByTestId(`seller-${id}`)).toContainText(chosen);
+  });
+
   test('saves a draft rather than publishing it', async ({ page }) => {
     // Saving is not publishing. Somebody filling in a form has not agreed to sell anything yet.
     await signInOnce(page, SELLER_EMAIL);

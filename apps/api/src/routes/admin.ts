@@ -5,6 +5,7 @@ import {
   MAX_REASON_LENGTH,
   ModerationError,
   OrderNotFoundError,
+  clearSellerDisplayName,
   completeOrder,
   decideFlag,
   decideReport,
@@ -98,6 +99,9 @@ const flagDecisionSchema = z
     reason: z.string().max(MAX_REASON_LENGTH + 50),
   })
   .strict();
+
+/** Removing a name is a moderation act, so it carries a reason like the rest of them. */
+const clearNameSchema = z.object({ reason: z.string().max(MAX_REASON_LENGTH + 50) }).strict();
 
 function issuesOf(error: z.ZodError): { field: string; code: string }[] {
   return error.issues.map((i) => ({
@@ -242,6 +246,59 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminDeps): void
       return reply
         .header('cache-control', 'no-store')
         .send({ id: params.data.id, decision: body.data.decision });
+    },
+  );
+
+  /**
+   * Take a seller's public name away (SR-5.9, FR-5.7).
+   *
+   * A name shown beside a price is the most abusable public string here — impersonating a shop
+   * is a better fraud than any listing text — so there has to be a remedy, and it has to be
+   * reachable without a deploy. The seller keeps their account, their listings and their
+   * ratings; they lose the name and may choose another, which is the proportionate response to
+   * a bad name rather than to a bad person.
+   *
+   * On the worker role, because `display_name` is the seller's own column to write and an admin
+   * is not the seller. Audited with a reason, like every other admin action.
+   */
+  app.post(
+    '/v1/admin/sellers/:id/clear-name',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const actor = guard(request, reply);
+      if (actor === null) return reply;
+
+      // A user id, not a uuid: `users.id` is text (Better Auth's own format).
+      const id = (request.params as { id?: unknown }).id;
+      if (typeof id !== 'string' || id.length === 0 || id.length > 64) {
+        return reply.code(404).send({ error: 'not_found' });
+      }
+      const body = clearNameSchema.safeParse(request.body ?? {});
+      if (!body.success) {
+        return reply.code(400).send({ error: 'invalid_request', details: issuesOf(body.error) });
+      }
+
+      let reason: string;
+      try {
+        reason = normaliseReason(body.data.reason);
+      } catch (error) {
+        if (error instanceof ModerationError) {
+          return reply.code(400).send({ error: 'invalid_request', reason: error.message });
+        }
+        throw error;
+      }
+
+      const cleared = await clearSellerDisplayName(workerDb, id);
+      if (!cleared) return reply.code(404).send({ error: 'not_found' });
+
+      await writeAuditLog(db, {
+        actorId: actor,
+        action: 'moderation.seller.name_cleared',
+        targetType: 'seller_account',
+        targetId: id,
+        diff: { reason },
+      });
+      return reply.header('cache-control', 'no-store').send({ userId: id, displayName: null });
     },
   );
 

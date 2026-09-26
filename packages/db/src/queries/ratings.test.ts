@@ -382,7 +382,8 @@ describe('what a browse page shows about a seller', () => {
     await setListingStatus(web, SELLER, listing.id, 'active');
 
     const [forSale] = await browseListingsForCard(anonymous, cardId);
-    expect(forSale?.seller).toEqual({ average: 4, count: 1 });
+    // No name: these sellers have no connected account, so there is nowhere for one to live.
+    expect(forSale?.seller).toEqual({ name: null, average: 4, count: 1 });
   });
 
   it('never names the seller', async () => {

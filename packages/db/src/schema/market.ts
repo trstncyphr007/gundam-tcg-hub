@@ -81,6 +81,20 @@ export const sellerAccounts = app.table(
      * buyer notices. Null means no hold.
      */
     holdUntil: timestamp('hold_until', { withTimezone: true }),
+    /**
+     * What buyers call this seller (FR-5.7, SR-3.8), or null.
+     *
+     * Typed by the seller, never copied from the account: no `users.name`, no email, no Discord
+     * handle. Null until they choose one, and nulling it again removes the name rather than
+     * blanking it — the same rule `creator_profiles` follows.
+     *
+     * It lives on *this* row, which exists only once Stripe has been asked to onboard the
+     * person, and that is the useful part rather than an accident of storage: a public seller
+     * identity costs a completed identity check, so an unverified account cannot call itself
+     * "Bandai Official Store" on a listing. Worth more than a denylist of reserved words,
+     * which is always one spelling behind.
+     */
+    displayName: text('display_name'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -90,6 +104,24 @@ export const sellerAccounts = app.table(
     uniqueIndex('seller_accounts_user_key').on(t.userId),
     uniqueIndex('seller_accounts_stripe_key').on(t.stripeAccountId),
     check('seller_accounts_stripe_id_format', sql`${t.stripeAccountId} ~ '^acct_[A-Za-z0-9]+$'`),
+    /**
+     * Trimmed, 2 to 40, starting and ending alphanumeric. The inner set allows spaces, full
+     * stops, underscores, hyphens and apostrophes — enough for "J. Random Cards", not enough
+     * for a name made of punctuation or one padded with spaces to sort first. The character
+     * class also excludes control characters, which keeps the bidirectional-override trick out.
+     */
+    check(
+      'seller_accounts_display_name_shape',
+      sql`${t.displayName} is null
+          or (${t.displayName} = btrim(${t.displayName})
+              and length(${t.displayName}) between 2 and 40
+              and ${t.displayName} ~ '^[[:alnum:]][[:alnum:] ._''-]*[[:alnum:]]$')`,
+    ),
+    // Case-insensitively unique: two sellers called "TRSTN" is not a naming collision, it is a
+    // buyer who cannot tell which one they are paying.
+    uniqueIndex('seller_accounts_display_name_key')
+      .on(sql`lower(${t.displayName})`)
+      .where(sql`${t.displayName} is not null`),
   ],
 );
 

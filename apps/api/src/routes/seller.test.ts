@@ -156,7 +156,12 @@ describe('before onboarding', () => {
 
   it('says plainly that nothing has started', async () => {
     const res = await app.inject({ method: 'GET', url: '/v1/seller', headers: { cookie: seller } });
-    expect(res.json()).toEqual({ onboarded: false, chargesEnabled: false, payoutsEnabled: false });
+    expect(res.json()).toEqual({
+      onboarded: false,
+      chargesEnabled: false,
+      payoutsEnabled: false,
+      displayName: null,
+    });
   });
 });
 
@@ -268,7 +273,12 @@ describe('what the account may do', () => {
       url: '/v1/seller',
       headers: { cookie: who.cookie },
     });
-    expect(res.json()).toEqual({ onboarded: true, chargesEnabled: true, payoutsEnabled: true });
+    expect(res.json()).toEqual({
+      onboarded: true,
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      displayName: null,
+    });
   });
 
   it('never returns the Stripe account id to the browser', async () => {

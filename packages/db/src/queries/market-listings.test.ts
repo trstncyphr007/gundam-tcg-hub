@@ -1,5 +1,6 @@
 import { PHOTO_REQUIRED_ABOVE_CENTS } from '@gth/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { DisplayNameTakenError, clearSellerDisplayName, setSellerDisplayName } from './sellers.js';
 import { createDb } from '../client.js';
 import { seedSample } from '../seed/sample.js';
 import { expectDbError } from '../test/expect.js';
@@ -72,7 +73,9 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await tdb.db.execute(`truncate app.orders, app.listings cascade`);
+  // `seller_accounts` too: a display name set by one test is visible to the next one's browse
+  // query otherwise, which is how two unrelated assertions here started failing at once.
+  await tdb.db.execute(`truncate app.orders, app.listings, app.seller_accounts cascade`);
 });
 
 describe('starting a listing', () => {
@@ -269,6 +272,106 @@ describe('who can see what', () => {
     expect(await browseListingsForCard(anonymous, cardId)).toEqual([]);
   });
 
+  /**
+   * A seller's chosen name (FR-5.7, SR-3.8).
+   *
+   * The interesting assertions are not "the name comes back" but the two next to it: the
+   * read-only role can read the name and **cannot read the Stripe account id**, because
+   * migration 0046 grants SELECT on two columns rather than on the table. A grant is not
+   * something a query can argue with.
+   */
+  describe('the name a seller chose', () => {
+    async function onboard(sellerId: string, name: string | null): Promise<void> {
+      await workerDb.execute(
+        `insert into app.seller_accounts (user_id, stripe_account_id)
+         values ('${sellerId}', 'acct_${sellerId.replaceAll('-', '')}')
+         on conflict (user_id) do nothing`,
+      );
+      if (name !== null) await setSellerDisplayName(web, sellerId, name);
+    }
+
+    it('shows it on the listing once chosen, and nothing before', async () => {
+      const listing = await createListing(web, SELLER, { ...draft, cardVariantId: variantId });
+      await setListingStatus(web, SELLER, listing.id, 'active');
+
+      const [before] = await browseListingsForCard(anonymous, cardId);
+      expect(before?.seller.name).toBeNull();
+
+      await onboard(SELLER, 'Aggressive Duelist');
+      const [after] = await browseListingsForCard(anonymous, cardId);
+      expect(after?.seller.name).toBe('Aggressive Duelist');
+    });
+
+    it('never lets the public role read the Stripe account id', async () => {
+      await onboard(SELLER, 'Aggressive Duelist');
+      // The column is outside the grant, so this is refused rather than filtered.
+      await expectDbError(
+        anonymous.execute(`select stripe_account_id from app.seller_accounts`),
+        /permission denied/i,
+      );
+      // And the two it may read, it may read.
+      const rows = await anonymous.execute(`select user_id, display_name from app.seller_accounts`);
+      expect(rows).toHaveLength(1);
+    });
+
+    it('hides a seller who chose no name from the public role entirely', async () => {
+      await onboard(SELLER, null);
+      const rows = await anonymous.execute(`select user_id from app.seller_accounts`);
+      expect(rows).toEqual([]);
+    });
+
+    it('refuses a name another seller already has, whatever the case', async () => {
+      await onboard(SELLER, 'Aggressive Duelist');
+      await onboard(OTHER, null);
+      await expect(setSellerDisplayName(web, OTHER, 'aggressive duelist')).rejects.toBeInstanceOf(
+        DisplayNameTakenError,
+      );
+    });
+
+    it('refuses a name the CHECK does not like', async () => {
+      await onboard(SELLER, null);
+      // Padded to sort first, and made of punctuation. Both refused by the constraint rather
+      // than by any code that could be skipped.
+      for (const bad of ['  padded', '...', 'a', 'x'.repeat(41)]) {
+        await expectDbError(setSellerDisplayName(web, SELLER, bad), /seller_accounts_display/i);
+      }
+    });
+
+    it('is the seller’s to write, and nobody else’s', async () => {
+      await onboard(SELLER, 'Aggressive Duelist');
+      await onboard(OTHER, null);
+      // The UPDATE policy matches on user_id, so this changes nothing at all.
+      await setSellerDisplayName(web, OTHER, 'Someone Else');
+      const [row] = await workerDb.execute<{ display_name: string }>(
+        `select display_name from app.seller_accounts where user_id = '${SELLER}'`,
+      );
+      expect(row?.display_name).toBe('Aggressive Duelist');
+    });
+
+    it('cannot be used to switch on a seller’s own payouts', async () => {
+      // The whole point of the column-level grant: the row is now writable by its owner, and
+      // the two booleans that decide whether somebody may take money still are not.
+      await onboard(SELLER, null);
+      await expectDbError(
+        web.execute(
+          `set local app.user_id = '${SELLER}'; update app.seller_accounts set payouts_enabled = true`,
+        ),
+        /permission denied|denied for/i,
+      );
+    });
+
+    it('can be taken away by an admin, and chosen again afterwards', async () => {
+      await onboard(SELLER, 'Aggressive Duelist');
+      expect(await clearSellerDisplayName(workerDb, SELLER)).toBe(true);
+
+      const [gone] = await browseListingsForCard(anonymous, cardId);
+      expect(gone?.seller.name ?? null).toBeNull();
+
+      // The name is free again, for them or anybody.
+      await setSellerDisplayName(web, SELLER, 'Aggressive Duelist');
+    });
+  });
+
   it('shows an unrated seller as unrated rather than as bad', async () => {
     const listing = await createListing(web, SELLER, { ...draft, cardVariantId: variantId });
     await setListingStatus(web, SELLER, listing.id, 'active');
@@ -276,7 +379,7 @@ describe('who can see what', () => {
     const [forSale] = await browseListingsForCard(anonymous, cardId);
     // Null, never 0. Zero is a score — the worst one — and a new seller's first customer
     // reading it would be reading a lie that costs them the sale.
-    expect(forSale?.seller).toEqual({ average: null, count: 0 });
+    expect(forSale?.seller).toEqual({ name: null, average: null, count: 0 });
   });
 
   it('shows a seller all of their own, in any state', async () => {

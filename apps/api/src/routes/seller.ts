@@ -2,12 +2,16 @@ import { authorize } from '@gth/auth';
 import { HOLD_RELEASE_AFTER_DAYS } from '@gth/core';
 import {
   type Database,
+  DisplayNameTakenError,
   getSellerAccount,
   holdSellerPayouts,
+  isCheckViolation,
   recordSellerAccount,
+  setSellerDisplayName,
   writeAuditLog,
 } from '@gth/db';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import type { StripeClient } from '../payments/stripe.js';
 
 export interface SellerDeps {
@@ -31,6 +35,41 @@ export interface SellerDeps {
  * reason to do it twice is the first one failing. Five an hour leaves room for that and none
  * for a script.
  */
+/**
+ * A name is cheap to change and should be; it is also a public string, so not unlimited.
+ *
+ * Twenty an hour leaves room for somebody trying spellings and none for a script cycling names
+ * to dodge a report.
+ */
+const NAMING = {
+  config: {
+    rateLimit: {
+      max: 20,
+      timeWindow: '1 hour',
+      hook: 'preHandler',
+      keyGenerator: (request: FastifyRequest) =>
+        request.subject ? `seller-name:${request.subject.userId}` : `ip:${request.ip}`,
+    },
+  },
+} as const;
+
+/**
+ * Length here, shape in the database.
+ *
+ * zod checks what a client can be told plainly — it is a string, it is not empty, it is not
+ * absurd — and the CHECK in migration 0046 is what actually decides. Restating the character
+ * class in both places would be two rules that agree until somebody edits one.
+ */
+const displayNameSchema = z.object({ displayName: z.string().min(2).max(40).nullable() }).strict();
+
+/** Field names and rule codes only: never echo the submitted value back (SR-X.10). */
+function issuesOf(error: z.ZodError): { field: string; code: string }[] {
+  return error.issues.map((i) => ({
+    field: i.path.map(String).join('.') || '(root)',
+    code: i.code,
+  }));
+}
+
 const ONBOARDING = {
   config: {
     rateLimit: {
@@ -61,9 +100,12 @@ export function registerSellerRoutes(app: FastifyInstance, deps: SellerDeps): vo
 
     const account = await getSellerAccount(deps.db, request.subject.userId);
     if (!account) {
-      return reply
-        .header('cache-control', 'no-store')
-        .send({ onboarded: false, chargesEnabled: false, payoutsEnabled: false });
+      return reply.header('cache-control', 'no-store').send({
+        onboarded: false,
+        chargesEnabled: false,
+        payoutsEnabled: false,
+        displayName: null,
+      });
     }
 
     // Stripe's answer, live. Ours is a cache with nothing in it yet.
@@ -72,9 +114,66 @@ export function registerSellerRoutes(app: FastifyInstance, deps: SellerDeps): vo
       onboarded: status.detailsSubmitted,
       chargesEnabled: status.chargesEnabled,
       payoutsEnabled: status.payoutsEnabled,
+      // Theirs, so they can see and edit it. Public elsewhere, but this is the only route
+      // that returns it *to its owner* alongside the rest of their account.
+      displayName: account.displayName,
       // Deliberately not the account id. It is Stripe's identifier for somebody's business
       // and the browser has no use for it.
     });
+  });
+
+  /**
+   * Choose the name buyers see, or remove it (FR-5.7, SR-3.8).
+   *
+   * The only writable thing on a seller's own account row, and deliberately the only one: the
+   * grant behind this covers `display_name` and `updated_at`, so a body that also asks to
+   * enable payouts is refused by Postgres. There is no field allowlist here doing that job.
+   *
+   * Nothing is derived from the account. A seller who never calls this has no public name, and
+   * their listings say so by saying nothing.
+   */
+  app.patch('/v1/seller', NAMING, async (request, reply) => {
+    if (!request.subject) return reply.code(401).send({ error: 'unauthenticated' });
+    authorize(request.subject, 'listing:write');
+
+    const body = displayNameSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.code(400).send({ error: 'invalid_request', details: issuesOf(body.error) });
+    }
+
+    // `null` removes it. An empty string is not a name and is not a way to ask for one to be
+    // removed either — the schema refuses it, so "" cannot silently become "no name".
+    const chosen = body.data.displayName === null ? null : body.data.displayName.trim();
+
+    let account;
+    try {
+      account = await setSellerDisplayName(deps.db, request.subject.userId, chosen);
+    } catch (error) {
+      if (error instanceof DisplayNameTakenError) {
+        return reply.code(409).send({ error: 'name_taken' });
+      }
+      // The CHECK, for anything the schema let through that the database would not. Shape is
+      // stated once, in the constraint, so this translates rather than restates it.
+      if (isCheckViolation(error)) {
+        return reply.code(400).send({ error: 'invalid_display_name' });
+      }
+      throw error;
+    }
+
+    // No row means no connected account: a public seller identity costs an identity check.
+    if (!account) return reply.code(409).send({ error: 'not_a_seller' });
+
+    await writeAuditLog(deps.db, {
+      actorId: request.subject.userId,
+      action: chosen === null ? 'seller.name_cleared' : 'seller.name_set',
+      targetType: 'seller_account',
+      targetId: account.id,
+      // The name itself, because an admin investigating an impersonation report needs to know
+      // what it was before it was changed again.
+      diff: { displayName: chosen },
+    });
+
+    return reply.header('cache-control', 'no-store').send({ displayName: account.displayName });
   });
 
   app.post('/v1/seller/onboard', ONBOARDING, async (request, reply) => {
