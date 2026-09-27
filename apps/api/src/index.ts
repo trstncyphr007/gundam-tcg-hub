@@ -10,7 +10,7 @@ import { buildKeyRing } from '@gth/security';
 import { createTransport } from 'nodemailer';
 import { buildApp } from './app.js';
 import { createStripeClient } from './payments/stripe.js';
-import { loadConfig } from './config.js';
+import { loadConfig, stripeKeyFor, stripeKeysAreSplit } from './config.js';
 import { createMagicLinkSender, createSecurityNoticeSender } from './mailer.js';
 import { unsubscribeUrl } from './routes/unsubscribe.js';
 
@@ -91,10 +91,16 @@ const app = await buildApp(config, {
   ...(config.STRIPE_SECRET_KEY === undefined
     ? {}
     : {
+        /**
+         * Onboarding, on the **web** key (SR-5.3).
+         *
+         * Creates connected accounts, account links, and sets the payout hold. Notably it may
+         * not refund — a compromised web process cannot move money out of the platform.
+         */
         seller: {
           db: write.db,
           stripe: createStripeClient({
-            secretKey: config.STRIPE_SECRET_KEY,
+            secretKey: stripeKeyFor(config, 'web') ?? config.STRIPE_SECRET_KEY,
             webhookSecret: config.STRIPE_WEBHOOK_SECRET,
           }),
           appBaseUrl: config.APP_BASE_URL,
@@ -112,10 +118,17 @@ const app = await buildApp(config, {
         ...(config.STRIPE_WEBHOOK_SECRET === undefined
           ? {}
           : {
+              /**
+               * The webhook handler, on the **worker** key (SR-5.3).
+               *
+               * It re-reads accounts and, through the refund path, asks Stripe to give money
+               * back. It has no business creating a Checkout session, and with a restricted key
+               * it cannot.
+               */
               stripeWebhook: {
                 workerDb: worker.db,
                 stripe: createStripeClient({
-                  secretKey: config.STRIPE_SECRET_KEY,
+                  secretKey: stripeKeyFor(config, 'worker') ?? config.STRIPE_SECRET_KEY,
                   webhookSecret: config.STRIPE_WEBHOOK_SECRET,
                   /**
                    * Optional, and the v2 route refuses everything without it.
@@ -130,10 +143,11 @@ const app = await buildApp(config, {
                   v2WebhookSecret: config.STRIPE_V2_WEBHOOK_SECRET,
                 }),
               },
+              // Taking money in, on the **web** key: Checkout sessions and nothing else.
               checkout: {
                 db: write.db,
                 stripe: createStripeClient({
-                  secretKey: config.STRIPE_SECRET_KEY,
+                  secretKey: stripeKeyFor(config, 'web') ?? config.STRIPE_SECRET_KEY,
                   webhookSecret: config.STRIPE_WEBHOOK_SECRET,
                 }),
                 appBaseUrl: config.APP_BASE_URL,
@@ -206,5 +220,30 @@ const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
 };
 process.once('SIGTERM', (signal) => void shutdown(signal));
 process.once('SIGINT', (signal) => void shutdown(signal));
+
+/**
+ * Say whether the Stripe keys are actually separated (SR-5.3).
+ *
+ * On every boot, because the dangerous state is not "unsplit" — it is an operator who believes
+ * they have split them and has not. That person has the audit answer without the control, and
+ * nothing else anywhere would contradict them. A warning at startup is the cheapest place to find
+ * out, and it names what is missing rather than only that something is.
+ */
+if (config.STRIPE_SECRET_KEY !== undefined) {
+  if (stripeKeysAreSplit(config)) {
+    app.log.info({ stripeKeys: 'split' }, 'stripe: separate keys for web and worker');
+  } else {
+    app.log.warn(
+      {
+        stripeKeys: 'shared',
+        missing: [
+          config.STRIPE_SECRET_KEY_WEB === undefined ? 'STRIPE_SECRET_KEY_WEB' : null,
+          config.STRIPE_SECRET_KEY_WORKER === undefined ? 'STRIPE_SECRET_KEY_WORKER' : null,
+        ].filter((name) => name !== null),
+      },
+      'stripe: one key doing both jobs (SR-5.3 asks for a restricted key per service)',
+    );
+  }
+}
 
 await app.listen({ host: config.API_HOST, port: config.API_PORT });

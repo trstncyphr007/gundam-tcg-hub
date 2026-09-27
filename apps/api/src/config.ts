@@ -73,6 +73,26 @@ const apiEnvSchema = z.object({
    * belongs is exactly the mistake worth catching at boot rather than at the first charge.
    */
   STRIPE_SECRET_KEY: optional(z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/u)),
+  /**
+   * Per-service keys, each optional and each falling back to `STRIPE_SECRET_KEY` (SR-5.3).
+   *
+   * One key doing every job means a compromise of either process can do the other's work. Split,
+   * the blast radius shrinks to something specific: the **web** key may create Checkout sessions
+   * and connected accounts but **cannot issue a refund**, so a compromised web process cannot
+   * move money out; the **worker** key may refund and read but **cannot create a Checkout
+   * session**, so a compromised worker cannot take money in.
+   *
+   * `rk_` as well as `sk_`, because a restricted key is what this is for — but `sk_` stays valid
+   * so that a deployment which has not split its keys yet keeps working instead of refusing to
+   * boot. The fallback is deliberate and is resolved in one place, `stripeKeyFor`.
+   *
+   * Both still need account read **and** write, which is not laziness: the web side creates the
+   * connected account and sets its payout schedule at creation (FR-5.6), and the worker releases
+   * that hold later and re-reads capabilities from webhooks. Narrowing either to read-only breaks
+   * onboarding or the release job.
+   */
+  STRIPE_SECRET_KEY_WEB: optional(z.string().regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]+$/u)),
+  STRIPE_SECRET_KEY_WORKER: optional(z.string().regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]+$/u)),
   STRIPE_PUBLISHABLE_KEY: optional(z.string().regex(/^pk_(test|live)_[A-Za-z0-9]+$/u)),
   /** From `stripe listen` locally, or the endpoint's signing secret in the dashboard. */
   STRIPE_WEBHOOK_SECRET: optional(z.string().startsWith('whsec_')),
@@ -144,6 +164,37 @@ export function webAuthnProblem(
     return `WEBAUTHN_ORIGIN (${host}) must be ${rpID} or a subdomain of it`;
   }
   return null;
+}
+
+/** Which service is asking for a Stripe key. Not a label — it decides what the key may do. */
+export type StripeRole = 'web' | 'worker';
+
+/**
+ * The key a service should use, with the fallback stated once (SR-5.3).
+ *
+ * A per-service key if one is configured, otherwise the shared `STRIPE_SECRET_KEY`. The fallback
+ * exists so that splitting the keys is a deployment step rather than a breaking change: a host
+ * that has not done it yet keeps working exactly as before.
+ *
+ * Returning `undefined` means Stripe is not configured at all, which the caller already treats as
+ * "the marketplace routes do not exist" — better than routes that answer 500 for a missing secret.
+ */
+export function stripeKeyFor(config: ApiConfig, role: StripeRole): string | undefined {
+  const specific = role === 'web' ? config.STRIPE_SECRET_KEY_WEB : config.STRIPE_SECRET_KEY_WORKER;
+  return specific ?? config.STRIPE_SECRET_KEY;
+}
+
+/**
+ * Whether the keys are actually split, for the boot log.
+ *
+ * Worth saying out loud on every start. An operator who believes they have separated their keys
+ * and has not is in the worst position: they have the audit answer without the control, and
+ * nothing anywhere would otherwise contradict them.
+ */
+export function stripeKeysAreSplit(config: ApiConfig): boolean {
+  const web = config.STRIPE_SECRET_KEY_WEB;
+  const worker = config.STRIPE_SECRET_KEY_WORKER;
+  return web !== undefined && worker !== undefined && web !== worker;
 }
 
 export function loadConfig(source: Record<string, string | undefined> = process.env): ApiConfig {
