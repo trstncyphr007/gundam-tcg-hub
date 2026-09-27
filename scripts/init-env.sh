@@ -94,7 +94,11 @@ DATA_ENCRYPTION_ACTIVE_KID=k1
 #   docker compose --env-file .env -f infra/compose/docker-compose.dev.yml --profile mail up -d
 # then read the mail at http://127.0.0.1:8025
 API_BASE_URL=http://127.0.0.1:4000
-APP_BASE_URL=http://127.0.0.1:3000
+# `localhost`, not 127.0.0.1: this is the base for every URL handed to a browser we do not own
+# (Stripe's success_url and return_url, links in email). Under WSL2 a Windows browser cannot reach
+# 127.0.0.1:3000 at all — only the `localhost` name is forwarded — so a completed payment would
+# redirect to a dead tab. It also has to agree with WEBAUTHN_ORIGIN below.
+APP_BASE_URL=http://localhost:3000
 BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
 SMTP_URL=smtp://127.0.0.1:1025
 EMAIL_FROM="gundam-tcg-hub <no-reply@localhost>"

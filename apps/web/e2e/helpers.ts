@@ -114,8 +114,12 @@ export async function signIn(page: Page, email: string): Promise<void> {
 // --------------------------------------------------------------------------------------- //
 
 /**
- * The passkey suites run on localhost: WebAuthn forbids an IP address as a relying party, so
- * the 127.0.0.1 the rest of the suite uses cannot hold a passkey at all.
+ * The passkey suites run on localhost, because WebAuthn forbids an IP address as a relying party.
+ *
+ * This used to be the one exception in a suite that otherwise browsed `127.0.0.1:3000`. It is now
+ * the same host as everything else — `APP_BASE_URL` and the Playwright `baseURL` both say
+ * `localhost:3000` — and the constant stays only because it is overridable and the passkey specs
+ * genuinely must not run anywhere else, whatever the rest of the suite is pointed at.
  */
 export const PASSKEY_BASE_URL =
   process.env['PLAYWRIGHT_PASSKEY_BASE_URL'] ?? 'http://localhost:3000';
