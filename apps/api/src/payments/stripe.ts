@@ -30,8 +30,42 @@ import Stripe from 'stripe';
  */
 const API_VERSION = '2026-08-26.dahlia';
 
+/**
+ * What Stripe says a capability may do, in Stripe's own four states (ADR-045).
+ *
+ * Kept whole rather than flattened to a boolean at the edge, because `pending` and `restricted`
+ * are different sentences to say to a seller: one is "Stripe is still looking", the other is
+ * "Stripe wants something from you". Accounts v1 could not tell them apart.
+ */
+export type CapabilityStatus = 'active' | 'pending' | 'restricted' | 'unsupported';
+
+export interface AccountStatus {
+  /**
+   * May a sale send this seller money — the transfer leg of a destination charge.
+   *
+   * **This is the capability that was always the right one to read**, and under Accounts v1 we
+   * read `charges_enabled` instead. That field answers "may this account create its own
+   * charges", which our flow never asks it to do: the platform takes the payment and transfers
+   * onward. v1 made the wrong field convenient; v2 does not offer it at all.
+   */
+  transfers: CapabilityStatus;
+  /** May Stripe move that money on to their bank. */
+  payouts: CapabilityStatus;
+  /** Has the seller finished Stripe's hosted form. */
+  detailsSubmitted: boolean;
+}
+
+/** A v2 event, as it arrives: an identifier and a pointer, with no payload to trust. */
+export interface V2EventNotification {
+  id: string;
+  type: string;
+  /** The account (or other object) the event is about. */
+  relatedObjectId: string | null;
+  relatedObjectType: string | null;
+}
+
 export interface StripeClient {
-  /** Start a Connect Express account for a seller (FR-5.1). */
+  /** Start a Connect account for a seller (FR-5.1, ADR-045: v2 `recipient` configuration). */
   createConnectedAccount: (input: {
     userId: string;
     email?: string | undefined;
@@ -43,13 +77,17 @@ export interface StripeClient {
     refreshUrl: string;
   }) => Promise<{ url: string }>;
   /** Stripe's answer about what this account may do. Never ours to assert. */
-  getAccountStatus: (accountId: string) => Promise<{
-    chargesEnabled: boolean;
-    payoutsEnabled: boolean;
-    detailsSubmitted: boolean;
-  }>;
+  getAccountStatus: (accountId: string) => Promise<AccountStatus>;
   /** Verify a webhook against the raw body and the signing secret (SR-5.2). */
   constructEvent: (rawBody: Buffer | string, signature: string) => Stripe.Event;
+  /**
+   * Verify a **v2** event against the raw body and the v2 destination's own secret.
+   *
+   * A separate method rather than a flag, because it is a separate secret, a separate endpoint
+   * and a separate payload shape. Conflating them would mean one misconfiguration could let an
+   * event signed for one feed be accepted on the other.
+   */
+  verifyV2Event: (rawBody: Buffer | string, signature: string) => V2EventNotification;
   /** A hosted Checkout session for one order (FR-5.3). */
   createCheckoutSession: (input: CheckoutInput) => Promise<{ id: string; url: string }>;
   /**
@@ -106,6 +144,8 @@ export interface CheckoutInput {
 export interface StripeOptions {
   secretKey: string;
   webhookSecret?: string | undefined;
+  /** The signing secret of the v2 event destination. A different feed, a different secret. */
+  v2WebhookSecret?: string | undefined;
   /** Injected by tests. Nothing else should pass this. */
   client?: Stripe | undefined;
 }
@@ -169,6 +209,18 @@ function accountIdempotency(userId: string, attempt: number): Stripe.RequestOpti
  * Rate limits are deliberately absent. Nothing was created, but spending a key would buy what
  * waiting a second gives for free.
  */
+/**
+ * Narrow whatever arrived into one of the four states, closed by default.
+ *
+ * `unsupported` rather than `restricted` for the unreadable case: both stop a sale, and
+ * `unsupported` is the one that does not imply we know why.
+ */
+function asCapabilityStatus(value: unknown): CapabilityStatus {
+  return value === 'active' || value === 'pending' || value === 'restricted'
+    ? value
+    : 'unsupported';
+}
+
 function provesNothingWasCreated(error: unknown): boolean {
   return (
     error instanceof Stripe.errors.StripeInvalidRequestError ||
@@ -192,24 +244,59 @@ export function createStripeClient(options: StripeOptions): StripeClient {
 
   return {
     createConnectedAccount: async ({ userId, email }) => {
-      const params: Stripe.AccountCreateParams = {
-        type: 'express',
-        // Stripe collects and keeps the identity details. We hold an id and two booleans,
-        // which is the entire reason Express was chosen over building KYC ourselves.
-        capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
+      /**
+       * A **recipient** configuration, not a merchant one (ADR-045).
+       *
+       * Stripe's own guidance decides this: `merchant` is for accounts that are the merchant of
+       * record — direct charges, or destination charges with `on_behalf_of`. `recipient` is for
+       * "destination charges without on_behalf_of set", which is exactly our flow. The platform
+       * takes the payment and holds the chargeback liability; the seller receives a transfer.
+       *
+       * Under v1 we requested `card_payments` as well, which this flow never needed. That was
+       * not a bug with consequences, but it was a capability asked of every seller for no
+       * reason, and the v2 model does not offer the mistake.
+       */
+      const params: Stripe.V2.Core.AccountCreateParams = {
+        // Stripe's hosted onboarding and its own express dashboard, which is the entire reason
+        // this was chosen over building KYC ourselves.
+        dashboard: 'express',
         /**
-         * New accounts start on a manual payout schedule (FR-5.6).
+         * The seller's country, which v2 insists on before it will accept a configuration at
+         * all: `identity.country is required before setting configuration.recipient`.
          *
-         * Set at creation rather than afterwards, because a second call can fail and leave a
-         * seller taking payments with their payouts already running. The money reaching their
-         * Stripe balance is fine; the money reaching their bank before a buyer can complain
-         * is the empty-envelope trade.
+         * This is not a new constraint, only a newly visible one. v1's `accounts.create`
+         * defaulted `country` to the platform's country without being asked, so every seller
+         * this project has ever made was already US. v2 declines to guess.
          *
-         * `releasePayoutHoldsJob` switches them to `daily` once they have earned it.
+         * Hard-coded rather than configured because it is a **business** decision, not a
+         * deployment one: selling elsewhere means Stripe Tax registrations, different payout
+         * rails and a different 1099 story (§23). When that day comes this wants to be a
+         * column on the seller, chosen before the account is created — not an env var that
+         * silently changes what every future seller is assumed to be.
          */
-        settings: { payouts: { schedule: { interval: 'manual' } } },
-        ...(email === undefined ? {} : { email }),
+        identity: { country: 'us' },
+        configuration: {
+          recipient: {
+            capabilities: { stripe_balance: { stripe_transfers: { requested: true } } },
+          },
+        },
+        /**
+         * The platform collects the fees and owns the losses.
+         *
+         * This is the v2 spelling of what a destination charge already meant. Saying it at
+         * creation keeps it from being a per-payment decision somebody could get wrong later.
+         *
+         * `currency` is allowed here only because `identity.country` is set above — Stripe
+         * refuses one without the other, which is how the country requirement was found.
+         */
+        defaults: {
+          currency: 'usd',
+          responsibilities: { fees_collector: 'application', losses_collector: 'application' },
+        },
+        ...(email === undefined ? {} : { contact_email: email }),
         metadata: { userId },
+        // Without this the response omits `configuration` entirely — see `getAccountStatus`.
+        include: ['configuration.recipient'],
       };
 
       /**
@@ -225,50 +312,114 @@ export function createStripeClient(options: StripeOptions): StripeClient {
        * The parameters never vary between attempts, so a later key can only differ from an
        * earlier one by being unused.
        */
-      for (let attempt = 0; ; attempt += 1) {
-        try {
-          const account = await stripe.accounts.create(params, accountIdempotency(userId, attempt));
-          return { accountId: account.id };
-        } catch (error) {
-          // Out of keys, or an error that leaves open the possibility that an account exists.
-          // Either way the caller gets the real, current error rather than yesterday's.
-          if (attempt + 1 >= MAX_ACCOUNT_KEY_ATTEMPTS || !provesNothingWasCreated(error)) {
-            throw error;
+      const accountId = await (async (): Promise<string> => {
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            const account = await stripe.v2.core.accounts.create(
+              params,
+              accountIdempotency(userId, attempt),
+            );
+            return account.id;
+          } catch (error) {
+            // Out of keys, or an error that leaves open the possibility that an account exists.
+            // Either way the caller gets the real, current error rather than yesterday's.
+            if (attempt + 1 >= MAX_ACCOUNT_KEY_ATTEMPTS || !provesNothingWasCreated(error)) {
+              throw error;
+            }
           }
         }
-      }
+      })();
+
+      /**
+       * Hold the payouts, as a second call, because v2 has nowhere to say it in the first.
+       *
+       * Under v1 this was `settings.payouts.schedule` at creation, and the comment there said
+       * why: a separate call can fail and leave a seller taking payments with their payouts
+       * already running. **Accounts v2 has no payout schedule anywhere in its surface**, so the
+       * choice is gone — the schedule lives on the v1 account API, which does still answer for
+       * a v2 account id (ADR-045 records the probe that established that).
+       *
+       * Two things make the lost atomicity survivable, and neither is luck:
+       *
+       * 1. A new account's `stripe_transfers` capability is `restricted` until onboarding
+       *    finishes, so **no money can reach it** during the window between these two calls.
+       * 2. A failure here throws, so onboarding fails loudly rather than quietly producing a
+       *    seller on daily payouts. The account is left behind, and the next attempt adopts it
+       *    — `recordSellerAccount` has not run yet, so there is no row claiming otherwise.
+       *
+       * `releasePayoutHoldsJob` is the only thing that moves this to `daily`, once earned.
+       */
+      await stripe.accounts.update(
+        accountId,
+        { settings: { payouts: { schedule: { interval: 'manual' } } } },
+        idempotency('account-hold', accountId),
+      );
+
+      return { accountId };
     },
 
     createOnboardingLink: async ({ accountId, returnUrl, refreshUrl }) => {
       // Both URLs are ours, built from configuration. Nothing a request supplies reaches here
       // — an open redirect through an onboarding link would be a phishing page with our name
       // on it.
-      const link = await stripe.accountLinks.create({
+      //
+      // v2 asks which configuration is being onboarded. `recipient`, matching what the account
+      // was created with: asking for `merchant` here would collect identity details for a role
+      // this seller does not have and cannot use.
+      const link = await stripe.v2.core.accountLinks.create({
         account: accountId,
-        type: 'account_onboarding',
-        return_url: returnUrl,
-        refresh_url: refreshUrl,
+        use_case: {
+          type: 'account_onboarding',
+          account_onboarding: {
+            configurations: ['recipient'],
+            return_url: returnUrl,
+            refresh_url: refreshUrl,
+          },
+        },
       });
       return { url: link.url };
     },
 
     getAccountStatus: async (accountId) => {
       /**
-       * Read as optional, on purpose.
+       * `include` is not optional in practice, and getting it wrong fails quietly.
        *
-       * The SDK's types say these three are always present. That is a claim about a JSON
-       * document that arrived over the network from somebody else's service, across an API
-       * version boundary we pin and they move — and the failure mode of believing it is
-       * `undefined` reading as truthy somewhere downstream, on the question of whether this
-       * account may take money.
-       *
-       * Absent means not allowed. There is a test for it, which the types say is unreachable.
+       * A v2 retrieve **omits `configuration` entirely** unless it is asked for. The account
+       * still comes back, still has an id, and every capability reads `undefined` — which this
+       * function is careful to treat as "not allowed", so the failure is a seller who can never
+       * sell rather than one who can sell when they should not. That is the right way round and
+       * still worth never triggering.
        */
-      const account: Partial<Stripe.Account> = await stripe.accounts.retrieve(accountId);
+      const account = await stripe.v2.core.accounts.retrieve(accountId, {
+        include: ['configuration.recipient', 'requirements'],
+      });
+
+      /**
+       * Read as optional throughout, on purpose.
+       *
+       * The SDK's types make promises about a JSON document that arrived over the network from
+       * somebody else's service, across an API version boundary we pin and they move. The
+       * failure mode of believing them is `undefined` reading as truthy somewhere downstream,
+       * on the question of whether this account may take money.
+       *
+       * Anything absent or unrecognised is `unsupported`, which is the closed answer.
+       */
+      const balance = account.configuration?.recipient?.capabilities?.stripe_balance;
       return {
-        chargesEnabled: account.charges_enabled ?? false,
-        payoutsEnabled: account.payouts_enabled ?? false,
-        detailsSubmitted: account.details_submitted ?? false,
+        transfers: asCapabilityStatus(balance?.stripe_transfers?.status),
+        payouts: asCapabilityStatus(balance?.payouts?.status),
+        /**
+         * "Has the seller finished the form", derived rather than stated.
+         *
+         * v1 had `details_submitted`. v2 has requirements with deadlines, and the one that
+         * corresponds is whether anything is **past due**: a freshly created account reports
+         * `past_due` with nothing filled in, and a completed one does not. Anything we cannot
+         * read is treated as not finished.
+         */
+        detailsSubmitted:
+          account.requirements?.summary?.minimum_deadline?.status === undefined
+            ? false
+            : account.requirements.summary.minimum_deadline.status !== 'past_due',
       };
     },
 
@@ -278,6 +429,56 @@ export function createStripeClient(options: StripeOptions): StripeClient {
       // signature that will not match — which is the good failure. The bad one is verifying
       // something other than what was signed.
       return stripe.webhooks.constructEvent(rawBody, signature, options.webhookSecret);
+    },
+
+    /**
+     * A v2 event, verified and then read for nothing but its pointers (ADR-045).
+     *
+     * v2 account events are **thin**: Stripe will not send a snapshot payload for them, and an
+     * event destination that asks for one is refused at creation. What arrives is an id, a type
+     * and a `related_object` — no account body at all.
+     *
+     * That turns out to be the better contract. The handler re-reads the account instead of
+     * believing a payload, so what gets written is the state **now** rather than the state when
+     * the event was queued. Out-of-order delivery, which v1 could silently lose to, stops being
+     * a correctness problem and becomes a wasted read.
+     *
+     * The signature is checked the same way and for the same reason as the v1 feed: against the
+     * raw bytes, with `verifyHeader`, before anything is parsed. There is no `parseThinEvent` in
+     * the pinned SDK, so the parse is ours — which is fine, because it happens after the bytes
+     * have been proven.
+     */
+    verifyV2Event: (rawBody, signature) => {
+      if (options.v2WebhookSecret === undefined) throw new StripeNotConfiguredError();
+      // The SDK types this as nullable because a crypto provider can be absent in exotic
+      // runtimes. On Node it is always there, and if it ever is not, refusing the event is the
+      // only safe answer — an unverifiable event must never be treated as verified.
+      const verifier = stripe.webhooks.signature;
+      if (verifier === null) throw new StripeNotConfiguredError();
+      verifier.verifyHeader(rawBody, signature, options.v2WebhookSecret);
+
+      const parsed: unknown = JSON.parse(
+        typeof rawBody === 'string' ? rawBody : rawBody.toString('utf8'),
+      );
+      if (typeof parsed !== 'object' || parsed === null) {
+        throw new Error('v2 event body was not an object');
+      }
+      const event = parsed as {
+        id?: unknown;
+        type?: unknown;
+        related_object?: { id?: unknown; type?: unknown } | null;
+      };
+      if (typeof event.id !== 'string' || typeof event.type !== 'string') {
+        throw new Error('v2 event body had no id or type');
+      }
+      return {
+        id: event.id,
+        type: event.type,
+        relatedObjectId:
+          typeof event.related_object?.id === 'string' ? event.related_object.id : null,
+        relatedObjectType:
+          typeof event.related_object?.type === 'string' ? event.related_object.type : null,
+      };
     },
 
     createCheckoutSession: async (input) => {
@@ -350,6 +551,21 @@ export function createStripeClient(options: StripeOptions): StripeClient {
       return { id: refund.id, status: refund.status };
     },
 
+    /**
+     * Still the **v1** account API, deliberately, and the only v1 call left on this path.
+     *
+     * Accounts v2 has no payout schedule. Not renamed, not moved — absent: there is no
+     * `interval` anywhere in the v2 surface of the pinned SDK, and no money-management resource
+     * to hold one. FR-5.6's hold is our single most important seller-side control, so
+     * discovering this was the point at which the migration either worked or did not.
+     *
+     * It works, because `/v1/accounts/{id}` still answers for a v2 account id. That was
+     * established by probing the sandbox rather than by reading documentation, and ADR-045
+     * records the result, including the trap that came with it: the same v1 read reports
+     * `charges_enabled: false` and `payouts_enabled: false` on a perfectly good v2 account.
+     * **Those two fields are now lies for our accounts.** `getAccountStatus` reads the v2
+     * capabilities instead, and nothing in this codebase may go back to the v1 booleans.
+     */
     setPayoutSchedule: async (accountId, schedule) => {
       await stripe.accounts.update(accountId, {
         settings: { payouts: { schedule: { interval: schedule } } },

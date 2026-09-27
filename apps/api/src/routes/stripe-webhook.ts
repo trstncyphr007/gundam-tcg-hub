@@ -119,15 +119,133 @@ export async function registerStripeWebhookRoutes(
       },
     );
 
+    /**
+     * The **v2** feed (ADR-045).
+     *
+     * A second endpoint rather than a branch inside the first, because almost nothing is
+     * shared: a different signing secret, a different payload shape, a different verification
+     * call, and a different idea of what an event contains. Accepting both on one route would
+     * mean a bug in the type-sniffing could let an event signed for one feed be trusted on the
+     * other, and that is the one mistake this file exists to make impossible.
+     *
+     * What *is* shared is the part that matters: raw-body verification first, claim inside the
+     * transaction second, act third, acknowledge last. The `webhook_events` table is the same
+     * table, so a v2 event id is protected against replay by the same unique index.
+     */
+    scope.post(
+      '/v1/webhooks/stripe-v2',
+      { config: { rateLimit: { max: 600, timeWindow: '1 minute' } } },
+      async (request, reply) => {
+        const signature = request.headers['stripe-signature'];
+        if (typeof signature !== 'string') {
+          return reply.code(400).send({ error: 'missing_signature' });
+        }
+
+        let event;
+        try {
+          event = deps.stripe.verifyV2Event(request.body as Buffer, signature);
+        } catch {
+          // Same silence as the v1 route, for the same reason: a forged signature, a stale
+          // timestamp and a malformed body are one answer to an unauthenticated caller.
+          request.log.warn({ route: '/v1/webhooks/stripe-v2' }, 'v2 webhook signature rejected');
+          return reply.code(400).send({ error: 'invalid_signature' });
+        }
+
+        const duplicate = await deps.workerDb.transaction(async (tx) => {
+          const db = tx as unknown as Database;
+          const claim = await claimWebhookEvent(db, {
+            provider: 'stripe',
+            eventId: event.id,
+            type: event.type,
+          });
+          if (!claim.claimed) return true;
+
+          await handleV2(db, request, deps, event);
+          await markWebhookProcessed(db, claim.id);
+          return false;
+        });
+
+        if (duplicate) return reply.send({ received: true, duplicate: true });
+        return reply.send({ received: true });
+      },
+    );
+
     done();
+  });
+}
+
+/**
+ * What we do about a v2 event: look the account up and write down what Stripe says now.
+ *
+ * There is no payload to read — v2 account events are thin, carrying an id and a pointer. So
+ * rather than believing a snapshot, this **re-reads the account** and records the current
+ * answer. That is a better contract than v1's, not a worse one: two events delivered out of
+ * order converge on the same correct row instead of the older one winning.
+ *
+ * The cost is one API call per event, on the worker, for an event type that fires a handful of
+ * times per seller in their life.
+ */
+async function handleV2(
+  db: Database,
+  request: FastifyRequest,
+  deps: StripeWebhookDeps,
+  event: {
+    id: string;
+    type: string;
+    relatedObjectId: string | null;
+    relatedObjectType: string | null;
+  },
+): Promise<void> {
+  if (event.relatedObjectType !== 'v2.core.account' || event.relatedObjectId === null) return;
+  const accountId = event.relatedObjectId;
+
+  const status = await deps.stripe.getAccountStatus(accountId);
+
+  /**
+   * Four states collapsed to two booleans, and only `active` is true.
+   *
+   * `pending` is not "nearly allowed" — it is Stripe saying it has not decided. Treating it as
+   * enabled would let somebody list a card for sale that nobody could pay them for. The richer
+   * status is reported live on `/v1/seller`; what is stored is the decision.
+   */
+  const capabilities = {
+    chargesEnabled: status.transfers === 'active',
+    payoutsEnabled: status.payouts === 'active',
+  };
+
+  const updated = await updateSellerCapabilities(db, accountId, capabilities);
+  // An account we have no row for is not an error — created then abandoned before we recorded
+  // it, or somebody else's entirely. Nothing to update, nothing to complain about.
+  if (!updated) return;
+
+  request.log.info(
+    { accountId, transfers: status.transfers, payouts: status.payouts },
+    'seller capabilities updated from a v2 event',
+  );
+  await writeAuditLog(db, {
+    action: capabilities.chargesEnabled ? 'seller.enabled' : 'seller.disabled',
+    targetType: 'seller_account',
+    targetId: accountId,
+    // The four-state answer, because "disabled" alone does not tell an admin whether to wait
+    // or to go and ask the seller for something.
+    diff: { transfers: status.transfers, payouts: status.payouts },
   });
 }
 
 type StripeEvent = { type: string; data: { object: unknown } };
 
-/** What we actually do about each kind of event. Unknown types are acknowledged and ignored. */
+/**
+ * What we actually do about each kind of event. Unknown types are acknowledged and ignored.
+ *
+ * **`account.updated` is deliberately not here any more** (ADR-045). It used to write a
+ * seller's capabilities from `charges_enabled` and `payouts_enabled` on the v1 event. Our
+ * accounts are v2 now, and the v1 API reports both of those as `false` for a v2 account —
+ * truthfully, because a v2 recipient account genuinely has no v1 charge capability. Leaving the
+ * handler in place would mean a stray v1 event could arrive and **disable a working seller**,
+ * silently, with a correct-looking value. Capability changes come from the v2 feed below, which
+ * reads the capabilities that exist.
+ */
 async function handle(db: Database, request: FastifyRequest, event: StripeEvent): Promise<void> {
-  if (event.type === 'account.updated') return accountUpdated(db, event);
   if (event.type === 'checkout.session.completed') return checkoutCompleted(db, request, event);
   if (event.type === 'charge.refunded') return chargeRefunded(db, request, event);
   if (event.type === 'charge.dispute.created') return chargeDisputed(db, request, event);
@@ -250,35 +368,6 @@ async function chargeDisputed(
     targetType: 'order',
     targetId: result.order.id,
     diff: { reason },
-  });
-}
-
-async function accountUpdated(db: Database, event: StripeEvent): Promise<void> {
-  const account = event.data.object as {
-    id?: unknown;
-    charges_enabled?: unknown;
-    payouts_enabled?: unknown;
-  };
-  if (typeof account.id !== 'string') return;
-
-  // Anything that is not exactly `true` is false. The capability arrives over the network
-  // from a service across an API version boundary, and the failure mode of being generous
-  // here is somebody taking payments they cannot be paid for.
-  const capabilities = {
-    chargesEnabled: account.charges_enabled === true,
-    payoutsEnabled: account.payouts_enabled === true,
-  };
-
-  const updated = await updateSellerCapabilities(db, account.id, capabilities);
-  // A connected account we have no row for is not an error: it can be one created and then
-  // abandoned before we recorded it, or somebody else's account entirely if the key is ever
-  // shared. Nothing to update, nothing to complain about.
-  if (!updated) return;
-
-  await writeAuditLog(db, {
-    action: capabilities.chargesEnabled ? 'seller.enabled' : 'seller.disabled',
-    targetType: 'seller_account',
-    targetId: account.id,
   });
 }
 

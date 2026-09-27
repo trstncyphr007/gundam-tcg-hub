@@ -25,6 +25,7 @@
     "stack:down": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml down --remove-orphans",
     "stack:reset": "docker compose --env-file .env -f infra/compose/docker-compose.dev.yml down -v",
     "photos:bucket": "pnpm --filter @gth/photos bucket",
+    "stripe:destination": "pnpm --filter @gth/api stripe:destination",
     "sec:scan": "bash scripts/sec-scan.sh",
     "sec:proofs": "bash scripts/guardrail-proofs.sh",
     "licenses:check": "node scripts/check-licenses.mjs",

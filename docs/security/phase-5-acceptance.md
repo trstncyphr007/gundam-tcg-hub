@@ -90,7 +90,32 @@ our state machine, the fee split, the payout hold — was driven end to end with
 
 ---
 
-## Debt this run created
+## Debt this run created — ~~open~~ **paid, 2026-09-27**
+
+**Migrated the same day it was recorded.** The marketplace now runs on Accounts v2: seller
+accounts are created with a v2 `recipient` configuration, onboarding uses v2 account links,
+capabilities are read as Stripe's four states, and capability changes arrive on a v2 event
+destination at `/v1/webhooks/stripe-v2`. ADR-045 has the reasoning and the probe results.
+
+Three things are worth carrying forward from it:
+
+- **FR-5.6 survived by luck and a probe.** Accounts v2 has no payout schedule anywhere. The hold
+  works because the v1 account API still answers for a v2 account id, which was established by
+  trying it rather than by reading about it.
+- **We had been reading the wrong capability.** v1's `charges_enabled` answers "may this account
+  create its own charges", which our destination-charge flow never asks. The field that governs
+  it is `transfers`. v1 made the wrong one convenient; v2 does not offer it.
+- **The unit tests were green before the integration worked.** A fake Stripe accepted a call the
+  real API rejected twice over. Recorded again under AC-5.5, because it is the same lesson as the
+  CSP and the bucket.
+
+The original note is kept below, because what it got wrong is instructive: it estimated the work
+as a shape-change to `getAccountStatus` plus a new event feed, and missed that the payout hold —
+the control the whole of FR-5.6 rests on — has no v2 equivalent at all.
+
+---
+
+## ~~Debt this run created~~ (as written before the migration)
 
 **Accounts v1 is deprecated for new Connect integrations**, and this is a new integration. It
 works today because the compatibility setting was enabled in the dashboard, which is a fine
@@ -177,8 +202,12 @@ The plan's preference for an external pentest stands, and remains unmet.
 $12.34 charge, kept a 62¢ application fee, transferred the rest to the seller's connected
 account, and the order became `paid` by webhook rather than by anything a client claimed.
 
-Two honest limits on what that means. The caveat on AC-5.5 stands — the person who wrote the
-controls is the worst-placed person to find the gap in them, and this project has already had one
-real defect that its own review method could not see. And AC-5.1 was proven on **Accounts v1**,
-which Stripe no longer recommends for new integrations; the migration is recorded above as debt
-rather than pretended away.
+The caveat on AC-5.5 stands, and is the honest limit: the person who wrote the controls is the
+worst-placed person to find the gap in them, and this project has now had three real defects its
+own review method could not see.
+
+**The Accounts v1 debt this run created is paid** (ADR-045). The code has since moved to Accounts
+v2 — with one thing to be clear about: the _payment_ above was demonstrated on v1, and the v2 path
+is verified call by call against the sandbox but has not itself carried an end-to-end purchase.
+Re-running AC-5.1 on v2 needs a person to complete Stripe's hosted KYC form, and is the obvious
+next thing to do with fifteen minutes and a test card.

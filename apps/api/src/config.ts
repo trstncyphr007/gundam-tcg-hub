@@ -77,6 +77,17 @@ const apiEnvSchema = z.object({
   /** From `stripe listen` locally, or the endpoint's signing secret in the dashboard. */
   STRIPE_WEBHOOK_SECRET: optional(z.string().startsWith('whsec_')),
   /**
+   * The **v2 event destination's** signing secret — a different feed, a different secret.
+   *
+   * Connect capability changes arrive here now that accounts are v2 (ADR-045). Separate from
+   * `STRIPE_WEBHOOK_SECRET` on purpose: one secret verifying two feeds would mean a
+   * misconfiguration on either could let an event be trusted on the wrong endpoint.
+   *
+   * Locally: `stripe listen --all-thin --events-from @accounts`. In a deployment:
+   * `pnpm stripe:destination`, which creates the destination and prints the secret once.
+   */
+  STRIPE_V2_WEBHOOK_SECRET: optional(z.string().startsWith('whsec_')),
+  /**
    * Our cut, in basis points (FR-5.3). 500 = 5%.
    *
    * Basis points rather than a percentage float: money that has been through a float is a

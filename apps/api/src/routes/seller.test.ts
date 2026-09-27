@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { type ApiConfig, loadConfig } from '../config.js';
-import type { StripeClient } from '../payments/stripe.js';
+import type { AccountStatus, StripeClient } from '../payments/stripe.js';
 import { TEST_PASSKEY } from '../test/auth-fixtures.js';
 
 /**
@@ -28,7 +28,11 @@ const sentLinks: { email: string; url: string }[] = [];
 
 /** What the fake Stripe was asked to do, so a test can count the asking. */
 const stripeCalls = { created: 0, links: 0, lastLink: null as Record<string, string> | null };
-let accountStatus = { chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false };
+let accountStatus: AccountStatus = {
+  transfers: 'unsupported',
+  payouts: 'unsupported',
+  detailsSubmitted: false,
+};
 
 const fakeStripe: StripeClient = {
   createConnectedAccount: ({ userId }) => {
@@ -42,6 +46,9 @@ const fakeStripe: StripeClient = {
   },
   getAccountStatus: () => Promise.resolve(accountStatus),
   constructEvent: () => {
+    throw new Error('not used here');
+  },
+  verifyV2Event: () => {
     throw new Error('not used here');
   },
   createCheckoutSession: () => {
@@ -137,7 +144,7 @@ beforeEach(async () => {
   stripeCalls.created = 0;
   stripeCalls.links = 0;
   stripeCalls.lastLink = null;
-  accountStatus = { chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false };
+  accountStatus = { transfers: 'unsupported', payouts: 'unsupported', detailsSubmitted: false };
 });
 
 describe('before onboarding', () => {
@@ -160,6 +167,10 @@ describe('before onboarding', () => {
       onboarded: false,
       chargesEnabled: false,
       payoutsEnabled: false,
+      // Not `pending`: nothing has been requested, so there is nothing for Stripe to be
+      // deciding about. `unsupported` is the closed answer and the honest one.
+      transfersStatus: 'unsupported',
+      payoutsStatus: 'unsupported',
       displayName: null,
     });
   });
@@ -267,7 +278,7 @@ describe('what the account may do', () => {
     expect(stored[0]?.charges_enabled).toBe(false);
 
     // Stripe says otherwise, and Stripe is the one who knows.
-    accountStatus = { chargesEnabled: true, payoutsEnabled: true, detailsSubmitted: true };
+    accountStatus = { transfers: 'active', payouts: 'active', detailsSubmitted: true };
     const res = await app.inject({
       method: 'GET',
       url: '/v1/seller',
@@ -277,6 +288,8 @@ describe('what the account may do', () => {
       onboarded: true,
       chargesEnabled: true,
       payoutsEnabled: true,
+      transfersStatus: 'active',
+      payoutsStatus: 'active',
       displayName: null,
     });
   });

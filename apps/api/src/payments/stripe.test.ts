@@ -26,30 +26,57 @@ function fakeStripe(overrides: Record<string, unknown> = {}): {
   };
 
   const stripe = {
+    // v1, which two things still legitimately use: the payout schedule, which Accounts v2 has
+    // no equivalent for at all, and refunds/checkout, which were never v2 in the first place.
     accounts: {
-      create: (...args: unknown[]) => {
-        record('accounts.create', ...args);
+      update: (...args: unknown[]) => {
+        record('accounts.update', ...args);
         return Promise.resolve({ id: 'acct_fake123' });
       },
-      retrieve: (...args: unknown[]) => {
-        record('accounts.retrieve', ...args);
-        return Promise.resolve({
-          charges_enabled: true,
-          payouts_enabled: false,
-          details_submitted: true,
-        });
-      },
     },
-    accountLinks: {
-      create: (...args: unknown[]) => {
-        record('accountLinks.create', ...args);
-        return Promise.resolve({ url: 'https://connect.stripe.com/setup/fake' });
+    v2: {
+      core: {
+        accounts: {
+          create: (...args: unknown[]) => {
+            record('v2.accounts.create', ...args);
+            return Promise.resolve({ id: 'acct_fake123' });
+          },
+          retrieve: (...args: unknown[]) => {
+            record('v2.accounts.retrieve', ...args);
+            return Promise.resolve({
+              id: 'acct_fake123',
+              configuration: {
+                recipient: {
+                  capabilities: {
+                    stripe_balance: {
+                      stripe_transfers: { status: 'active' },
+                      payouts: { status: 'pending' },
+                    },
+                  },
+                },
+              },
+              requirements: { summary: { minimum_deadline: { status: 'currently_due' } } },
+            });
+          },
+        },
+        accountLinks: {
+          create: (...args: unknown[]) => {
+            record('v2.accountLinks.create', ...args);
+            return Promise.resolve({ url: 'https://connect.stripe.com/setup/fake' });
+          },
+        },
       },
     },
     webhooks: {
       constructEvent: (...args: unknown[]) => {
         record('webhooks.constructEvent', ...args);
-        return { id: 'evt_fake', type: 'account.updated' };
+        return { id: 'evt_fake', type: 'checkout.session.completed' };
+      },
+      signature: {
+        verifyHeader: (...args: unknown[]) => {
+          record('webhooks.signature.verifyHeader', ...args);
+          return true;
+        },
       },
     },
     ...overrides,
@@ -74,7 +101,7 @@ describe('starting a connected account', () => {
 
     await client.createConnectedAccount({ userId: 'user-1', email: 'seller@example.test' });
 
-    const [call] = calls.get('accounts.create') ?? [];
+    const [call] = calls.get('v2.accounts.create') ?? [];
     expect(call?.args[1]).toEqual({ idempotencyKey: 'account:user-1' });
   });
 
@@ -84,9 +111,55 @@ describe('starting a connected account', () => {
 
     await client.createConnectedAccount({ userId: 'user-1' });
 
-    const params = (calls.get('accounts.create') ?? [])[0]?.args[0] as Record<string, unknown>;
-    expect(params['type']).toBe('express');
+    const params = (calls.get('v2.accounts.create') ?? [])[0]?.args[0] as Record<string, unknown>;
+    expect(params['dashboard']).toBe('express');
     expect(params['metadata']).toEqual({ userId: 'user-1' });
+  });
+
+  it('requests a recipient configuration, not a merchant one', async () => {
+    /**
+     * The seller is not the merchant of record. We take a **destination charge without
+     * `on_behalf_of`**, which Stripe's own guidance puts squarely in the `recipient` bucket:
+     * the platform holds the chargeback liability and the seller receives a transfer.
+     *
+     * Asking for `merchant` would collect identity details for a role this seller cannot use,
+     * and would quietly move the liability question. Under v1 we requested `card_payments`,
+     * which this flow never needed — v2 does not offer the mistake.
+     */
+    const { stripe, calls } = fakeStripe();
+
+    await createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' });
+
+    const params = (calls.get('v2.accounts.create') ?? [])[0]?.args[0] as {
+      configuration?: Record<string, unknown>;
+    };
+    expect(params.configuration).toEqual({
+      recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } },
+    });
+    expect(params.configuration?.['merchant']).toBeUndefined();
+  });
+
+  it('declares a country, which v2 refuses to create a configuration without', async () => {
+    /**
+     * Found by running this against the real sandbox, after the unit tests above passed with a
+     * fake that happily accepted the call: `identity.country is required before setting
+     * configuration.recipient`.
+     *
+     * v1 defaulted the country to the platform's without being asked, so every seller this
+     * project has made was already US — the constraint is newly visible, not newly true. The
+     * assertion is here so that stays a decision rather than a detail.
+     */
+    const { stripe, calls } = fakeStripe();
+
+    await createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' });
+
+    const params = (calls.get('v2.accounts.create') ?? [])[0]?.args[0] as {
+      identity?: { country?: string };
+      defaults?: { currency?: string };
+    };
+    expect(params.identity?.country).toBe('us');
+    // Allowed only because the country is set; Stripe refuses one without the other.
+    expect(params.defaults?.currency).toBe('usd');
   });
 
   it('sends no email when there is none, rather than an empty one', async () => {
@@ -95,8 +168,8 @@ describe('starting a connected account', () => {
 
     await client.createConnectedAccount({ userId: 'user-1' });
 
-    const params = (calls.get('accounts.create') ?? [])[0]?.args[0] as Record<string, unknown>;
-    expect('email' in params).toBe(false);
+    const params = (calls.get('v2.accounts.create') ?? [])[0]?.args[0] as Record<string, unknown>;
+    expect('contact_email' in params).toBe(false);
   });
 });
 
@@ -119,12 +192,18 @@ describe('a connected account whose idempotency key is holding a cached failure'
   ): { stripe: Stripe; keys: string[] } {
     const keys: string[] = [];
     const stripe = {
-      accounts: {
-        create: (_params: unknown, options: { idempotencyKey: string }) => {
-          keys.push(options.idempotencyKey);
-          return poisoned.includes(options.idempotencyKey)
-            ? Promise.reject(error())
-            : Promise.resolve({ id: 'acct_fake123' });
+      // The payout hold, which every successful creation now also performs.
+      accounts: { update: () => Promise.resolve({ id: 'acct_fake123' }) },
+      v2: {
+        core: {
+          accounts: {
+            create: (_params: unknown, options: { idempotencyKey: string }) => {
+              keys.push(options.idempotencyKey);
+              return poisoned.includes(options.idempotencyKey)
+                ? Promise.reject(error())
+                : Promise.resolve({ id: 'acct_fake123' });
+            },
+          },
         },
       },
     } as unknown as Stripe;
@@ -170,12 +249,16 @@ describe('a connected account whose idempotency key is holding a cached failure'
     // a refusal cached from before the cause was fixed.
     const keys: string[] = [];
     const stripe = {
-      accounts: {
-        create: (_params: unknown, o: { idempotencyKey: string }) => {
-          keys.push(o.idempotencyKey);
-          return Promise.reject(
-            new Stripe.errors.StripeInvalidRequestError({ message: 'still not enabled' }),
-          );
+      v2: {
+        core: {
+          accounts: {
+            create: (_params: unknown, o: { idempotencyKey: string }) => {
+              keys.push(o.idempotencyKey);
+              return Promise.reject(
+                new Stripe.errors.StripeInvalidRequestError({ message: 'still not enabled' }),
+              );
+            },
+          },
         },
       },
     } as unknown as Stripe;
@@ -237,40 +320,190 @@ describe('the onboarding link', () => {
     });
 
     expect(result.url).toBe('https://connect.stripe.com/setup/fake');
-    const params = (calls.get('accountLinks.create') ?? [])[0]?.args[0] as Record<string, unknown>;
-    expect(params['return_url']).toBe('https://example.test/account/selling?onboarded=1');
-    expect(params['type']).toBe('account_onboarding');
+    const params = (calls.get('v2.accountLinks.create') ?? [])[0]?.args[0] as {
+      use_case?: { type?: string; account_onboarding?: Record<string, unknown> };
+    };
+    expect(params.use_case?.type).toBe('account_onboarding');
+    expect(params.use_case?.account_onboarding?.['return_url']).toBe(
+      'https://example.test/account/selling?onboarded=1',
+    );
+    // The configuration the account actually has. Onboarding `merchant` here would ask the
+    // seller for identity details supporting a role they were never given.
+    expect(params.use_case?.account_onboarding?.['configurations']).toEqual(['recipient']);
   });
 });
 
 describe('what an account may do', () => {
-  it('reports Stripe’s answer, including the parts that are still false', async () => {
-    // Mirrored, never asserted. A seller cannot mark their own account ready, and a half-done
-    // onboarding has to read as half-done rather than as ready.
+  it('reports Stripe’s four states, not a boolean', async () => {
+    // Mirrored, never asserted. A seller cannot mark their own account ready, and `pending` has
+    // to stay distinguishable from `restricted`: one means wait, the other means go and do
+    // something. Accounts v1 could not tell them apart and this is the reason for the migration.
     const { stripe } = fakeStripe();
-    const client = createStripeClient(options(stripe));
 
-    expect(await client.getAccountStatus('acct_1')).toEqual({
-      chargesEnabled: true,
-      payoutsEnabled: false,
+    expect(await createStripeClient(options(stripe)).getAccountStatus('acct_1')).toEqual({
+      transfers: 'active',
+      payouts: 'pending',
       detailsSubmitted: true,
     });
   });
 
-  it('treats a missing flag as not allowed', async () => {
-    const { stripe } = fakeStripe({
-      accounts: {
-        create: () => Promise.resolve({ id: 'acct_x' }),
-        retrieve: () => Promise.resolve({}),
-      },
-    });
-    const client = createStripeClient(options(stripe));
+  it('asks for the configuration, because a v2 retrieve omits it otherwise', async () => {
+    // The trap this guards: without `include`, the account comes back looking fine and every
+    // capability reads `undefined`. It fails closed, so the symptom is a seller who can never
+    // sell rather than one who can sell when they should not — still worth never causing.
+    const { stripe, calls } = fakeStripe();
 
-    expect(await client.getAccountStatus('acct_1')).toEqual({
-      chargesEnabled: false,
-      payoutsEnabled: false,
+    await createStripeClient(options(stripe)).getAccountStatus('acct_1');
+
+    const [call] = calls.get('v2.accounts.retrieve') ?? [];
+    expect(call?.args[0]).toBe('acct_1');
+    expect(call?.args[1]).toEqual({ include: ['configuration.recipient', 'requirements'] });
+  });
+
+  it('treats anything it cannot read as unsupported', async () => {
+    const { stripe } = fakeStripe({
+      v2: { core: { accounts: { retrieve: () => Promise.resolve({ id: 'acct_x' }) } } },
+    });
+
+    expect(await createStripeClient(options(stripe)).getAccountStatus('acct_1')).toEqual({
+      transfers: 'unsupported',
+      payouts: 'unsupported',
       detailsSubmitted: false,
     });
+  });
+
+  it('treats an unrecognised status as unsupported rather than passing it through', async () => {
+    // A status Stripe adds later must not arrive in our domain unexamined. Closed by default.
+    const { stripe } = fakeStripe({
+      v2: {
+        core: {
+          accounts: {
+            retrieve: () =>
+              Promise.resolve({
+                configuration: {
+                  recipient: {
+                    capabilities: { stripe_balance: { stripe_transfers: { status: 'enabled' } } },
+                  },
+                },
+              }),
+          },
+        },
+      },
+    });
+
+    const status = await createStripeClient(options(stripe)).getAccountStatus('acct_1');
+    expect(status.transfers).toBe('unsupported');
+  });
+
+  it('calls an account with nothing past due submitted', async () => {
+    const { stripe } = fakeStripe({
+      v2: {
+        core: {
+          accounts: {
+            retrieve: () =>
+              Promise.resolve({
+                requirements: { summary: { minimum_deadline: { status: 'past_due' } } },
+              }),
+          },
+        },
+      },
+    });
+
+    expect(
+      (await createStripeClient(options(stripe)).getAccountStatus('acct_1')).detailsSubmitted,
+    ).toBe(false);
+  });
+});
+
+/**
+ * Accounts v2 has no payout schedule. FR-5.6's hold is the most important seller-side control
+ * there is, so the migration lived or died on finding somewhere to put it.
+ */
+describe('holding a new seller’s payouts (FR-5.6)', () => {
+  it('sets a manual schedule through the v1 account API, which still answers for a v2 id', async () => {
+    const { stripe, calls } = fakeStripe();
+
+    await createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' });
+
+    const [update] = calls.get('accounts.update') ?? [];
+    expect(update?.args[0]).toBe('acct_fake123');
+    expect(update?.args[1]).toEqual({
+      settings: { payouts: { schedule: { interval: 'manual' } } },
+    });
+  });
+
+  it('fails the whole onboarding if the hold cannot be set', async () => {
+    // Loudly, on purpose. The alternative is a seller quietly created on daily payouts — the
+    // empty-envelope trade, with nothing to show that it happened.
+    const { stripe } = fakeStripe({
+      accounts: { update: () => Promise.reject(new Error('stripe is down')) },
+    });
+
+    await expect(
+      createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' }),
+    ).rejects.toThrow('stripe is down');
+  });
+});
+
+describe('a v2 event', () => {
+  const body = JSON.stringify({
+    id: 'evt_v2_1',
+    type: 'v2.core.account[configuration.recipient].capability_status_updated',
+    related_object: { id: 'acct_fake123', type: 'v2.core.account' },
+  });
+
+  it('is verified against the raw bytes with the v2 secret', async () => {
+    const { stripe, calls } = fakeStripe();
+    const client = createStripeClient({
+      secretKey: 'sk_test_fake',
+      client: stripe,
+      webhookSecret: 'whsec_v1',
+      v2WebhookSecret: 'whsec_v2',
+    });
+    const raw = Buffer.from(body);
+
+    client.verifyV2Event(raw, 't=1,v1=abc');
+
+    const [call] = calls.get('webhooks.signature.verifyHeader') ?? [];
+    expect(call?.args[0], 'the raw buffer, not a reserialised copy').toBe(raw);
+    // The v2 secret. Verifying a v2 event with the v1 secret would let an event signed for one
+    // feed be trusted on the other, which is the reason these are two endpoints.
+    expect(call?.args[2]).toBe('whsec_v2');
+    await Promise.resolve();
+  });
+
+  it('is read for its pointers and nothing else', () => {
+    const { stripe } = fakeStripe();
+    const client = createStripeClient({
+      secretKey: 'sk_test_fake',
+      client: stripe,
+      v2WebhookSecret: 'whsec_v2',
+    });
+
+    expect(client.verifyV2Event(Buffer.from(body), 'sig')).toEqual({
+      id: 'evt_v2_1',
+      type: 'v2.core.account[configuration.recipient].capability_status_updated',
+      relatedObjectId: 'acct_fake123',
+      relatedObjectType: 'v2.core.account',
+    });
+  });
+
+  it('is refused when no v2 secret is configured', () => {
+    const { stripe } = fakeStripe();
+    const client = createStripeClient({ secretKey: 'sk_test_fake', client: stripe });
+
+    expect(() => client.verifyV2Event(Buffer.from(body), 'sig')).toThrow(StripeNotConfiguredError);
+  });
+
+  it('is refused when the body is not an event', () => {
+    const { stripe } = fakeStripe();
+    const client = createStripeClient({
+      secretKey: 'sk_test_fake',
+      client: stripe,
+      v2WebhookSecret: 'whsec_v2',
+    });
+
+    expect(() => client.verifyV2Event(Buffer.from('{"hello":1}'), 'sig')).toThrow();
   });
 });
 
