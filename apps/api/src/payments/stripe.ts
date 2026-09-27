@@ -128,6 +128,56 @@ function idempotency(scope: string, id: string): Stripe.RequestOptions {
   return { idempotencyKey: `${scope}:${id}` };
 }
 
+/**
+ * How many keys one account creation may burn before giving up (ADR-044).
+ *
+ * Bounded because each step costs a round trip. Unbounded, a permanently misconfigured account
+ * would turn every onboarding attempt into a slow walk instead of a prompt error.
+ */
+const MAX_ACCOUNT_KEY_ATTEMPTS = 5;
+
+/**
+ * The key for one attempt at creating this person's account.
+ *
+ * Attempt 0 is the plain `account:<userId>`, and that is what makes a double-click safe: two
+ * requests in flight at once send the same key, Stripe performs the work once, and nobody ends
+ * up with two connected accounts.
+ *
+ * Later attempts walk a **fixed sequence** — `account:<userId>/2`, `/3` — rather than taking a
+ * random key each. Two callers who both find the earlier keys poisoned still land on the same
+ * next one, so Stripe still deduplicates them. A random key per caller would fix the lockout
+ * below and buy an orphaned connected account nobody is recorded against, which is worse than
+ * the problem it solves.
+ */
+function accountIdempotency(userId: string, attempt: number): Stripe.RequestOptions {
+  return attempt === 0
+    ? idempotency('account', userId)
+    : { idempotencyKey: `account:${userId}/${String(attempt + 1)}` };
+}
+
+/**
+ * Whether this error proves Stripe created nothing, so the next attempt may use a new key.
+ *
+ * This distinction is the entire control, and getting it backwards in either direction is a
+ * real failure rather than a style choice.
+ *
+ * A 400, 401 or 403 means Stripe read the request, refused it and stopped. Nothing exists on
+ * the other side, so moving to a fresh key is safe. A timeout, a 5xx or a dropped connection
+ * means the opposite: the account may well have been created and we simply never heard the id.
+ * That is precisely the case a stable key exists to survive, so those must **not** advance.
+ *
+ * Rate limits are deliberately absent. Nothing was created, but spending a key would buy what
+ * waiting a second gives for free.
+ */
+function provesNothingWasCreated(error: unknown): boolean {
+  return (
+    error instanceof Stripe.errors.StripeInvalidRequestError ||
+    error instanceof Stripe.errors.StripeAuthenticationError ||
+    error instanceof Stripe.errors.StripePermissionError ||
+    error instanceof Stripe.errors.StripeIdempotencyError
+  );
+}
+
 export function createStripeClient(options: StripeOptions): StripeClient {
   const stripe =
     options.client ??
@@ -142,31 +192,51 @@ export function createStripeClient(options: StripeOptions): StripeClient {
 
   return {
     createConnectedAccount: async ({ userId, email }) => {
-      const account = await stripe.accounts.create(
-        {
-          type: 'express',
-          // Stripe collects and keeps the identity details. We hold an id and two booleans,
-          // which is the entire reason Express was chosen over building KYC ourselves.
-          capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
-          /**
-           * New accounts start on a manual payout schedule (FR-5.6).
-           *
-           * Set at creation rather than afterwards, because a second call can fail and leave a
-           * seller taking payments with their payouts already running. The money reaching their
-           * Stripe balance is fine; the money reaching their bank before a buyer can complain
-           * is the empty-envelope trade.
-           *
-           * `releasePayoutHoldsJob` switches them to `daily` once they have earned it.
-           */
-          settings: { payouts: { schedule: { interval: 'manual' } } },
-          ...(email === undefined ? {} : { email }),
-          metadata: { userId },
-        },
-        // Keyed on our user, so a double-click during onboarding cannot leave one person with
-        // two connected accounts and an ambiguous answer to "who gets paid".
-        idempotency('account', userId),
-      );
-      return { accountId: account.id };
+      const params: Stripe.AccountCreateParams = {
+        type: 'express',
+        // Stripe collects and keeps the identity details. We hold an id and two booleans,
+        // which is the entire reason Express was chosen over building KYC ourselves.
+        capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
+        /**
+         * New accounts start on a manual payout schedule (FR-5.6).
+         *
+         * Set at creation rather than afterwards, because a second call can fail and leave a
+         * seller taking payments with their payouts already running. The money reaching their
+         * Stripe balance is fine; the money reaching their bank before a buyer can complain
+         * is the empty-envelope trade.
+         *
+         * `releasePayoutHoldsJob` switches them to `daily` once they have earned it.
+         */
+        settings: { payouts: { schedule: { interval: 'manual' } } },
+        ...(email === undefined ? {} : { email }),
+        metadata: { userId },
+      };
+
+      /**
+       * Walk the key sequence until one is not holding a cached refusal (ADR-044).
+       *
+       * Stripe keeps the response to an idempotency key for 24 hours **including failures**.
+       * Without this loop, one attempt that failed for a reason having nothing to do with the
+       * seller — Connect not yet enabled, a bad key, a permission we had not granted — is
+       * replayed to that seller for the rest of the day. They press the button, see the same
+       * stale error, and nothing they or an operator can do from this side changes it. That is
+       * not hypothetical; it happened during the AC-5.1 run and cost a seller their onboarding.
+       *
+       * The parameters never vary between attempts, so a later key can only differ from an
+       * earlier one by being unused.
+       */
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          const account = await stripe.accounts.create(params, accountIdempotency(userId, attempt));
+          return { accountId: account.id };
+        } catch (error) {
+          // Out of keys, or an error that leaves open the possibility that an account exists.
+          // Either way the caller gets the real, current error rather than yesterday's.
+          if (attempt + 1 >= MAX_ACCOUNT_KEY_ATTEMPTS || !provesNothingWasCreated(error)) {
+            throw error;
+          }
+        }
+      }
     },
 
     createOnboardingLink: async ({ accountId, returnUrl, refreshUrl }) => {

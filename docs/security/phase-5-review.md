@@ -1,10 +1,12 @@
 # Phase 5 pre-launch security review (SR-5.10)
 
-**Date:** 2026-09-25
+**Date:** 2026-09-25 · **last revised** 2026-09-27
 **Scope:** the marketplace — listings, photos, checkout, fulfilment, refunds, reputation
 **Assessed by:** the maintainer, as a structured self-review against OWASP WSTG
-**Verdict:** **not ready to take real money**, for two reasons that are stated plainly below and
-are not code defects.
+**Verdict:** **no open High or Critical.** Both blockers this review opened are now closed, and so
+is one of the five residual risks it found. What stands between this and real money is not on this
+page: it is an external pentest, a lawyer, and the items in the handover document — none of them
+code.
 
 ---
 
@@ -22,16 +24,22 @@ do is run the checks, record what actually happened, and be specific about what 
 
 ## The two blockers
 
-### 1. No payment has ever been taken
+### 1. ~~No payment has ever been taken~~ — closed 2026-09-27
 
-Connect is not enabled on the Stripe account, so **AC-5.1 has never run end to end against
-Stripe's live test API**. Everything on our side is proven — signature verification with Stripe's
-own crypto, the order state machine, the webhook idempotency — but the integration is not.
+**Resolved after this review was written.** Connect was enabled, a seller onboarded through
+Stripe's hosted Express flow, and AC-5.1 ran end to end against Stripe's live test API: $12.34
+charged, a 62¢ application fee kept, the remainder transferred to the connected account, and the
+order reaching `paid` with **`stripe`** as the actor in its history — written by a
+signature-verified webhook on the worker role, not by anything a client claimed.
 
-A probe of the real API confirmed the client authenticates and the pinned API version is
-accepted; it was refused for the account capability alone. Enabling Connect in test mode is a
-few minutes in the dashboard and is the single thing standing between this and a demonstrated
-purchase.
+The evidence is in `docs/security/phase-5-acceptance.md`. The run also produced residual risk 5
+below, and confirmed that the join between our code and somebody else's API is where integrations
+break: six things went wrong getting there, and none of them were in the payment itself.
+
+Two limits on what that closes. It was proven on **Accounts v1**, which Stripe has turned off by
+default for new integrations and which had to be re-enabled by hand; the migration to v2 is
+recorded as debt in the acceptance document. And one demonstrated purchase is a demonstration, not
+a soak test.
 
 ### 2. ~~Sellers are paid before buyers can complain~~ — closed 2026-09-25
 
@@ -50,7 +58,8 @@ a test that says so for their own row and for somebody else's.
 recover money already paid out. It makes the first few sales safe, which is where the
 empty-envelope trade lives.
 
-The remaining blocker is the first one: no payment has ever been taken.
+When this was written the remaining blocker was the first one. It is closed too, as of
+2026-09-27.
 
 ---
 
@@ -261,9 +270,11 @@ The four things recorded as residual risk, in order of how much they matter:
 | 2   | Every fraud threshold is a guess; no real order has been placed                  | Open, unavoidable until launch        |
 | 3   | Geo mismatch is not flagged; the address arrives after the decision              | Open, by design, needs a review queue |
 | 4   | One Stripe key for both roles, where SR-5.3 asks for restricted keys per service | Open                                  |
-| 5   | A failed `createConnectedAccount` locks that seller out of onboarding for 24h    | Open — see below                      |
+| 5   | A failed `createConnectedAccount` locks that seller out of onboarding for 24h    | **Closed 2026-09-27** — see below     |
 
-### 5. A failed account creation is cached for a day
+### 5. A failed account creation is cached for a day — closed
+
+**Resolved after it was written down**, which is the second time this document has done that.
 
 Found while running AC-5.1, and worth more than a line in a table.
 
@@ -281,12 +292,30 @@ This happened during the acceptance run: a seller whose first attempt hit "Conne
 enabled" could not create an account afterwards, even once Connect was enabled. The fix at the
 time was a different user, which is not a fix available to a real customer.
 
-**Not changed here, deliberately.** The obvious repair — putting a time bucket in the key —
-narrows the lockout but reopens the double-click race at bucket boundaries, and the failure it
-would reintroduce (an orphaned Stripe account nobody is recorded against) is worse than the one
-it fixes. Doing it properly means reconciling against `seller_accounts` before creating, and that
-is a change to money-handling code that deserves its own PR and tests rather than a hurried edit
-at the end of a long session.
+**The fix (ADR-044).** The key is now a sequence. `account:<userId>` is still tried first, so the
+double-click protection is unchanged, but an error that _proves Stripe created nothing_ — a 400,
+401, 403 or an idempotency error — advances to `account:<userId>/2`, and so on, to a bound of five.
+An error that leaves open the possibility that an account exists (a 5xx, a dropped connection, a
+timeout) never advances, because that is precisely the case a stable key exists to survive.
+
+Two properties are worth naming, because both were nearly got wrong:
+
+- The later keys are a **fixed sequence, not random**. Two callers who both find the earlier keys
+  poisoned arrive at the same next one, so Stripe still deduplicates them. A random key each would
+  clear the lockout and buy an orphaned connected account belonging to nobody in our database —
+  worse than the problem.
+- Because the walk is bounded and the **last** error is what propagates, a seller now sees the
+  condition that is true _now_ rather than one cached from before it was fixed. That is most of the
+  value, independent of whether a later key succeeds.
+
+`stripe.test.ts` asserts the exact key sequence, the bound, and that a connection error does not
+advance. The rejected alternatives — a time bucket, a lock, an extra column — are recorded in
+ADR-044 so this does not get "simplified" back into a defect.
+
+**What remains, smaller:** two callers racing at the moment they exhaust different numbers of
+poisoned keys could still diverge and orphan an account. It needs concurrency, an already-poisoned
+key and unlucky timing, and the result is an unonboarded account with no balance. Closing it means
+reconciling under a lock held across a network call; not worth it for that.
 
 ---
 
@@ -304,9 +333,17 @@ The controls are in better shape than the integration. Every rule that decides w
 is enforced by a database grant or a policy, and each one has a test that bypasses the
 application code to prove it.
 
-**It should not take real money yet** — but for one reason now rather than two. No payment has
-ever completed against Stripe, and that is a dashboard setting away.
+**Both blockers are closed.** The payout hold that was blocker 2 was built immediately after this
+document first named it; the payment that was blocker 1 completed on 2026-09-27. That is the most
+useful thing a review of one's own work can do — name the largest risk plainly enough that the next
+commit closes it — and it has now happened three times, counting residual risk 5.
 
-The payout hold that was blocker 2 when this document was first written was built immediately
-afterwards, which is the most useful thing a review of one's own work can do: name the largest
-risk plainly enough that the next commit closes it.
+**What it still should not do is take real money**, for reasons that are not on this page and are
+not code: no external pentest, no legal review, one Stripe key doing two services' jobs, and a
+production environment that does not exist yet. Those are in `docs/marketplace-handover.md`.
+
+And the honest limit, repeated because it has been proven twice rather than argued: the person who
+wrote the controls is the worst-placed person to find the gap in them. This review's method could
+not see anything a **browser** enforces, and two real defects were sitting in the upload path the
+whole time — the CSP, and a storage bucket with no CORS policy at all, which meant browser uploads
+had never worked anywhere. Both were found by an end-to-end test, not by this document.

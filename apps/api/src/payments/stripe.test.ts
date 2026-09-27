@@ -1,4 +1,4 @@
-import type Stripe from 'stripe';
+import Stripe from 'stripe';
 import { describe, expect, it } from 'vitest';
 import { StripeNotConfiguredError, createStripeClient } from './stripe.js';
 
@@ -97,6 +97,129 @@ describe('starting a connected account', () => {
 
     const params = (calls.get('accounts.create') ?? [])[0]?.args[0] as Record<string, unknown>;
     expect('email' in params).toBe(false);
+  });
+});
+
+/**
+ * Stripe keeps the response to an idempotency key for 24 hours **including failures**.
+ *
+ * So the key that makes a double-click safe also replays a failure that has nothing to do with
+ * the seller — Connect not yet enabled, say — for the rest of the day. This happened during the
+ * AC-5.1 run: the seller could not onboard even after the cause was fixed, and the only way out
+ * was a different user, which is not a thing a real customer has.
+ *
+ * What is under test is the distinction the fix rests on: advance to a new key only when the
+ * error proves Stripe created nothing, and never when an account might exist unseen.
+ */
+describe('a connected account whose idempotency key is holding a cached failure', () => {
+  /** A fake that refuses the given keys and succeeds on anything else. */
+  function stripeRefusing(
+    poisoned: string[],
+    error: () => Error,
+  ): { stripe: Stripe; keys: string[] } {
+    const keys: string[] = [];
+    const stripe = {
+      accounts: {
+        create: (_params: unknown, options: { idempotencyKey: string }) => {
+          keys.push(options.idempotencyKey);
+          return poisoned.includes(options.idempotencyKey)
+            ? Promise.reject(error())
+            : Promise.resolve({ id: 'acct_fake123' });
+        },
+      },
+    } as unknown as Stripe;
+    return { stripe, keys };
+  }
+
+  it('moves to the next key in the sequence and succeeds', async () => {
+    const { stripe, keys } = stripeRefusing(
+      ['account:user-1'],
+      () => new Stripe.errors.StripeInvalidRequestError({ message: 'signed up for Connect' }),
+    );
+
+    const result = await createStripeClient(options(stripe)).createConnectedAccount({
+      userId: 'user-1',
+    });
+
+    expect(result).toEqual({ accountId: 'acct_fake123' });
+    // A fixed sequence, not a random key: two callers who both find `account:user-1` poisoned
+    // land on the same next one, so Stripe still deduplicates them. A random key each would
+    // trade this lockout for an orphaned connected account nobody is recorded against.
+    expect(keys).toEqual(['account:user-1', 'account:user-1/2']);
+  });
+
+  it('keeps walking while keys stay poisoned', async () => {
+    const { stripe, keys } = stripeRefusing(
+      ['account:user-1', 'account:user-1/2', 'account:user-1/3'],
+      () => new Stripe.errors.StripeInvalidRequestError({ message: 'no' }),
+    );
+
+    await createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' });
+
+    expect(keys).toEqual([
+      'account:user-1',
+      'account:user-1/2',
+      'account:user-1/3',
+      'account:user-1/4',
+    ]);
+  });
+
+  it('gives up after a bounded number of keys, reporting the error that is true now', async () => {
+    // A permanently misconfigured account must produce a prompt error, not a slow walk. And the
+    // error the seller sees is the current one, which is the point: before this, they were shown
+    // a refusal cached from before the cause was fixed.
+    const keys: string[] = [];
+    const stripe = {
+      accounts: {
+        create: (_params: unknown, o: { idempotencyKey: string }) => {
+          keys.push(o.idempotencyKey);
+          return Promise.reject(
+            new Stripe.errors.StripeInvalidRequestError({ message: 'still not enabled' }),
+          );
+        },
+      },
+    } as unknown as Stripe;
+
+    await expect(
+      createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' }),
+    ).rejects.toThrow('still not enabled');
+
+    expect(keys).toEqual([
+      'account:user-1',
+      'account:user-1/2',
+      'account:user-1/3',
+      'account:user-1/4',
+      'account:user-1/5',
+    ]);
+  });
+
+  it('does not advance when the failure leaves an account possibly created', async () => {
+    // The case the stable key exists for. A dropped connection means "the account may be there
+    // and we never heard the id" — taking a new key here is how one person ends up with two
+    // connected accounts and an ambiguous answer to who gets paid.
+    const { stripe, keys } = stripeRefusing(
+      ['account:user-1'],
+      () => new Stripe.errors.StripeConnectionError({ message: 'socket hang up' }),
+    );
+
+    await expect(
+      createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' }),
+    ).rejects.toThrow('socket hang up');
+
+    expect(keys).toEqual(['account:user-1']);
+  });
+
+  it('does not advance on a rate limit, which waiting fixes for free', async () => {
+    const { stripe, keys } = stripeRefusing(
+      ['account:user-1'],
+      () => new Stripe.errors.StripeRateLimitError({ message: 'slow down' }),
+    );
+
+    await expect(
+      createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' }),
+    ).rejects.toThrow('slow down');
+
+    expect(keys).toEqual(['account:user-1']);
   });
 });
 
