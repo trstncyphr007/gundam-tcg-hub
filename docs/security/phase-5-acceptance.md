@@ -81,8 +81,10 @@ our state machine, the fee split, the payout hold — was driven end to end with
    for the Accounts v1 policy.
 3. **Accounts v1 is now off by default for new integrations.** It had to be re-enabled in the
    dashboard. See the debt note at the end of this document.
-4. **Stripe caches idempotent responses for 24 hours, including failures** — recorded as a
-   residual risk in `phase-5-review.md`, because it has a real production consequence.
+4. **Stripe caches idempotent responses for 24 hours, including failures.** A key is not only a
+   promise that work happens once; it is also a cache of a refusal. This locked a seller out of
+   onboarding for a day after the cause had been fixed. Closed in ADR-044 — the key is now a
+   sequence that advances only on an error proving Stripe created nothing.
 5. **Account links are single-use and expire in about five minutes.** A spent one redirects
    silently to `refresh_url`, which looks exactly like a page that failed to render.
 
