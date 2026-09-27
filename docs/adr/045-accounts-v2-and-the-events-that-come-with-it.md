@@ -151,16 +151,45 @@ receive transfers". Renaming it is a migration for a comment, and is not worth d
   (§23); when that happens the country belongs on the seller, chosen before the account is
   created, not in an env var that quietly redefines every future seller.
 
+### Two ways this was got wrong first, both silent
+
+Recorded because both were shipped, both passed CI, and neither was visible to anything but a real
+onboarding attempt.
+
+**1. `email` was optional, and the only caller did not pass it.** Stripe refuses a recipient
+configuration without a contact email. So `createConnectedAccount` compiled, its unit tests passed
+against a fake that accepted anything, and **every seller's onboarding would have failed** on the
+first API call. `email` is a required parameter now, and making it so immediately flagged ten stale
+call sites — which is the argument for the type rather than a comment.
+
+**2. `events_from: ['@accounts']` on the event destination dropped every event.** The reasoning was
+that a connected account's capability change is news from that account. It is not: these events are
+emitted by the **platform** about the connected account, so "connected accounts only" excluded all
+of them. The default — every account — is correct, and the filter is gone.
+
+The second is the more dangerous shape. Stripe emitted `capability_status_updated` on schedule, the
+subscription sat there `enabled`, nothing arrived, and a seller who had finished onboarding and was
+`active` at Stripe stayed unable to sell with no error anywhere. It is the third instance in this
+project of a control that fails by staying quiet — after the CSP and the bucket's CORS policy — and
+the reason `pnpm stripe:destination` reports loudly when nothing is listening.
+
 ### Verified live, against the sandbox
 
 Our own client, not a fake: v2 create, the v1 payout hold landing as `manual`, `getAccountStatus`
 returning `{transfers: 'restricted', payouts: 'restricted', detailsSubmitted: false}` for a fresh
 account, a working onboarding link, and `setPayoutSchedule` moving to `daily` and back.
 
-What is **not** proven end to end is the v2 webhook: that needs a person to finish Stripe's
-hosted KYC form before any capability becomes `active`, exactly as AC-5.1 did. The handler,
-signature verification and replay behaviour are covered by tests that use Stripe's own signing
-helper against the real verifier, so what remains unproven is the delivery itself.
+**AC-5.1 was then re-run end to end on Accounts v2** (2026-09-27, order
+`607b0b50-1250-47bf-8de6-7085cdbb88b7`). A person completed Stripe's hosted onboarding, the
+capability reached `active`, the thin event was delivered to `/v1/webhooks/stripe-v2`, and our row
+was written by the worker role from it — audit diff `{"transfers": "active", "payouts": "active"}`,
+which is a sentence Accounts v1 could not say.
+
+Then a real payment: `pi_3UK7K9FSXIElzIsj1tomA` **succeeded**, 1234 usd, application fee 62,
+transferred to `acct_1UK6mSFSXIam3uhF`, order `created → paid` with actor **`stripe`**, listing
+`sold`. And the part that matters most for this ADR — **the payout schedule still read `manual` at
+Stripe's end afterwards**, so FR-5.6's hold survived a real payment landing on a v2 account through
+the v1 API that §2 depends on.
 
 ## Alternatives considered
 

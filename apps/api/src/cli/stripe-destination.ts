@@ -84,8 +84,20 @@ export async function main(argv: string[]): Promise<void> {
     // Thin, because Stripe refuses `snapshot` for account events — an event destination asking
     // for one is rejected at creation. The handler re-reads the account anyway.
     event_payload: 'thin',
-    // Events from the connected accounts we manage, not from the platform account itself.
-    events_from: ['@accounts'],
+    /**
+     * **No `events_from` filter.** The default is every account, and narrowing it breaks this.
+     *
+     * The first version said `['@accounts']`, reasoning that a connected account's capability
+     * change is news from that account. It is not: these events are emitted by the **platform**
+     * about the connected account, so `@accounts` — "connected accounts only" — excluded every
+     * one of them.
+     *
+     * The failure was silent in the worst way. Stripe emitted
+     * `capability_status_updated` on schedule, the subscription sat there enabled and healthy,
+     * and nothing arrived. A seller completed onboarding, became `active` at Stripe, and stayed
+     * unable to sell with no error anywhere to explain why. Found by watching a real onboarding
+     * rather than by any test.
+     */
     enabled_events: ENABLED_EVENTS,
     type: 'webhook_endpoint',
     webhook_endpoint: { url },

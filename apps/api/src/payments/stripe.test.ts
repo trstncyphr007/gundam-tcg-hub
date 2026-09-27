@@ -109,7 +109,7 @@ describe('starting a connected account', () => {
     const { stripe, calls } = fakeStripe();
     const client = createStripeClient(options(stripe));
 
-    await client.createConnectedAccount({ userId: 'user-1' });
+    await client.createConnectedAccount({ userId: 'user-1', email: 'seller@example.test' });
 
     const params = (calls.get('v2.accounts.create') ?? [])[0]?.args[0] as Record<string, unknown>;
     expect(params['dashboard']).toBe('express');
@@ -128,7 +128,10 @@ describe('starting a connected account', () => {
      */
     const { stripe, calls } = fakeStripe();
 
-    await createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' });
+    await createStripeClient(options(stripe)).createConnectedAccount({
+      userId: 'user-1',
+      email: 'seller@example.test',
+    });
 
     const params = (calls.get('v2.accounts.create') ?? [])[0]?.args[0] as {
       configuration?: Record<string, unknown>;
@@ -151,7 +154,10 @@ describe('starting a connected account', () => {
      */
     const { stripe, calls } = fakeStripe();
 
-    await createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' });
+    await createStripeClient(options(stripe)).createConnectedAccount({
+      userId: 'user-1',
+      email: 'seller@example.test',
+    });
 
     const params = (calls.get('v2.accounts.create') ?? [])[0]?.args[0] as {
       identity?: { country?: string };
@@ -162,14 +168,28 @@ describe('starting a connected account', () => {
     expect(params.defaults?.currency).toBe('usd');
   });
 
-  it('sends no email when there is none, rather than an empty one', async () => {
+  it('always sends a contact email, because v2 refuses a recipient without one', async () => {
+    /**
+     * This test replaces one that asserted the opposite — "sends no email when there is none"
+     * — which was right for v1 and produced an account v2 will not create:
+     *
+     *     configuration.recipient: If configuration.recipient is supplied, the Account must
+     *     have a contact email.
+     *
+     * The old shape had `email` optional, and the one caller did not pass it. So the code
+     * compiled, its tests passed, and **every seller's onboarding would have failed**. It was
+     * found by trying a real onboarding against the sandbox, not by anything in this file.
+     * `email` is a required parameter now, so the compiler catches the next one.
+     */
     const { stripe, calls } = fakeStripe();
-    const client = createStripeClient(options(stripe));
 
-    await client.createConnectedAccount({ userId: 'user-1' });
+    await createStripeClient(options(stripe)).createConnectedAccount({
+      userId: 'user-1',
+      email: 'seller@example.test',
+    });
 
     const params = (calls.get('v2.accounts.create') ?? [])[0]?.args[0] as Record<string, unknown>;
-    expect('contact_email' in params).toBe(false);
+    expect(params['contact_email']).toBe('seller@example.test');
   });
 });
 
@@ -218,6 +238,7 @@ describe('a connected account whose idempotency key is holding a cached failure'
 
     const result = await createStripeClient(options(stripe)).createConnectedAccount({
       userId: 'user-1',
+      email: 'seller@example.test',
     });
 
     expect(result).toEqual({ accountId: 'acct_fake123' });
@@ -233,7 +254,10 @@ describe('a connected account whose idempotency key is holding a cached failure'
       () => new Stripe.errors.StripeInvalidRequestError({ message: 'no' }),
     );
 
-    await createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' });
+    await createStripeClient(options(stripe)).createConnectedAccount({
+      userId: 'user-1',
+      email: 'seller@example.test',
+    });
 
     expect(keys).toEqual([
       'account:user-1',
@@ -264,7 +288,10 @@ describe('a connected account whose idempotency key is holding a cached failure'
     } as unknown as Stripe;
 
     await expect(
-      createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' }),
+      createStripeClient(options(stripe)).createConnectedAccount({
+        userId: 'user-1',
+        email: 'seller@example.test',
+      }),
     ).rejects.toThrow('still not enabled');
 
     expect(keys).toEqual([
@@ -286,7 +313,10 @@ describe('a connected account whose idempotency key is holding a cached failure'
     );
 
     await expect(
-      createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' }),
+      createStripeClient(options(stripe)).createConnectedAccount({
+        userId: 'user-1',
+        email: 'seller@example.test',
+      }),
     ).rejects.toThrow('socket hang up');
 
     expect(keys).toEqual(['account:user-1']);
@@ -299,7 +329,10 @@ describe('a connected account whose idempotency key is holding a cached failure'
     );
 
     await expect(
-      createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' }),
+      createStripeClient(options(stripe)).createConnectedAccount({
+        userId: 'user-1',
+        email: 'seller@example.test',
+      }),
     ).rejects.toThrow('slow down');
 
     expect(keys).toEqual(['account:user-1']);
@@ -423,7 +456,10 @@ describe('holding a new seller’s payouts (FR-5.6)', () => {
   it('sets a manual schedule through the v1 account API, which still answers for a v2 id', async () => {
     const { stripe, calls } = fakeStripe();
 
-    await createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' });
+    await createStripeClient(options(stripe)).createConnectedAccount({
+      userId: 'user-1',
+      email: 'seller@example.test',
+    });
 
     const [update] = calls.get('accounts.update') ?? [];
     expect(update?.args[0]).toBe('acct_fake123');
@@ -440,7 +476,10 @@ describe('holding a new seller’s payouts (FR-5.6)', () => {
     });
 
     await expect(
-      createStripeClient(options(stripe)).createConnectedAccount({ userId: 'user-1' }),
+      createStripeClient(options(stripe)).createConnectedAccount({
+        userId: 'user-1',
+        email: 'seller@example.test',
+      }),
     ).rejects.toThrow('stripe is down');
   });
 });
