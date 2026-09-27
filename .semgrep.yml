@@ -74,6 +74,12 @@ rules:
         # The virus scanner, over TCP to a host from configuration. It sends bytes and reads a
         # verdict; there is no URL and nothing a request can steer.
         - packages/photos/src/scanner.ts
+        # Provisioning the v2 event destination (ADR-045). An operator runs this by hand; it
+        # serves no traffic and is not reachable from a request, so there is no caller to steer
+        # it. It does send one URL — our own webhook endpoint, typed on the command line — and
+        # that is a destination Stripe will call rather than one we fetch. It is still checked
+        # for https and for the exact path, because a typo there is a silent outage.
+        - apps/api/src/cli/stripe-destination.ts
         - '**/*.test.ts'
         - packages/db/src/test/**
 
