@@ -262,15 +262,16 @@ argument for the external test the plan asks for. It also proved too generous: a
 but real defect was sitting in the upload path the whole time, and the section above says why
 this method could not have found it.
 
-The four things recorded as residual risk, in order of how much they matter:
+The five things recorded as residual risk, in order of how much they mattered when written. Two
+are now closed; the statuses below are kept current rather than frozen at the date of the review.
 
-| #   | Risk                                                                             | Status                                |
-| --- | -------------------------------------------------------------------------------- | ------------------------------------- |
-| 1   | Sellers are paid before the buyer can complain (no payout hold)                  | **Open** — blocker 2                  |
-| 2   | Every fraud threshold is a guess; no real order has been placed                  | Open, unavoidable until launch        |
-| 3   | Geo mismatch is not flagged; the address arrives after the decision              | Open, by design, needs a review queue |
-| 4   | One Stripe key for both roles, where SR-5.3 asks for restricted keys per service | Open                                  |
-| 5   | A failed `createConnectedAccount` locks that seller out of onboarding for 24h    | **Closed 2026-09-27** — see below     |
+| #   | Risk                                                                             | Status                                                                                                |
+| --- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 1   | Sellers are paid before the buyer can complain (no payout hold)                  | **Closed 2026-09-25** — blocker 2, and verified surviving a real payment on Accounts v2 on 2026-09-27 |
+| 2   | Every fraud threshold is a guess; no real order has been placed                  | Open, unavoidable until launch                                                                        |
+| 3   | Geo mismatch is not flagged; the address arrives after the decision              | Open, by design, needs a review queue                                                                 |
+| 4   | One Stripe key for both roles, where SR-5.3 asks for restricted keys per service | Open                                                                                                  |
+| 5   | A failed `createConnectedAccount` locks that seller out of onboarding for 24h    | **Closed 2026-09-27** — see below                                                                     |
 
 ### 5. A failed account creation is cached for a day — closed
 
