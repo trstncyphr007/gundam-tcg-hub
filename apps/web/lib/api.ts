@@ -464,10 +464,22 @@ async function adminGet<T extends object>(path: string): Promise<AdminResult<T>>
  * The marketplace (Phase 5).
  * ----------------------------------------------------------------------------------------- */
 
+/** Stripe's four states for one capability (ADR-045). `active` is the only permissive one. */
+export type CapabilityStatus = 'active' | 'pending' | 'restricted' | 'unsupported';
+
 export interface SellerStatus {
   onboarded: boolean;
+  /** `transfersStatus === 'active'`. May a sale send this seller money. */
   chargesEnabled: boolean;
+  /** `payoutsStatus === 'active'`. May Stripe move it on to their bank. */
   payoutsEnabled: boolean;
+  /**
+   * The unreduced answers, so the page can eventually tell a seller *why* they cannot sell.
+   * `pending` means wait for Stripe; `restricted` means Stripe wants something from them.
+   * Accounts v1 could not tell those apart, which is part of why we left it.
+   */
+  transfersStatus: CapabilityStatus;
+  payoutsStatus: CapabilityStatus;
   /** The name this seller chose for buyers to see, or null until they choose one. */
   displayName: string | null;
 }

@@ -20,7 +20,12 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**'],
-      exclude: ['src/**/*.test.ts', 'src/index.ts'],
+      /**
+       * `src/cli/**` alongside `index.ts`, and for the same reason: both are entry points
+       * whose body is one call to a real external service. A unit test of either would be a
+       * test of a mock returning what the mock was told to return.
+       */
+      exclude: ['src/**/*.test.ts', 'src/index.ts', 'src/cli/**'],
       thresholds: { lines: 60, functions: 60, branches: 60, statements: 60 },
     },
   },

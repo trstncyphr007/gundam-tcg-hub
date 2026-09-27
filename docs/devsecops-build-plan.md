@@ -1392,7 +1392,8 @@ pnpm sec:scan                         # gitleaks + osv-scanner + semgrep: zero b
 | `SCANNER_USER_AGENT`                                                      | 1      | No       | scanner                   | Includes a contact URL                                 |
 | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET`                                   | 3      | No / Yes | worker                    | Only if approved                                       |
 | `STRIPE_SECRET_KEY` (restricted, per service)                             | 5      | Yes      | api, worker               | Separate RAKs                                          |
-| `STRIPE_WEBHOOK_SECRET`                                                   | 5      | Yes      | api                       |                                                        |
+| `STRIPE_WEBHOOK_SECRET`                                                   | 5      | Yes      | api                       | v1 feed: orders, refunds, chargebacks                  |
+| `STRIPE_V2_WEBHOOK_SECRET`                                                | 5      | Yes      | api                       | v2 feed: seller capabilities (ADR-045)                 |
 | `STRIPE_PUBLISHABLE_KEY`                                                  | 5      | No       | web                       |                                                        |
 | `S3_ENDPOINT` / `S3_BUCKET` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | 5      | Mixed    | api, worker               | Private bucket                                         |
 | `CLAMAV_HOST`                                                             | 5      | No       | worker                    |                                                        |

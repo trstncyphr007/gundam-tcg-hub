@@ -12,7 +12,7 @@ import Stripe from 'stripe';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { type ApiConfig, loadConfig } from '../config.js';
-import { createStripeClient } from '../payments/stripe.js';
+import { type AccountStatus, createStripeClient } from '../payments/stripe.js';
 
 /**
  * Stripe's webhooks (SR-5.2, AC-5.2).
@@ -23,7 +23,23 @@ import { createStripeClient } from '../payments/stripe.js';
  * that money moved. A stub would have proved only that a stub returns what it was told to.
  */
 const WEBHOOK_SECRET = 'whsec_test_secret_for_signature_verification';
+/**
+ * A **different** secret for the v2 feed, and the difference is load-bearing.
+ *
+ * Accounts v2 delivers to its own event destination with its own signing secret. Sharing one
+ * secret between the two endpoints would mean an event signed for one feed verified on the
+ * other, which is the one confusion this file exists to prevent — so the tests use two, and one
+ * of them asserts that a v1-signed event is refused by the v2 route.
+ */
+const V2_WEBHOOK_SECRET = 'whsec_test_secret_for_the_v2_event_destination';
 const config: ApiConfig = loadConfig({ LOG_LEVEL: 'silent', NODE_ENV: 'test' });
+
+/** What the faked `getAccountStatus` answers; the v2 handler re-reads for every event. */
+let accountStatus: AccountStatus = {
+  transfers: 'active',
+  payouts: 'active',
+  detailsSubmitted: true,
+};
 
 let tdb: TestDatabase;
 let workerPool: ReturnType<typeof createDb>;
@@ -53,10 +69,41 @@ function accountUpdated(id: string, charges: boolean, payouts: boolean, eventId 
   };
 }
 
+/**
+ * A **v2** event, as Stripe actually sends one: an id, a type and a pointer.
+ *
+ * There is no account body, because v2 account events are thin — Stripe refuses to create a
+ * destination that asks for a snapshot payload. That is why the handler re-reads the account
+ * instead of believing what it was sent.
+ */
+function v2CapabilityEvent(accountId: string, eventId = 'evt_v2_1') {
+  return {
+    id: eventId,
+    object: 'v2.core.event',
+    type: 'v2.core.account[configuration.recipient].capability_status_updated',
+    created: new Date().toISOString(),
+    livemode: false,
+    related_object: {
+      id: accountId,
+      type: 'v2.core.account',
+      url: `/v2/core/accounts/${accountId}?include=configuration.recipient`,
+    },
+  };
+}
+
 async function post(payload: string, header: string) {
   return app.inject({
     method: 'POST',
     url: '/v1/webhooks/stripe',
+    headers: { 'content-type': 'application/json', 'stripe-signature': header },
+    payload,
+  });
+}
+
+async function postV2(payload: string, header: string) {
+  return app.inject({
+    method: 'POST',
+    url: '/v1/webhooks/stripe-v2',
     headers: { 'content-type': 'application/json', 'stripe-signature': header },
     payload,
   });
@@ -72,11 +119,23 @@ beforeAll(async () => {
     db: tdb.db,
     stripeWebhook: {
       workerDb: workerPool.db,
-      // A real client: only `constructEvent` is exercised, and it never calls out.
-      stripe: createStripeClient({
-        secretKey: 'sk_test_unused',
-        webhookSecret: WEBHOOK_SECRET,
-      }),
+      /**
+       * A real client, with one method replaced.
+       *
+       * `constructEvent` and `verifyV2Event` are the point of these tests and stay real — they
+       * never call out, and faking them would test the fake. `getAccountStatus` does call out,
+       * and the v2 handler deliberately calls it for every event: a thin event carries no
+       * capabilities, so the handler re-reads them. That read is what `accountStatus` stands in
+       * for here.
+       */
+      stripe: {
+        ...createStripeClient({
+          secretKey: 'sk_test_unused',
+          webhookSecret: WEBHOOK_SECRET,
+          v2WebhookSecret: V2_WEBHOOK_SECRET,
+        }),
+        getAccountStatus: () => Promise.resolve(accountStatus),
+      },
     },
   });
 
@@ -159,10 +218,21 @@ describe('a delivery we cannot verify', () => {
   });
 });
 
-describe('a delivery we can verify', () => {
-  it('records what Stripe said about the account', async () => {
-    const { payload, header } = delivery(accountUpdated(ACCOUNT, true, true));
-    const res = await post(payload, header);
+/**
+ * Capability changes arrive on the v2 feed now (ADR-045).
+ *
+ * The v1 `account.updated` handler was **removed**, not ported. The v1 API reports
+ * `charges_enabled: false` for a v2 account — truthfully, because a v2 recipient account has no
+ * v1 charge capability — so leaving the handler in place meant a stray v1 event could arrive
+ * and disable a working seller with a correct-looking value.
+ */
+describe('a capability change on the v2 feed', () => {
+  it('records what Stripe says now, read back rather than taken from the event', async () => {
+    accountStatus = { transfers: 'active', payouts: 'active', detailsSubmitted: true };
+    const { payload, header } = delivery(v2CapabilityEvent(ACCOUNT), {
+      secret: V2_WEBHOOK_SECRET,
+    });
+    const res = await postV2(payload, header);
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ received: true });
@@ -177,18 +247,15 @@ describe('a delivery we can verify', () => {
     expect(row).toMatchObject({ charges_enabled: true, payouts_enabled: true });
   });
 
-  it('treats anything that is not exactly true as false', async () => {
-    // The capability arrives over the network from a service across an API version boundary
-    // we pin and they move. Being generous here means somebody taking payments they cannot be
-    // paid for.
-    const event = {
-      id: 'evt_odd',
-      object: 'event',
-      type: 'account.updated',
-      data: { object: { id: ACCOUNT, charges_enabled: 'yes', payouts_enabled: 1 } },
-    };
-    const { payload, header } = delivery(event);
-    await post(payload, header);
+  it('treats every state except active as not allowed', async () => {
+    // `pending` is not "nearly allowed" — it is Stripe saying it has not decided. Letting it
+    // through means somebody listing a card nobody can pay them for. v1 could not express the
+    // difference; now that it can, the closed answer has to stay closed.
+    accountStatus = { transfers: 'pending', payouts: 'restricted', detailsSubmitted: true };
+    const { payload, header } = delivery(v2CapabilityEvent(ACCOUNT, 'evt_v2_pending'), {
+      secret: V2_WEBHOOK_SECRET,
+    });
+    await postV2(payload, header);
 
     const [row] = await workerPool.db.execute<{
       charges_enabled: boolean;
@@ -200,12 +267,42 @@ describe('a delivery we can verify', () => {
     expect(row).toMatchObject({ charges_enabled: false, payouts_enabled: false });
   });
 
-  it('is a no-op the second time, and says so', async () => {
-    // AC-5.2: a replayed event does nothing. Stripe retries anything that is not a prompt
-    // 2xx, so the same delivery arriving twice is normal rather than suspicious.
-    const { payload, header } = delivery(accountUpdated(ACCOUNT, true, true, 'evt_replay'));
+  it('refuses an event signed with the v1 secret', async () => {
+    // Two feeds, two secrets, and neither may stand in for the other. This is the reason the
+    // v2 route exists separately rather than as a branch inside the v1 one.
+    const { payload, header } = delivery(v2CapabilityEvent(ACCOUNT), { secret: WEBHOOK_SECRET });
+    const res = await postV2(payload, header);
 
-    const first = await post(payload, header);
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ error: string }>().error).toBe('invalid_signature');
+  });
+
+  it('ignores an event about something that is not an account', async () => {
+    const event = {
+      id: 'evt_v2_other',
+      object: 'v2.core.event',
+      type: 'v2.core.event_destination.ping',
+      related_object: { id: 'ed_1', type: 'v2.core.event_destination' },
+    };
+    const { payload, header } = delivery(event, { secret: V2_WEBHOOK_SECRET });
+    const res = await postV2(payload, header);
+
+    // Claimed and acknowledged, so Stripe stops retrying, but nothing acted on.
+    expect(res.statusCode).toBe(200);
+    const [row] = await workerPool.db.execute<{ charges_enabled: boolean }>(
+      `select charges_enabled from app.seller_accounts where stripe_account_id = '${ACCOUNT}'`,
+    );
+    expect(row?.charges_enabled).toBe(false);
+  });
+
+  it('is a no-op the second time, and says so', async () => {
+    // AC-5.2 on the new feed: the same `webhook_events` unique index protects both.
+    accountStatus = { transfers: 'active', payouts: 'active', detailsSubmitted: true };
+    const { payload, header } = delivery(v2CapabilityEvent(ACCOUNT, 'evt_v2_replay'), {
+      secret: V2_WEBHOOK_SECRET,
+    });
+
+    const first = await postV2(payload, header);
     expect(first.json()).toEqual({ received: true });
 
     // Somebody turns the account off underneath us; a replay must not turn it back on.
@@ -213,7 +310,7 @@ describe('a delivery we can verify', () => {
       `update app.seller_accounts set charges_enabled = false where stripe_account_id = '${ACCOUNT}'`,
     );
 
-    const second = await post(payload, header);
+    const second = await postV2(payload, header);
     expect(second.statusCode).toBe(200);
     expect(second.json()).toEqual({ received: true, duplicate: true });
 
@@ -221,6 +318,31 @@ describe('a delivery we can verify', () => {
       `select charges_enabled from app.seller_accounts where stripe_account_id = '${ACCOUNT}'`,
     );
     expect(row?.charges_enabled, 'the replay re-applied the event').toBe(false);
+  });
+});
+
+describe('a delivery we can verify', () => {
+  it('no longer acts on a v1 account.updated, which would disable a v2 seller', async () => {
+    /**
+     * The regression this guards is specific and quiet. A v2 recipient account read through
+     * the v1 API reports `charges_enabled: false`, correctly. If the old handler were still
+     * wired up, an `account.updated` for a perfectly healthy seller would write that `false`
+     * over a working row and stop them selling, with nothing in the logs looking wrong.
+     */
+    await workerPool.db.execute(
+      `update app.seller_accounts set charges_enabled = true, payouts_enabled = true
+        where stripe_account_id = '${ACCOUNT}'`,
+    );
+
+    const { payload, header } = delivery(accountUpdated(ACCOUNT, false, false, 'evt_v1_account'));
+    const res = await post(payload, header);
+
+    // Acknowledged — Stripe should not retry for days — but nothing changed.
+    expect(res.statusCode).toBe(200);
+    const [row] = await workerPool.db.execute<{ charges_enabled: boolean }>(
+      `select charges_enabled from app.seller_accounts where stripe_account_id = '${ACCOUNT}'`,
+    );
+    expect(row?.charges_enabled, 'a v1 event must not touch a v2 seller').toBe(true);
   });
 
   it('acknowledges an event type it does not handle, rather than letting Stripe retry for days', async () => {

@@ -57,8 +57,11 @@ const fakeStripe: StripeClient = {
     Promise.resolve({ accountId: `acct_${userId.replace(/[^A-Za-z0-9]/gu, '')}` }),
   createOnboardingLink: () => Promise.resolve({ url: 'https://connect.stripe.test/setup' }),
   getAccountStatus: () =>
-    Promise.resolve({ chargesEnabled: true, payoutsEnabled: true, detailsSubmitted: true }),
+    Promise.resolve({ transfers: 'active', payouts: 'active', detailsSubmitted: true }),
   constructEvent: () => {
+    throw new Error('the webhook uses a real client');
+  },
+  verifyV2Event: () => {
     throw new Error('the webhook uses a real client');
   },
   setPayoutSchedule: () => Promise.resolve(),

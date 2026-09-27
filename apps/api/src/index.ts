@@ -117,6 +117,17 @@ const app = await buildApp(config, {
                 stripe: createStripeClient({
                   secretKey: config.STRIPE_SECRET_KEY,
                   webhookSecret: config.STRIPE_WEBHOOK_SECRET,
+                  /**
+                   * Optional, and the v2 route refuses everything without it.
+                   *
+                   * Not gated the way the v1 secret gates checkout, because the failure is
+                   * different in kind: no v1 secret means an order could be paid and never
+                   * recorded, which is money lost. No v2 secret means a seller's capabilities
+                   * stop updating — they stay unable to sell, which is a stuck seller rather
+                   * than a lost payment. Refusing to boot over that would be worse than
+                   * running with the marketplace's other half working.
+                   */
+                  v2WebhookSecret: config.STRIPE_V2_WEBHOOK_SECRET,
                 }),
               },
               checkout: {

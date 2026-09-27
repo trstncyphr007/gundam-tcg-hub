@@ -243,8 +243,15 @@ function fakeStripe(): StripeClient {
     createConnectedAccount: () => Promise.resolve({ accountId: 'acct_no5xx' }),
     createOnboardingLink: () => Promise.resolve({ url: 'https://connect.stripe.test/x' }),
     getAccountStatus: () =>
-      Promise.resolve({ chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false }),
+      Promise.resolve({
+        transfers: 'unsupported',
+        payouts: 'unsupported',
+        detailsSubmitted: false,
+      }),
     constructEvent: () => {
+      throw new Error('no signature');
+    },
+    verifyV2Event: () => {
       throw new Error('no signature');
     },
     createCheckoutSession: () =>

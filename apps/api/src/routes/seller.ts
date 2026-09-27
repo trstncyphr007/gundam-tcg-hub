@@ -104,6 +104,8 @@ export function registerSellerRoutes(app: FastifyInstance, deps: SellerDeps): vo
         onboarded: false,
         chargesEnabled: false,
         payoutsEnabled: false,
+        transfersStatus: 'unsupported',
+        payoutsStatus: 'unsupported',
         displayName: null,
       });
     }
@@ -112,8 +114,18 @@ export function registerSellerRoutes(app: FastifyInstance, deps: SellerDeps): vo
     const status = await deps.stripe.getAccountStatus(account.stripeAccountId);
     return reply.header('cache-control', 'no-store').send({
       onboarded: status.detailsSubmitted,
-      chargesEnabled: status.chargesEnabled,
-      payoutsEnabled: status.payoutsEnabled,
+      /**
+       * The two booleans stay, and they are still the question the UI asks: may this person
+       * sell. `chargesEnabled` is now derived from the **transfers** capability, which is what
+       * a destination charge actually needs — see `AccountStatus` for why v1 had us reading
+       * the wrong field.
+       */
+      chargesEnabled: status.transfers === 'active',
+      payoutsEnabled: status.payouts === 'active',
+      // The four-state answers alongside them, so the page can eventually tell "Stripe is
+      // still looking" apart from "Stripe wants something from you". v1 could not.
+      transfersStatus: status.transfers,
+      payoutsStatus: status.payouts,
       // Theirs, so they can see and edit it. Public elsewhere, but this is the only route
       // that returns it *to its owner* alongside the rest of their account.
       displayName: account.displayName,
