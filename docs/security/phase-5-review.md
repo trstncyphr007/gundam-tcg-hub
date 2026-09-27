@@ -270,10 +270,57 @@ are now closed; the statuses below are kept current rather than frozen at the da
 | 1   | Sellers are paid before the buyer can complain (no payout hold)                  | **Closed 2026-09-25** — blocker 2, and verified surviving a real payment on Accounts v2 on 2026-09-27 |
 | 2   | Every fraud threshold is a guess; no real order has been placed                  | Open, unavoidable until launch                                                                        |
 | 3   | Geo mismatch is not flagged; the address arrives after the decision              | Open, by design, needs a review queue                                                                 |
-| 4   | One Stripe key for both roles, where SR-5.3 asks for restricted keys per service | **Code ready 2026-09-27**; waiting on two keys from the dashboard — see below                         |
+| 4   | One Stripe key for both roles, where SR-5.3 asks for restricted keys per service | **Blocked 2026-09-27** — restricted keys do not reach the Accounts v2 API. Code ready; see below      |
 | 5   | A failed `createConnectedAccount` locks that seller out of onboarding for 24h    | **Closed 2026-09-27** — see below                                                                     |
 
-### 4. One key doing two services' work — the code half is done
+### 4. One key doing two services' work — blocked on Stripe, not on us
+
+**Blocked, with the code half done.** Two restricted keys were created and probed against the live
+API on 2026-09-27. They authenticate. They cannot be used, for a reason that is not ours to fix:
+
+```
+web    POST /v2/core/accounts      -> 403 Permission denied
+worker GET  /v2/core/accounts/{id} -> 403 Permission denied
+```
+
+Every permission Stripe's restricted-key UI offers for accounts is a **v1** resource —
+`/v1/accounts`, `/v1/account`, `/v1/balance_settings`, `/v1/account_links`. Seller onboarding runs
+on **Accounts v2** (ADR-045) and so does the webhook handler's capability read. A v1 grant does not
+reach a v2 endpoint, and the dashboard appears to offer no v2 equivalent.
+
+So **SR-5.3 and ADR-045 are in genuine tension.** Restricted keys per service and Accounts v2 cannot
+both be had until Stripe extends its permission model to the v2 API. Neither half is worth giving up
+for the other: reverting to Accounts v1 would trade a live, working integration for a deprecated one
+to satisfy a control, and wiring the keys anyway would break onboarding for every seller.
+
+A second finding, recorded because it is the more instructive one:
+
+```
+web POST /v1/refunds -> 404 No such payment_intent: 'pi_probe_nonexistent'
+```
+
+**404, not 403** — the key reached validation, so it _has_ refund permission, despite being created
+without it. Whatever the cause, the lesson stands on its own: a key that is believed to be
+restricted and is not produces the audit answer without the control, which is worse than a key
+nobody claimed anything about. That is why this risk is not being closed on the strength of a
+dashboard screenshot or a green test, and why the probe asks the question in both directions —
+what the key _can_ do as well as what it cannot.
+
+**What is ready, for when Stripe catches up.** `STRIPE_SECRET_KEY_WEB` and
+`STRIPE_SECRET_KEY_WORKER` exist, each optional and each falling back to the shared key, resolved in
+one place (`stripeKeyFor`). Onboarding and checkout take the web key; the webhook handler, the
+payout-release job and the admin refund route take the worker key. The API warns on every boot while
+one key is doing both jobs. Setting the two variables is the whole of the remaining work.
+
+Also fixed while looking: the admin refund route used to borrow the **checkout** client, which
+becomes the web key under the split — so refunds would have started failing 403 the day somebody
+split their keys, at the moment an admin was trying to return a buyer's money. It takes the worker
+client now.
+
+**Honest limit on what the split would buy.** The API process builds both clients, so it holds both
+keys; the separation is real between the API and the standalone job processes, and real against a
+single leaked key, but it does not isolate the API process from itself. Claiming otherwise would be
+the same mistake as the paragraph above.
 
 `STRIPE_SECRET_KEY_WEB` and `STRIPE_SECRET_KEY_WORKER` now exist. Each is optional and each falls
 back to `STRIPE_SECRET_KEY`, resolved in one place (`stripeKeyFor`), so splitting the keys is a

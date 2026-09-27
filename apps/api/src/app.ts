@@ -554,10 +554,25 @@ export async function buildApp(config: ApiConfig, deps: AppDeps = {}): Promise<F
         db: deps.writeDb,
         workerDb: deps.moderationDb,
         ...(flags ? { flags } : {}),
-        // The refund route exists only when there is something to refund with. It is taken
-        // from the checkout deps rather than configured twice: one Stripe client per process,
-        // built from one key.
-        ...(deps.checkout ? { stripe: deps.checkout.stripe } : {}),
+        /**
+         * Refunds go out on the **worker** client, not the checkout one (SR-5.3).
+         *
+         * This used to borrow `deps.checkout.stripe`, on the reasoning that one process should
+         * build one client. That was fine while there was one key, and became a latent bug the
+         * moment the keys were split by role: checkout is built from the **web** key, a
+         * correctly restricted web key **cannot refund**, and so the admin refund route would
+         * have started failing the day somebody set `STRIPE_SECRET_KEY_WEB`. Nothing would have
+         * caught it — the route exists, the key is valid, and the failure is a 403 from Stripe
+         * at the moment an admin is trying to give a buyer their money back.
+         *
+         * Falling back to the checkout client keeps a single-key deployment working exactly as
+         * before, which is the same bargain `stripeKeyFor` makes.
+         */
+        ...(deps.stripeWebhook
+          ? { stripe: deps.stripeWebhook.stripe }
+          : deps.checkout
+            ? { stripe: deps.checkout.stripe }
+            : {}),
       });
     }
     registerDeveloperRoutes(app, deps.writeDb, {
