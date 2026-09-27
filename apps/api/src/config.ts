@@ -44,7 +44,25 @@ const apiEnvSchema = z.object({
 
   // Auth (plan §10, FR-1.10). The secret must be >=32 chars of CSPRNG output (SR-X.16).
   API_BASE_URL: z.url().default('http://127.0.0.1:4000'),
-  APP_BASE_URL: z.url().default('http://127.0.0.1:3000'),
+  /**
+   * `localhost`, not `127.0.0.1`, and the difference is not cosmetic.
+   *
+   * This value is the base for every URL we hand to somebody else's browser — Stripe's Checkout
+   * `success_url`, the onboarding `return_url` and `refresh_url`, the links in emails. On a
+   * Windows host running the stack in WSL2, **`127.0.0.1:3000` is not reachable from the
+   * browser at all**: WSL forwards the `localhost` name and not the loopback address. So a
+   * buyer would complete a payment, Stripe would redirect exactly as instructed, and the tab
+   * would fail to connect — which looks like our page crashing rather than a configuration
+   * mistake. It cost two misdiagnosed bug reports before anyone tested from the host side.
+   *
+   * It also matches `WEBAUTHN_ORIGIN`, which has to be a hostname because WebAuthn refuses an
+   * IP address as a relying party. Two defaults that disagreed about the same site were a trap
+   * on their own.
+   *
+   * `API_BASE_URL` above stays on the loopback address deliberately: it is called server to
+   * server and by the CI harness, never typed into a browser by anything we do not control.
+   */
+  APP_BASE_URL: z.url().default('http://localhost:3000'),
   BETTER_AUTH_SECRET: z.string().min(32).default('dev-only-insecure-secret-change-me-32+'),
   // Optional settings: an empty value means "not configured" (see optional() in @gth/core).
   DISCORD_CLIENT_ID: optional(z.string().min(1)),
