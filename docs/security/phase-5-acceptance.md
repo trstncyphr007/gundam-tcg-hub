@@ -5,13 +5,13 @@
 What the plan asks Phase 5 to prove, and whether it is proven — with the evidence named, so a
 reader can check rather than trust.
 
-| #      | Criterion                                      | Status                    |
-| ------ | ---------------------------------------------- | ------------------------- |
-| AC-5.1 | Stripe test-mode purchase, end to end          | **Passed** — 2026-09-27   |
-| AC-5.2 | Webhook replay is a no-op; forgery is a 400    | **Passed**                |
-| AC-5.3 | Polyglot and EICAR refused; EXIF GPS gone      | **Passed**                |
-| AC-5.4 | A buyer cannot complete or reprice their order | **Passed**                |
-| AC-5.5 | No open High or Critical from the WSTG pass    | **Passed, with a caveat** |
+| #      | Criterion                                      | Status                                               |
+| ------ | ---------------------------------------------- | ---------------------------------------------------- |
+| AC-5.1 | Stripe test-mode purchase, end to end          | **Passed** — twice: on Accounts v1, then again on v2 |
+| AC-5.2 | Webhook replay is a no-op; forgery is a 400    | **Passed**                                           |
+| AC-5.3 | Polyglot and EICAR refused; EXIF GPS gone      | **Passed**                                           |
+| AC-5.4 | A buyer cannot complete or reprice their order | **Passed**                                           |
+| AC-5.5 | No open High or Critical from the WSTG pass    | **Passed, with a caveat**                            |
 
 All five pass. The caveat on AC-5.5 is real and stated there.
 
@@ -55,6 +55,43 @@ http://127.0.0.1:4000/v1/webhooks/stripe`, signed with the CLI's own secret and 
 the raw body by our handler. `app.webhook_events` shows the onboarding events
 (`account.updated`, `capability.updated`, `account.external_account.created`) processed alongside
 it, so the Connect event path is proven too.
+
+### Run two, on Accounts v2 — 2026-09-27
+
+The run above used **Accounts v1**. After the migration (ADR-045) the whole criterion was repeated
+on **Accounts v2**, because a payment demonstrated on the API we no longer use proves less each day.
+
+|                                              |                                                                                   |
+| -------------------------------------------- | --------------------------------------------------------------------------------- |
+| Connected account                            | `acct_1UK6mSFSXIam3uhF` — v2, `recipient` configuration, Stripe-hosted onboarding |
+| Order                                        | `607b0b50-1250-47bf-8de6-7085cdbb88b7`                                            |
+| Stripe payment intent                        | `pi_3UK7K9FSXIElzIsj1tomA` — **`succeeded`**, 1234 usd, `livemode: false`         |
+| Application fee                              | **62**                                                                            |
+| Transfer destination                         | `acct_1UK6mSFSXIam3uhF`                                                           |
+| Listing afterwards                           | `sold`                                                                            |
+| Payout schedule at Stripe, after the payment | **`manual`** — FR-5.6 intact                                                      |
+
+```
+from_status | to_status | actor  | at
+------------+-----------+--------+----------
+created     | paid      | stripe | 01:56:18
+```
+
+Two things this run proved that the first could not:
+
+1. **The v2 capability event reaches us.** The seller's row was flipped to
+   `charges_enabled = true` by a **thin** event delivered to `/v1/webhooks/stripe-v2`, verified
+   against the raw body with the v2 destination's own secret, then acted on by re-reading the
+   account. The audit entry records `{"transfers": "active", "payouts": "active"}` — four-state
+   detail Accounts v1 had no way to express.
+2. **The payout hold survives on v2.** Accounts v2 has no payout schedule; the hold lives on the v1
+   account API. After a real payment landed on this v2 account, Stripe still reported the schedule
+   as `manual`, and `hold_until` was still `2026-10-04`.
+
+It also found three defects in the migration, all of which had passed CI — see ADR-045. The one
+worth repeating here: an event destination filtered to `events_from: ['@accounts']` receives
+**nothing**, because these events come from the platform, and the symptom is a seller who onboards
+successfully and silently cannot sell.
 
 ### What was _not_ automated, and why
 
@@ -203,11 +240,10 @@ $12.34 charge, kept a 62¢ application fee, transferred the rest to the seller's
 account, and the order became `paid` by webhook rather than by anything a client claimed.
 
 The caveat on AC-5.5 stands, and is the honest limit: the person who wrote the controls is the
-worst-placed person to find the gap in them, and this project has now had three real defects its
-own review method could not see.
+worst-placed person to find the gap in them, and this project has now had **five** real defects its
+own review method could not see — the CSP, the bucket's CORS policy, and three inside the Accounts
+v2 migration, every one found by running the real thing rather than by any test.
 
-**The Accounts v1 debt this run created is paid** (ADR-045). The code has since moved to Accounts
-v2 — with one thing to be clear about: the _payment_ above was demonstrated on v1, and the v2 path
-is verified call by call against the sandbox but has not itself carried an end-to-end purchase.
-Re-running AC-5.1 on v2 needs a person to complete Stripe's hosted KYC form, and is the obvious
-next thing to do with fifteen minutes and a test card.
+**The Accounts v1 debt this run created is paid** (ADR-045), and **AC-5.1 has been re-run end to end
+on Accounts v2** — recorded as the second run above. The criterion is no longer proven only on the
+API Stripe is retiring.

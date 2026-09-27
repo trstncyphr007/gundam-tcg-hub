@@ -3,6 +3,7 @@ import { HOLD_RELEASE_AFTER_DAYS } from '@gth/core';
 import {
   type Database,
   DisplayNameTakenError,
+  getSelfProfile,
   getSellerAccount,
   holdSellerPayouts,
   isCheckViolation,
@@ -199,7 +200,26 @@ export function registerSellerRoutes(app: FastifyInstance, deps: SellerDeps): vo
     // of half-finished ones and no answer to which is theirs.
     let accountId = existing?.stripeAccountId;
     if (accountId === undefined) {
-      const created = await deps.stripe.createConnectedAccount({ userId: request.subject.userId });
+      /**
+       * Stripe needs somewhere to write to this seller, and will refuse a recipient
+       * configuration without it (ADR-045).
+       *
+       * Read from the database rather than carried on the session: `Subject` holds a user id
+       * and a role and deliberately no email, because it is attached to every request and
+       * logged alongside many of them (SR-X.20, SR-X.24). One lookup on the one route that
+       * needs it is the cheaper trade.
+       */
+      const profile = await getSelfProfile(deps.db, request.subject.userId);
+      if (!profile) {
+        // A live session whose user has gone. Not a 500: there is nothing broken here, and
+        // nothing this request can do about it.
+        return reply.code(409).send({ error: 'account_unavailable' });
+      }
+
+      const created = await deps.stripe.createConnectedAccount({
+        userId: request.subject.userId,
+        email: profile.email,
+      });
       const recorded = await recordSellerAccount(
         deps.db,
         request.subject.userId,

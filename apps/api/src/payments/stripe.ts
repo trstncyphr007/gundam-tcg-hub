@@ -65,10 +65,18 @@ export interface V2EventNotification {
 }
 
 export interface StripeClient {
-  /** Start a Connect account for a seller (FR-5.1, ADR-045: v2 `recipient` configuration). */
+  /**
+   * Start a Connect account for a seller (FR-5.1, ADR-045: v2 `recipient` configuration).
+   *
+   * `email` is **required**, and the type is the enforcement. Stripe refuses a recipient
+   * configuration without a contact email — *"If configuration.recipient is supplied, the
+   * Account must have a contact email"* — so an optional parameter here meant a caller could
+   * compile, pass review, and fail for every single seller at runtime. It did: the first live
+   * onboarding attempt after the v2 migration failed exactly this way.
+   */
   createConnectedAccount: (input: {
     userId: string;
-    email?: string | undefined;
+    email: string;
   }) => Promise<{ accountId: string }>;
   /** A one-time link to Stripe's hosted onboarding. Short-lived; Stripe decides how long. */
   createOnboardingLink: (input: {
@@ -293,7 +301,8 @@ export function createStripeClient(options: StripeOptions): StripeClient {
           currency: 'usd',
           responsibilities: { fees_collector: 'application', losses_collector: 'application' },
         },
-        ...(email === undefined ? {} : { contact_email: email }),
+        // Always sent: Stripe refuses a recipient configuration without one.
+        contact_email: email,
         metadata: { userId },
         // Without this the response omits `configuration` entirely — see `getAccountStatus`.
         include: ['configuration.recipient'],
