@@ -1391,7 +1391,9 @@ pnpm sec:scan                         # gitleaks + osv-scanner + semgrep: zero b
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`                                  | 1      | No / Yes | web, worker               |                                                        |
 | `SCANNER_USER_AGENT`                                                      | 1      | No       | scanner                   | Includes a contact URL                                 |
 | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET`                                   | 3      | No / Yes | worker                    | Only if approved                                       |
-| `STRIPE_SECRET_KEY` (restricted, per service)                             | 5      | Yes      | api, worker               | Separate RAKs                                          |
+| `STRIPE_SECRET_KEY`                                                       | 5      | Yes      | api, worker               | Shared fallback; used when neither RAK below is set    |
+| `STRIPE_SECRET_KEY_WEB`                                                   | 5      | Yes      | api (web routes)          | Restricted `rk_`: Checkout + accounts, **no refunds**  |
+| `STRIPE_SECRET_KEY_WORKER`                                                | 5      | Yes      | api (webhook, jobs)       | Restricted `rk_`: refunds + accounts, **no Checkout**  |
 | `STRIPE_WEBHOOK_SECRET`                                                   | 5      | Yes      | api                       | v1 feed: orders, refunds, chargebacks                  |
 | `STRIPE_V2_WEBHOOK_SECRET`                                                | 5      | Yes      | api                       | v2 feed: seller capabilities (ADR-045)                 |
 | `STRIPE_PUBLISHABLE_KEY`                                                  | 5      | No       | web                       |                                                        |

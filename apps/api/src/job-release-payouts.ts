@@ -29,11 +29,28 @@ import { createStripeClient } from './payments/stripe.js';
 const env = parseEnv(
   z.object({
     DATABASE_URL_WORKER: z.string().startsWith('postgres'),
+    /**
+     * The worker's own key if there is one, otherwise the shared one (SR-5.3).
+     *
+     * This job changes a payout schedule, which needs account **write**. It has no reason to
+     * create a Checkout session, and with a restricted worker key it cannot — which is the point
+     * of the split. `rk_` and `sk_` are both accepted so that splitting keys is a deployment
+     * step rather than a change that stops this timer firing.
+     *
+     * Not `loadConfig()`: the jobs parse the handful of variables they use so that a missing
+     * `BETTER_AUTH_SECRET` cannot stop a payout hold being lifted (ADR-036).
+     */
+    STRIPE_SECRET_KEY_WORKER: z
+      .string()
+      .regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]+$/u)
+      .optional(),
     STRIPE_SECRET_KEY: z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/u),
   }),
 );
 
-const stripe = createStripeClient({ secretKey: env.STRIPE_SECRET_KEY });
+const stripe = createStripeClient({
+  secretKey: env.STRIPE_SECRET_KEY_WORKER ?? env.STRIPE_SECRET_KEY,
+});
 const { db, close } = createDb({ url: env.DATABASE_URL_WORKER, max: 1 });
 
 try {

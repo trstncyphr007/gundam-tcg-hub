@@ -270,8 +270,36 @@ are now closed; the statuses below are kept current rather than frozen at the da
 | 1   | Sellers are paid before the buyer can complain (no payout hold)                  | **Closed 2026-09-25** — blocker 2, and verified surviving a real payment on Accounts v2 on 2026-09-27 |
 | 2   | Every fraud threshold is a guess; no real order has been placed                  | Open, unavoidable until launch                                                                        |
 | 3   | Geo mismatch is not flagged; the address arrives after the decision              | Open, by design, needs a review queue                                                                 |
-| 4   | One Stripe key for both roles, where SR-5.3 asks for restricted keys per service | Open                                                                                                  |
+| 4   | One Stripe key for both roles, where SR-5.3 asks for restricted keys per service | **Code ready 2026-09-27**; waiting on two keys from the dashboard — see below                         |
 | 5   | A failed `createConnectedAccount` locks that seller out of onboarding for 24h    | **Closed 2026-09-27** — see below                                                                     |
+
+### 4. One key doing two services' work — the code half is done
+
+`STRIPE_SECRET_KEY_WEB` and `STRIPE_SECRET_KEY_WORKER` now exist. Each is optional and each falls
+back to `STRIPE_SECRET_KEY`, resolved in one place (`stripeKeyFor`), so splitting the keys is a
+deployment step rather than a change that takes the marketplace down until somebody visits a
+dashboard. The four places that build a Stripe client are pointed at the right one: onboarding and
+checkout at the web key, the webhook handler and the payout-release job at the worker key.
+
+**What the split buys, stated so nobody narrows it further by accident.** The web key may create
+Checkout sessions and connected accounts and **may not refund** — a compromised web process cannot
+move money out. The worker key may refund and read and **may not create a Checkout session** — a
+compromised worker cannot take money in. Both still need account read _and_ write, because the web
+side sets the payout hold at creation (FR-5.6) and the worker releases it later; making either
+read-only breaks onboarding or the release job.
+
+**Why this is not yet closed.** The keys themselves have to be created in the Stripe dashboard, and
+until they are, the fallback means one key is still doing both jobs. The API therefore **warns on
+every boot** when that is the case, naming which variable is missing — because the dangerous state
+is not "unsplit", it is an operator who believes they have split the keys and has not. That person
+holds the audit answer without the control, and nothing else here would contradict them.
+
+**And it will not be closed on the strength of the tests.** `stripe-keys.test.ts` covers which key
+each service is handed, including that one key pasted into both variables is _not_ a split. It says
+nothing about whether the key Stripe issued actually has the permissions requested — that is a fact
+about someone else's dashboard, and this document has now been wrong five times about exactly that
+class of thing. Closing it requires proving against the live API that the web key is refused when it
+attempts a refund and the worker key is refused when it attempts a Checkout session.
 
 ### 5. A failed account creation is cached for a day — closed
 
