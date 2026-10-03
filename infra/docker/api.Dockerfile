@@ -30,7 +30,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 
 # Runtime: distroless (no shell, no package manager), non-root (plan §19).
 # Debian 13: the debian12 variant shipped unpatched OpenSSL (CVE-2026-31789 et al.) on 2026-09-20.
-FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:bb6b03d81066993293a10feda7250e8e1cc034035fe9b61cfceededa7c8bf04d AS runtime
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:9eeb7f5887d0e239e78264b06f7f11d2e14be534050481803a9e4728fcdd278e AS runtime
 ENV NODE_ENV=production \
     API_HOST=0.0.0.0 \
     API_PORT=4000
