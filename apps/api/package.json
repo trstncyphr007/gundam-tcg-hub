@@ -23,7 +23,7 @@
     "@gth/photos": "workspace:*",
     "fastify": "5.12.5",
     "fastify-plugin": "6.0.0",
-    "nodemailer": "10.0.10",
+    "nodemailer": "10.0.13",
     "stripe": "22.6.2",
     "zod": "4.6.5"
   },
@@ -34,14 +34,14 @@
     "@gth/core": "workspace:*",
     "@gth/db": "workspace:*",
     "@gth/security": "workspace:*",
-    "@types/node": "24.13.6",
+    "@types/node": "24.19.1",
     "@types/nodemailer": "8.0.2",
     "@types/pngjs": "6.0.5",
     "@vitest/coverage-v8": "5.0.0",
     "pngjs": "7.0.0",
-    "testcontainers": "12.1.0",
+    "testcontainers": "12.2.0",
     "tsup": "8.5.1",
-    "tsx": "4.23.13",
+    "tsx": "4.23.15",
     "typescript": "6.0.3",
     "vitest": "5.0.0"
   }
