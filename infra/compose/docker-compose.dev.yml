@@ -68,7 +68,7 @@ services:
   clamav:
     <<: *dev-hardening
     profiles: [photos]
-    image: clamav/clamav@sha256:a5f03c12a79dbe9f6d8a527b6bb1ea053fa8dd061d3738a26897f055ee2d9303
+    image: clamav/clamav@sha256:ebec5bc138401b36ae987caa1a3fa3c3b2a21ed3d51f0bfa5852825e663e67b0
     environment:
       CLAMAV_NO_FRESHCLAMD: 'true'
     ports: ['127.0.0.1:3310:3310']
