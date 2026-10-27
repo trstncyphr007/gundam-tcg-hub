@@ -21,7 +21,7 @@
     "@fastify/helmet": "13.1.1",
     "@fastify/rate-limit": "11.2.0",
     "@gth/photos": "workspace:*",
-    "fastify": "5.12.5",
+    "fastify": "5.12.6",
     "fastify-plugin": "6.0.0",
     "nodemailer": "10.0.10",
     "stripe": "22.6.2",
