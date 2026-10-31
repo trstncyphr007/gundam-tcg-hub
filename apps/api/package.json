@@ -23,7 +23,7 @@
     "@gth/photos": "workspace:*",
     "fastify": "5.12.5",
     "fastify-plugin": "6.0.0",
-    "nodemailer": "10.0.10",
+    "nodemailer": "10.1.4",
     "stripe": "22.6.2",
     "zod": "4.6.5"
   },
