@@ -83,7 +83,7 @@ services:
   mailpit:
     <<: *dev-hardening
     profiles: [mail]
-    image: axllent/mailpit@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
+    image: axllent/mailpit@sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231
     ports: ['127.0.0.1:8025:8025', '127.0.0.1:1025:1025']
 
   otel:
